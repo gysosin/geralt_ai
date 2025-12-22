@@ -11,7 +11,7 @@ import ShareBotDialog from './bots/ShareBotDialog';
 const BotDetail: React.FC = () => {
    const { id } = useParams();
    const navigate = useNavigate();
-   const { currentBot, fetchBotByToken, updateBot, collections, fetchCollections, isLoading } = useBotStore();
+   const { currentBot, fetchBotByToken, updateBot, shareBot, collections, fetchCollections, isLoading } = useBotStore();
    const [activeTab, setActiveTab] = useState('config');
    const [isSaving, setIsSaving] = useState(false);
    const [shareOpen, setShareOpen] = useState(false);
@@ -270,14 +270,12 @@ const BotDetail: React.FC = () => {
                isOpen={shareOpen}
                onClose={() => setShareOpen(false)}
                onSubmit={async (data) => {
-                  // We'd import shareBot from store here if we destructured it, 
-                  // but for simplicity we can just close it or pass a handler prop if we want to be pure.
-                  // Actually, we should call the store action.
-                  // Let's rely on the parent or adding shareBot to destructuring.
-                  // I'll update the component to include shareBot from store actions
-                  // (Added locally below in the same file context)
-                  console.log("Sharing", data);
-                  setShareOpen(false);
+                  try {
+                     await shareBot(data);
+                     setShareOpen(false);
+                  } catch (err) {
+                     setError('Failed to share bot');
+                  }
                }}
                botToken={currentBot.bot_token}
                botName={currentBot.name}

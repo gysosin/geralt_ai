@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { Bot, Collection, CreateBotCommand, UpdateBotCommand, ShareBotCommand } from '@/types'
-import { botService, collectionService } from '@/services/bot.service'
+import { botService, collectionService } from '@/src/services/bot.service'
 import { useAuthStore } from './auth.store'
 
 // Helper to get tenant_id from auth store
