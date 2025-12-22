@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Send, Paperclip, Mic, Bot, User, Sparkles,
   MoreHorizontal, ChevronDown, X,
@@ -7,7 +7,7 @@ import {
   ArrowRight, Menu, Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useChatStore, useAuthStore } from '../src/store';
+import { useChatStore, useAuthStore, useBotStore } from '../src/store';
 import { MarkdownRenderer, SourcesList, SuggestionChips, CollectionPicker, ConversationSidebar } from '../src/components/chat';
 import type { Message, Source } from '../types';
 
@@ -20,16 +20,19 @@ const SUGGESTIONS = [
 
 const ChatInterface: React.FC = () => {
   const { conversationId } = useParams<{ conversationId?: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuthStore();
 
   const {
     conversations,
+    currentConversation,
     messages,
     isConversationLoading,
     areConversationsLoading,
     isSending,
     currentCollectionId,
+    currentBotToken,
     fetchConversations,
     fetchConversation,
     sendMessage,
@@ -39,25 +42,49 @@ const ChatInterface: React.FC = () => {
     setCollectionId,
   } = useChatStore();
 
+  const { bots, fetchBots } = useBotStore();
+
   const [input, setInput] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [showBotMenu, setShowBotMenu] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Fetch conversations on mount
+  // Derived state for active bot
+  const activeBot = useMemo(() => 
+    bots.find(b => b.bot_token === currentBotToken), 
+    [bots, currentBotToken]
+  );
+
+  // Fetch conversations and bots on mount or when bot context changes
   useEffect(() => {
     fetchConversations();
-  }, [fetchConversations]);
+    if (bots.length === 0) fetchBots();
+  }, [fetchConversations, fetchBots, bots.length, currentBotToken]);
 
-  // Fetch specific conversation if ID provided
+  // Handle URL params for conversation or bot
   useEffect(() => {
+    const botParam = searchParams.get('bot');
+    const isNew = searchParams.get('new');
+
     if (conversationId) {
       fetchConversation(conversationId);
-    } else {
+    } else if (isNew) {
+       // Force new conversation
+       startNewConversation(null, botParam);
+       // Remove 'new' param to prevent loops
+       const newParams = new URLSearchParams(searchParams);
+       newParams.delete('new');
+       navigate(`/chat?${newParams.toString()}`, { replace: true });
+    } else if (botParam && botParam !== currentBotToken) {
+      // Switch bot context if different
+      startNewConversation(null, botParam);
+    } else if (!conversationId && !botParam && !currentBotToken && messages.length === 0) {
+      // Default new conversation if nothing specified
       startNewConversation(null);
     }
-  }, [conversationId, fetchConversation, startNewConversation]);
+  }, [conversationId, searchParams, currentBotToken, fetchConversation, startNewConversation, messages.length]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -110,6 +137,15 @@ const ChatInterface: React.FC = () => {
 
   const handleCopyMessage = async (content: string) => {
     await navigator.clipboard.writeText(content);
+  };
+
+  const handleBotSelect = (botToken: string | null) => {
+    setShowBotMenu(false);
+    if (botToken !== currentBotToken) {
+        startNewConversation(null, botToken);
+        // Clean URL
+        navigate('/chat', { replace: true });
+    }
   };
 
   return (
@@ -189,9 +225,65 @@ const ChatInterface: React.FC = () => {
               </button>
             )}
 
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer transition-colors group">
-              <span className="font-semibold text-gray-200">Geralt AI</span>
-              <span className="text-gray-500 group-hover:text-gray-300"><ChevronDown size={14} /></span>
+            <div className="relative">
+                <button 
+                    onClick={() => setShowBotMenu(!showBotMenu)}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer transition-colors group"
+                >
+                    {activeBot ? (
+                        <>
+                            <div className="w-6 h-6 rounded-md bg-gray-800 border border-white/10 overflow-hidden shrink-0">
+                                <img src={activeBot.icon || 'https://picsum.photos/200'} alt={activeBot.name} className="w-full h-full object-cover" />
+                            </div>
+                            <span className="font-semibold text-gray-200">{activeBot.name}</span>
+                        </>
+                    ) : (
+                        <>
+                            <span className="font-semibold text-gray-200">Geralt AI</span>
+                        </>
+                    )}
+                    <span className="text-gray-500 group-hover:text-gray-300"><ChevronDown size={14} /></span>
+                </button>
+
+                {showBotMenu && (
+                    <>
+                        <div className="fixed inset-0 z-40" onClick={() => setShowBotMenu(false)} />
+                        <div className="absolute top-full left-0 mt-2 w-64 bg-[#18181b] border border-white/10 rounded-xl shadow-xl z-50 py-1 overflow-hidden">
+                            <button
+                                onClick={() => handleBotSelect(null)}
+                                className={`w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-white/5 transition-colors ${!activeBot ? 'bg-white/5' : ''}`}
+                            >
+                                <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center shrink-0">
+                                    <Bot size={16} className="text-white" />
+                                </div>
+                                <div className="text-left">
+                                    <div className="font-medium text-white">Geralt AI</div>
+                                    <div className="text-xs text-gray-500">Default Assistant</div>
+                                </div>
+                                {!activeBot && <div className="ml-auto text-violet-400">●</div>}
+                            </button>
+
+                            {bots.length > 0 && <div className="h-[1px] bg-white/5 my-1" />}
+
+                            {bots.map((bot) => (
+                                <button
+                                    key={bot.id}
+                                    onClick={() => handleBotSelect(bot.bot_token || null)}
+                                    className={`w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-white/5 transition-colors ${activeBot?.id === bot.id ? 'bg-white/5' : ''}`}
+                                >
+                                    <div className="w-8 h-8 rounded-lg bg-gray-800 border border-white/10 overflow-hidden shrink-0">
+                                        <img src={bot.icon || 'https://picsum.photos/200'} alt={bot.name} className="w-full h-full object-cover" />
+                                    </div>
+                                    <div className="text-left flex-1 min-w-0">
+                                        <div className="font-medium text-white truncate">{bot.name}</div>
+                                        <div className="text-xs text-gray-500 truncate">{bot.description}</div>
+                                    </div>
+                                    {activeBot?.id === bot.id && <div className="ml-auto text-violet-400">●</div>}
+                                </button>
+                            ))}
+                        </div>
+                    </>
+                )}
             </div>
 
             <div className="h-4 w-[1px] bg-white/10 mx-1 hidden sm:block" />
@@ -201,13 +293,15 @@ const ChatInterface: React.FC = () => {
               <span>RAG Enabled</span>
             </div>
 
-            {/* Collection Picker */}
-            <div className="hidden md:block">
-              <CollectionPicker
-                selectedId={currentCollectionId}
-                onSelect={setCollectionId}
-              />
-            </div>
+            {/* Collection Picker (Only show if no bot is selected, or let user override) */}
+            {!activeBot && (
+              <div className="hidden md:block">
+                <CollectionPicker
+                  selectedId={currentCollectionId}
+                  onSelect={setCollectionId}
+                />
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -237,12 +331,21 @@ const ChatInterface: React.FC = () => {
                   animate={{ opacity: 1, y: 0 }}
                   className="flex flex-col items-center justify-center min-h-[60vh]"
                 >
-                  <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center mb-6 shadow-2xl shadow-violet-500/20">
-                    <Bot className="text-white" size={40} />
+                  <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center mb-6 shadow-2xl shadow-violet-500/20 overflow-hidden">
+                    {activeBot ? (
+                        <img src={activeBot.icon || 'https://picsum.photos/200'} alt="Bot" className="w-full h-full object-cover" />
+                    ) : (
+                        <Bot className="text-white" size={40} />
+                    )}
                   </div>
-                  <h2 className="text-2xl font-bold text-white mb-2">How can I help you today?</h2>
+                  <h2 className="text-2xl font-bold text-white mb-2">
+                    {activeBot ? `How can ${activeBot.name} help you?` : "How can I help you today?"}
+                  </h2>
                   <p className="text-gray-400 mb-10 text-center max-w-md">
-                    I can analyze documents, write code, or help you plan your next project.
+                    {activeBot 
+                        ? activeBot.description || "I'm ready to assist you." 
+                        : "I can analyze documents, write code, or help you plan your next project."
+                    }
                     {currentCollectionId && " I'm searching within your selected collection."}
                   </p>
 
@@ -307,7 +410,7 @@ const ChatInterface: React.FC = () => {
                     handleSend();
                   }
                 }}
-                placeholder="Ask anything..."
+                placeholder={activeBot ? `Message ${activeBot.name}...` : "Ask anything..."}
                 className="bg-transparent border-none text-gray-200 placeholder-gray-500 text-[15px] p-4 w-full resize-none focus:ring-0 focus:outline-none max-h-48 min-h-[56px] scrollbar-hide"
                 rows={1}
                 disabled={isSending}

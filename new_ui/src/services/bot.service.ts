@@ -338,6 +338,40 @@ export const collectionService = {
             return []
         }
     },
+
+    /**
+     * Get storage and vector database statistics
+     */
+    async getStorageStats(tenantId: string): Promise<{
+        storage: {
+            used_bytes: number;
+            used_formatted: string;
+            limit_bytes: number;
+            limit_formatted: string;
+            usage_percent: number;
+            file_count: number;
+        };
+        vectors: {
+            total_vectors: number;
+            total_formatted: string;
+            index_status: string;
+        };
+        documents: {
+            total: number;
+            processed: number;
+            pending: number;
+            by_type: Record<string, number>;
+        };
+    } | null> {
+        try {
+            const response = await api.get<any>(
+                `/api/v1/collections/stats?tenant_id=${tenantId}`
+            )
+            return response.data
+        } catch {
+            return null
+        }
+    },
 }
 
 export default { botService, collectionService }

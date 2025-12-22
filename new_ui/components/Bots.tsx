@@ -90,7 +90,7 @@ const BotCard = ({
           Edit
         </button>
         <button
-          onClick={(e) => { e.stopPropagation(); navigate(`/chat?bot=${bot.bot_token}`); }}
+          onClick={(e) => { e.stopPropagation(); navigate(`/chat?bot=${bot.bot_token}&new=true`); }}
           className="flex-1 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium rounded-lg shadow-lg shadow-violet-900/20 transition-all"
         >
           Chat
