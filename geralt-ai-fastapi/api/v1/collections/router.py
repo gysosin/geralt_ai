@@ -62,6 +62,28 @@ async def create_collection(
     return result.data
 
 
+# =============================================================================
+# Storage Stats Route
+# =============================================================================
+
+@router.get("/stats", response_model=Dict[str, Any])
+async def get_storage_stats(
+    tenant_id: str = Query(..., description="Tenant ID"),
+    user_context: Dict = Depends(get_current_user_with_claims),
+):
+    """Get storage and vector database statistics with role-based limits."""
+    from services.storage_stats_service import get_storage_stats_service
+    service = get_storage_stats_service()
+    result = service.get_stats(
+        tenant_id=tenant_id, 
+        identity=user_context["username"],
+        jwt_data=user_context.get("claims", {})
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error", "Failed to get stats"))
+    return result["data"]
+
+
 @router.get("/", response_model=List[Dict[str, Any]])
 async def list_collections(
     tenant_id: str = Query(..., description="Tenant ID"),

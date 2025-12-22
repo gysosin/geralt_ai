@@ -21,7 +21,9 @@ from services.bots import BaseService, ServiceResult
 from core.ai.factory import AIProviderFactory
 from core.rag.retriever import HybridRetriever
 from core.ai.intent import IntentAnalyzer
+from core.ai.query_rewriter import QueryRewriter
 from core.ai.suggestions import SuggestionGenerator
+from core.ai.summarizer import ConversationSummarizer
 
 
 class ConversationService(BaseService):
@@ -52,7 +54,8 @@ class ConversationService(BaseService):
         identity: str,
         query: str,
         collection_id: Optional[str] = None,
-        conversation_id: Optional[str] = None
+        conversation_id: Optional[str] = None,
+        bot_token: Optional[str] = None
     ) -> ServiceResult:
         """
         Execute a RAG search query on a collection (without bot context).
@@ -90,61 +93,60 @@ class ConversationService(BaseService):
                 allowed_collections = list(set(allowed_collections))
             
             # Get conversation history
-            full_history = self._get_conversation_history(username, conv_id)
+            full_history, summary = self._get_conversation_history(username, conv_id)
             trimmed_history = full_history[-self.MAX_HISTORY_MESSAGES:]
             history_str = self._format_history(trimmed_history)
             
+            # Combine summary and history for context
+            context_str = history_str
+            if summary:
+                context_str = f"Summary of previous conversation:\n{summary}\n\nRecent Messages:\n{history_str}"
+            
+            # Intent Analysis to optimize RAG usage
+            llm = AIProviderFactory.get_llm_provider()
+            intent_analyzer = IntentAnalyzer(llm)
+            intent = await intent_analyzer.determine_intent(query_text)
+            
+            # If intent is Greeting or General Chat, bypass RAG even if collections exist
+            if intent in ["GREETING", "GENERAL_CHAT"]:
+                allowed_collections = []
+                
+            # Rewrite query for better retrieval if history exists
+            search_query = query_text
+            if intent not in ["GREETING"] and history_str:
+                rewriter = QueryRewriter(llm)
+                search_query = await rewriter.rewrite(query_text, context_str) # Pass full context including summary
+                self.logger.info(f"Rewrote query: '{query_text}' -> '{search_query}'")
+
             # If no collections, chat directly with AI (no RAG)
             if not allowed_collections:
-                llm = AIProviderFactory.get_llm_provider()
-                
-                direct_prompt = f"""You are a helpful AI assistant. Answer the user's question to the best of your ability.
-
-Conversation History:
-{history_str}
-
-User: {query_text}
-Assistant:"""
-                
-                response_text = await llm.complete(direct_prompt)
-                
-                # Log token usage for analytics
-                self._log_token_usage(
-                    username=username,
-                    model=llm.model_name,
-                    prompt_text=direct_prompt,
-                    response_text=response_text,
-                    operation="direct_chat"
+                return await self._execute_direct_chat(
+                    username, conv_id, query_text, context_str, llm
                 )
-                
-                final_data = {
-                    "response": response_text,
-                    "conversation_id": conv_id,
-                    "metadata": {},
-                    "suggestions": [],
-                    "top_documents": [],
-                    "collection_id": None,
-                    "mode": "direct_chat"  # Indicate this is direct AI chat without RAG
-                }
-                
-                # Save conversation
-                self._save_conversation(username, conv_id, query_text, final_data, [])
-                
-                return ServiceResult.ok(final_data)
             
             # RAG mode: Retrieve from collections
             embedder = AIProviderFactory.get_embedding_provider()
             retriever = HybridRetriever(es_client, embedder)
             
             retrieval_results = await retriever.retrieve(
-                query_text, 
+                search_query, 
                 collection_ids=allowed_collections, 
                 top_k=10
             )
             
+            # Filter results by relevance score
+            RELEVANCE_THRESHOLD = 0.35
+            valid_results = [r for r in retrieval_results if getattr(r, 'score', 0) > RELEVANCE_THRESHOLD]
+            
+            # If no relevant documents found, fallback to direct chat
+            if not valid_results:
+                return await self._execute_direct_chat(
+                    username, conv_id, query_text, context_str, llm
+                )
+            
             # Chunk processing - include more detail for UI display
             top_chunks = []
-            for r in retrieval_results:
+            for r in valid_results:
                 top_chunks.append({
                     "content": r.content,
                     "metadata": r.metadata,
@@ -196,20 +198,29 @@ Assistant:"""
             )
             
             final_prompt = f"""
-Use the following context to answer the user's question. If the answer is not in the context, say so.
+Use the following context to answer the user's question. 
+If the answer is NOT in the context, reply EXACTLY with the phrase "CONTEXT_IRRELEVANT". Do not say "I'm sorry" or explain, just "CONTEXT_IRRELEVANT".
 
 Context:
 {doc_context}
 
 Conversation History:
-{history_str}
+{context_str}
 
 User: {query_text}
 Assistant:"""
 
             # LLM
-            llm = AIProviderFactory.get_llm_provider()
+            if not llm:
+                llm = AIProviderFactory.get_llm_provider()
             response_text = await llm.complete(final_prompt)
+            
+            # Check for irrelevant context response from LLM
+            if "CONTEXT_IRRELEVANT" in response_text:
+                self.logger.info(f"LLM found context irrelevant for query: {query_text}. Falling back to direct chat.")
+                return await self._execute_direct_chat(
+                    username, conv_id, query_text, history_str, llm
+                )
             
             # Log token usage for analytics
             self._log_token_usage(
@@ -251,13 +262,52 @@ Assistant:"""
             self.logger.error(f"Error in conversation search: {e}")
             return ServiceResult.fail(str(e), 500)
 
+    async def _execute_direct_chat(self, username, conv_id, query_text, history_str, llm=None, bot_token=None):
+        """Helper to execute direct chat without RAG."""
+        if not llm:
+            llm = AIProviderFactory.get_llm_provider()
+        
+        direct_prompt = f"""You are a helpful AI assistant. Answer the user's question to the best of your ability.
+
+Conversation History:
+{history_str}
+
+User: {query_text}
+Assistant:"""
+        
+        response_text = await llm.complete(direct_prompt)
+        
+        # Log token usage
+        self._log_token_usage(
+            username=username,
+            model=llm.model_name,
+            prompt_text=direct_prompt,
+            response_text=response_text,
+            operation="direct_chat"
+        )
+        
+        final_data = {
+            "response": response_text,
+            "conversation_id": conv_id,
+            "metadata": {},
+            "suggestions": [],
+            "top_documents": [],
+            "collection_id": None,
+            "mode": "direct_chat"
+        }
+        
+        self._save_conversation(username, conv_id, query_text, final_data, [])
+        return ServiceResult.ok(final_data)
+
     # =========================================================================
     # Private Helpers for Search
     # =========================================================================
     
-    def _get_conversation_history(self, username: str, conversation_id: str) -> List[Dict]:
+    def _get_conversation_history(self, username: str, conversation_id: str) -> tuple[List[Dict], str]:
         conv = self.db.find_one({"_id": conversation_id, "username": username})
-        return conv.get("messages", []) if conv else []
+        if conv:
+            return conv.get("messages", []), conv.get("summary", "")
+        return [], ""
 
     def _format_history(self, messages: List[Dict]) -> str:
         history_str = ""
@@ -277,7 +327,7 @@ Assistant:"""
         words = text.split()
         return " ".join(words[:self.WORD_LIMIT])
 
-    def _save_conversation(
+    async def _save_conversation(
         self, 
         username: str, 
         conversation_id: str, 
@@ -291,6 +341,9 @@ Assistant:"""
             {"role": "assistant", "content": response, "timestamp": now},
         ]
         
+        # Get current state first
+        conv = self.db.find_one({"_id": conversation_id, "username": username})
+        
         update_data = {
             "$push": {"messages": {"$each": msgs}},
             "$setOnInsert": {"created_at": datetime.utcnow(), "name": query[:50]},
@@ -303,6 +356,33 @@ Assistant:"""
             update_data,
             upsert=True
         )
+
+        # Periodic Summarization (every 6 messages)
+        current_msg_count = len(conv.get("messages", [])) + 2 if conv else 2
+        
+        if current_msg_count > 0 and current_msg_count % 6 == 0:
+            try:
+                # Fetch fresh from DB to include just-added messages
+                # We need all messages to pick the recent ones for summary update
+                fresh_conv = self.db.find_one({"_id": conversation_id, "username": username})
+                all_msgs = fresh_conv.get("messages", [])
+                current_summary = fresh_conv.get("summary", "")
+                
+                # Take the last 6 messages to update the summary
+                recent_msgs = all_msgs[-6:]
+                
+                llm = AIProviderFactory.get_llm_provider()
+                summarizer = ConversationSummarizer(llm)
+                
+                new_summary = await summarizer.update_summary(current_summary, recent_msgs)
+                
+                if new_summary != current_summary:
+                    self.db.update_one(
+                        {"_id": conversation_id},
+                        {"$set": {"summary": new_summary}}
+                    )
+            except Exception as e:
+                self.logger.warning(f"Failed to update conversation summary: {e}")
 
     def _build_doc_metadata(self, doc_ids: List[str]) -> Dict:
         # Avoid circular import if possible, or use db directly

@@ -8,12 +8,14 @@ export const conversationService = {
     async searchWithConversation(
         query: string,
         conversationId?: string,
-        collectionId?: string
+        collectionId?: string,
+        botToken?: string
     ): Promise<SearchResponse> {
         const response = await api.post<SearchResponse>('/api/v1/conversations/search', {
             query,
             conversation_id: conversationId,
             collection_id: collectionId,
+            bot_token: botToken,
         })
         return response.data
     },
@@ -72,6 +74,27 @@ export const conversationService = {
             return data.map((c: any) => ({
                 id: c.conversation_id || c.id,
                 title: c.title || c.first_message || 'Untitled',
+                lastMessage: c.first_message || c.last_message || '',
+                timestamp: c.created_at || new Date().toISOString(),
+                botId: c.bot_token,
+            }))
+        } catch {
+            return []
+        }
+    },
+
+    /**
+     * Get conversations by bot
+     */
+    async getConversationsByBot(botToken: string): Promise<ConversationSummary[]> {
+        try {
+            const response = await api.get<any>(
+                `/api/v1/conversations/by-bot?bot_token=${botToken}`
+            )
+            const data = Array.isArray(response.data) ? response.data : []
+            return data.map((c: any) => ({
+                id: c.conversation_id || c.id,
+                title: c.title || c.name || c.first_message || 'Untitled',
                 lastMessage: c.first_message || c.last_message || '',
                 timestamp: c.created_at || new Date().toISOString(),
                 botId: c.bot_token,

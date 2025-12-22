@@ -1,221 +1,384 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { MOCK_COLLECTIONS } from '../constants';
-import { 
-  ArrowLeft, FileText, UploadCloud, Search, MoreHorizontal, 
-  CheckCircle, Clock, AlertCircle, Trash2, Download, FileUp
+import {
+   ArrowLeft, FileText, UploadCloud, Search, Edit2, Check, X,
+   Share2, MessageSquare, Loader2, Database
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import Modal from './Modal';
-
-// Mock files for the detail view
-const MOCK_FILES = [
-  { id: 'f1', name: 'Q3_Financial_Report_Final_v2.pdf', size: '2.4 MB', type: 'PDF', status: 'indexed', date: 'Oct 15, 2024' },
-  { id: 'f2', name: 'Board_Meeting_Minutes_Sept.docx', size: '1.1 MB', type: 'DOCX', status: 'indexed', date: 'Oct 12, 2024' },
-  { id: 'f3', name: 'Revenue_Forecast_Model_2025.xlsx', size: '4.5 MB', type: 'XLSX', status: 'processing', date: 'Oct 20, 2024' },
-  { id: 'f4', name: 'Competitor_Analysis_Raw_Data.csv', size: '12.8 MB', type: 'CSV', status: 'error', date: 'Oct 18, 2024' },
-];
-
-const StatusBadge = ({ status }: { status: string }) => {
-  if (status === 'indexed') return (
-    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/10">
-      <CheckCircle size={12} /> Indexed
-    </span>
-  );
-  if (status === 'processing') return (
-    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/10">
-      <Clock size={12} className="animate-spin" /> Processing
-    </span>
-  );
-  return (
-    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/10">
-      <AlertCircle size={12} /> Error
-    </span>
-  );
-};
+import { documentService, socketService } from '../src/services';
+import { useAuthStore } from '../src/store';
+import { DocumentList, UploadDocumentDialog, ShareCollectionDialog } from './collections';
+import type { Document, CollectionDetail as CollectionDetailType } from '../types';
 
 const CollectionDetail: React.FC = () => {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const collection = MOCK_COLLECTIONS.find(c => c.id === id);
-  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+   const { id: collectionId } = useParams<{ id: string }>();
+   const navigate = useNavigate();
+   const { user } = useAuthStore();
 
-  if (!collection) return <div className="text-center p-10 text-gray-500">Collection not found</div>;
+   const [collection, setCollection] = useState<CollectionDetailType | null>(null);
+   const [documents, setDocuments] = useState<Document[]>([]);
+   const [isLoading, setIsLoading] = useState(true);
+   const [isDocsLoading, setIsDocsLoading] = useState(true);
+   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+   const [searchQuery, setSearchQuery] = useState('');
 
-  return (
-    <motion.div 
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      className="max-w-6xl mx-auto space-y-6"
-    >
-      {/* Navigation & Header */}
-      <div className="flex items-center gap-4 mb-4">
-        <button onClick={() => navigate('/collections')} className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
-          <ArrowLeft size={20} />
-        </button>
-        <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-3">
-             {collection.name}
-             <span className="text-xs font-normal text-gray-500 bg-white/5 px-2 py-1 rounded uppercase tracking-wider">{collection.type}</span>
-          </h1>
-          <p className="text-sm text-gray-400 mt-1">Managed vector store • Last updated {collection.lastUpdated}</p>
-        </div>
-        <div className="ml-auto flex gap-3">
-           <button 
-             onClick={() => setIsUploadModalOpen(true)}
-             className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white font-medium rounded-xl hover:bg-violet-500 transition-colors shadow-lg shadow-violet-900/20"
-           >
-             <UploadCloud size={18} /> Add Documents
-           </button>
-        </div>
-      </div>
+   // Edit mode state
+   const [isEditing, setIsEditing] = useState(false);
+   const [editName, setEditName] = useState('');
+   const [isSaving, setIsSaving] = useState(false);
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-         <div className="bg-surface/30 border border-white/5 rounded-2xl p-4 flex items-center gap-4">
-            <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400">
-               <FileText size={20} />
+   // SocketIO Integration for real-time updates
+   useEffect(() => {
+      socketService.connect();
+
+      const handleProcessingUpdate = (data: any) => {
+         setDocuments((prevDocs) =>
+            prevDocs.map((doc) => {
+               if (doc.document_id === data.document_id) {
+                  const isCompleted = data.progress === 100;
+                  const isFailed = !!data.error;
+
+                  return {
+                     ...doc,
+                     progress: data.progress,
+                     latest_status: data.status,
+                     error_message: data.error,
+                     is_processing: !isCompleted && !isFailed,
+                     processed: isCompleted,
+                     status: isFailed ? 'failed' : (isCompleted ? 'completed' : 'processing')
+                  } as Document;
+               }
+               return doc;
+            })
+         );
+      };
+
+      const handleDeletionUpdate = (data: any) => {
+         if (data.status === 'Deletion completed') {
+            setDocuments((prevDocs) =>
+               prevDocs.filter((doc) => doc.document_id !== data.document_id)
+            );
+         } else {
+            setDocuments((prevDocs) =>
+               prevDocs.map((doc) => {
+                  if (doc.document_id === data.document_id) {
+                     return {
+                        ...doc,
+                        latest_status: data.status,
+                        status: 'processing' as const
+                     };
+                  }
+                  return doc;
+               })
+            );
+         }
+      };
+
+      socketService.on('processing_update', handleProcessingUpdate);
+      socketService.on('deletion_update', handleDeletionUpdate);
+
+      return () => {
+         socketService.off('processing_update', handleProcessingUpdate);
+         socketService.off('deletion_update', handleDeletionUpdate);
+         socketService.disconnect();
+      };
+   }, []);
+
+   const fetchCollection = useCallback(async () => {
+      if (!collectionId) return;
+      try {
+         const details = await documentService.getCollectionDetails(collectionId);
+         setCollection(details);
+         setEditName(details.collection_name);
+      } catch (error) {
+         console.error('Failed to load collection:', error);
+      } finally {
+         setIsLoading(false);
+      }
+   }, [collectionId]);
+
+   const fetchDocuments = useCallback(async () => {
+      if (!collectionId) return;
+      setIsDocsLoading(true);
+      try {
+         const docs = await documentService.listDocuments(collectionId);
+         setDocuments(docs);
+      } catch (error) {
+         console.error('Failed to load documents:', error);
+      } finally {
+         setIsDocsLoading(false);
+      }
+   }, [collectionId]);
+
+   useEffect(() => {
+      fetchCollection();
+      fetchDocuments();
+   }, [fetchCollection, fetchDocuments]);
+
+   const handleSaveEdit = async () => {
+      if (!collectionId || !editName.trim()) return;
+      setIsSaving(true);
+      try {
+         await documentService.updateCollection({
+            collection_id: collectionId,
+            name: editName,
+         });
+         setIsEditing(false);
+         fetchCollection();
+      } catch (error) {
+         console.error('Failed to update collection:', error);
+      } finally {
+         setIsSaving(false);
+      }
+   };
+
+   const handleCancelEdit = () => {
+      setIsEditing(false);
+      if (collection) {
+         setEditName(collection.collection_name);
+      }
+   };
+
+   const handleProcess = async (documentId: string) => {
+      try {
+         await documentService.processDocument(documentId);
+         fetchDocuments();
+      } catch (error) {
+         console.error('Failed to start processing:', error);
+      }
+   };
+
+   const handleDownload = async (documentId: string, fileName: string) => {
+      try {
+         const blob = await documentService.downloadDocument(documentId);
+         const url = window.URL.createObjectURL(blob);
+         const a = document.createElement('a');
+         a.href = url;
+         a.download = fileName;
+         document.body.appendChild(a);
+         a.click();
+         window.URL.revokeObjectURL(url);
+         document.body.removeChild(a);
+      } catch (error) {
+         console.error('Failed to download document:', error);
+      }
+   };
+
+   const handleDelete = async (documentIds: string[]) => {
+      if (!confirm(`Delete ${documentIds.length} document(s)?`)) return;
+      if (!collectionId) return;
+      try {
+         await documentService.deleteDocuments(documentIds, collectionId);
+         fetchDocuments();
+      } catch (error) {
+         console.error('Failed to delete documents:', error);
+      }
+   };
+
+   const handleChat = () => {
+      if (!collectionId) return;
+      navigate('/chat', { state: { collectionId } });
+   };
+
+   const filteredDocuments = documents.filter(doc => {
+      const name = doc.original_file_name || doc.file_name || '';
+      return name.toLowerCase().includes(searchQuery.toLowerCase());
+   });
+
+   // Get file type counts
+   const fileTypeCounts = documents.reduce((acc, doc) => {
+      const type = doc.resource_type || doc.type || 'Other';
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+   }, {} as Record<string, number>);
+
+   if (isLoading) {
+      return (
+         <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex items-center justify-center py-20"
+         >
+            <Loader2 className="h-8 w-8 animate-spin text-violet-400" />
+         </motion.div>
+      );
+   }
+
+   if (!collection) {
+      return (
+         <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-center py-20"
+         >
+            <Database className="h-16 w-16 mx-auto mb-4 text-gray-600" />
+            <h3 className="text-lg font-semibold text-white mb-2">Collection not found</h3>
+            <button
+               onClick={() => navigate('/collections')}
+               className="px-4 py-2 bg-violet-600 text-white rounded-xl hover:bg-violet-500 transition-colors"
+            >
+               Back to Collections
+            </button>
+         </motion.div>
+      );
+   }
+
+   return (
+      <motion.div
+         initial={{ opacity: 0, x: 20 }}
+         animate={{ opacity: 1, x: 0 }}
+         className="max-w-6xl mx-auto space-y-6"
+      >
+         {/* Navigation & Header */}
+         <div className="flex items-center gap-4 mb-4">
+            <button
+               onClick={() => navigate('/collections')}
+               className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+            >
+               <ArrowLeft size={20} />
+            </button>
+            <div className="flex-1 min-w-0">
+               {isEditing ? (
+                  <div className="flex items-center gap-2">
+                     <input
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="text-2xl font-bold text-white bg-white/5 border border-white/10 rounded-lg px-3 py-1 focus:outline-none focus:border-violet-500"
+                        autoFocus
+                     />
+                     <button
+                        onClick={handleSaveEdit}
+                        disabled={isSaving}
+                        className="p-2 text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"
+                     >
+                        <Check size={20} />
+                     </button>
+                     <button
+                        onClick={handleCancelEdit}
+                        disabled={isSaving}
+                        className="p-2 text-gray-400 hover:bg-white/5 rounded-lg transition-colors"
+                     >
+                        <X size={20} />
+                     </button>
+                  </div>
+               ) : (
+                  <div>
+                     <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+                        {collection.collection_name}
+                        {collection.public && (
+                           <span className="text-xs font-normal text-gray-500 bg-white/5 px-2 py-1 rounded uppercase tracking-wider">Public</span>
+                        )}
+                        {collection.is_owner && (
+                           <button
+                              onClick={() => setIsEditing(true)}
+                              className="p-1.5 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+                           >
+                              <Edit2 size={16} />
+                           </button>
+                        )}
+                     </h1>
+                     <p className="text-sm text-gray-400 mt-1">
+                        {documents.length} documents • Created by {collection.full_name || collection.created_by}
+                     </p>
+                  </div>
+               )}
             </div>
-            <div>
-               <p className="text-gray-400 text-xs font-medium uppercase">Total Files</p>
-               <p className="text-xl font-bold text-white">{collection.fileCount}</p>
+            <div className="flex gap-3">
+               {collection.is_owner && (
+                  <button
+                     onClick={() => setShareDialogOpen(true)}
+                     className="flex items-center gap-2 px-4 py-2 bg-white/5 text-gray-300 hover:text-white hover:bg-white/10 rounded-xl transition-all border border-white/5"
+                  >
+                     <Share2 size={16} /> Share
+                  </button>
+               )}
+               <button
+                  onClick={handleChat}
+                  className="flex items-center gap-2 px-4 py-2 bg-white/5 text-gray-300 hover:text-white hover:bg-white/10 rounded-xl transition-all border border-white/5"
+               >
+                  <MessageSquare size={16} /> Chat
+               </button>
+               <button
+                  onClick={() => setUploadDialogOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white font-medium rounded-xl hover:bg-violet-500 transition-colors shadow-lg shadow-violet-900/20"
+               >
+                  <UploadCloud size={18} /> Add Documents
+               </button>
             </div>
          </div>
-         <div className="bg-surface/30 border border-white/5 rounded-2xl p-4 flex items-center gap-4">
-            <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400">
-               <CheckCircle size={20} />
-            </div>
-            <div>
-               <p className="text-gray-400 text-xs font-medium uppercase">Vectorized</p>
-               <p className="text-xl font-bold text-white">98.5%</p>
-            </div>
-         </div>
-         <div className="bg-surface/30 border border-white/5 rounded-2xl p-4 flex items-center gap-4">
-            <div className="w-10 h-10 rounded-lg bg-violet-500/10 flex items-center justify-center text-violet-400">
-               <UploadCloud size={20} />
-            </div>
-            <div>
-               <p className="text-gray-400 text-xs font-medium uppercase">Total Size</p>
-               <p className="text-xl font-bold text-white">{collection.size}</p>
-            </div>
-         </div>
-      </div>
 
-      {/* Content Area */}
-      <div className="bg-surface/30 border border-white/5 rounded-3xl overflow-hidden min-h-[500px] flex flex-col">
-         {/* Toolbar */}
-         <div className="p-4 border-b border-white/5 flex items-center justify-between gap-4">
-            <div className="relative flex-1 max-w-md">
-               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-               <input 
-                 type="text" 
-                 placeholder="Search documents..." 
-                 className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-violet-500 transition-all placeholder-gray-600"
+         {/* Stats Cards */}
+         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-surface/30 border border-white/5 rounded-2xl p-4 flex items-center gap-4">
+               <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400">
+                  <FileText size={20} />
+               </div>
+               <div>
+                  <p className="text-gray-400 text-xs font-medium uppercase">Total Files</p>
+                  <p className="text-xl font-bold text-white">{documents.length}</p>
+               </div>
+            </div>
+            {Object.entries(fileTypeCounts).slice(0, 3).map(([type, count]) => (
+               <div key={type} className="bg-surface/30 border border-white/5 rounded-2xl p-4 flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-lg bg-violet-500/10 flex items-center justify-center text-violet-400">
+                     <FileText size={20} />
+                  </div>
+                  <div>
+                     <p className="text-gray-400 text-xs font-medium uppercase">{type.replace(/_/g, ' ')}</p>
+                     <p className="text-xl font-bold text-white">{count}</p>
+                  </div>
+               </div>
+            ))}
+         </div>
+
+         {/* Content Area */}
+         <div className="bg-surface/30 border border-white/5 rounded-3xl overflow-hidden min-h-[400px]">
+            {/* Toolbar */}
+            <div className="p-4 border-b border-white/5 flex items-center gap-4">
+               <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                  <input
+                     type="text"
+                     placeholder="Search documents..."
+                     value={searchQuery}
+                     onChange={(e) => setSearchQuery(e.target.value)}
+                     className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-violet-500 transition-all placeholder-gray-600"
+                  />
+               </div>
+            </div>
+
+            {/* Document List */}
+            <div className="p-4">
+               <DocumentList
+                  documents={filteredDocuments}
+                  isLoading={isDocsLoading}
+                  onProcess={handleProcess}
+                  onDownload={handleDownload}
+                  onDelete={handleDelete}
                />
             </div>
-            <div className="flex items-center gap-2">
-               <button className="text-xs font-medium text-gray-400 hover:text-white px-3 py-2 rounded-lg hover:bg-white/5 transition-colors">Select All</button>
-               <button className="text-xs font-medium text-red-400 hover:text-red-300 px-3 py-2 rounded-lg hover:bg-red-500/10 transition-colors">Delete Selected</button>
-            </div>
          </div>
 
-         {/* File List */}
-         <div className="flex-1 overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-               <thead>
-                  <tr className="text-xs text-gray-500 border-b border-white/5">
-                     <th className="font-medium p-4 w-12 text-center">#</th>
-                     <th className="font-medium p-4">Name</th>
-                     <th className="font-medium p-4">Size</th>
-                     <th className="font-medium p-4">Date Uploaded</th>
-                     <th className="font-medium p-4">Status</th>
-                     <th className="font-medium p-4 text-right">Actions</th>
-                  </tr>
-               </thead>
-               <tbody>
-                  {MOCK_FILES.map((file, i) => (
-                     <tr key={file.id} className="group border-b border-white/5 hover:bg-white/[0.02] transition-colors last:border-0">
-                        <td className="p-4 text-center text-gray-600 text-sm">{i + 1}</td>
-                        <td className="p-4">
-                           <div className="flex items-center gap-3">
-                              <div className="p-2 rounded bg-white/5 text-violet-400">
-                                 <FileText size={16} />
-                              </div>
-                              <span className="text-sm font-medium text-gray-200">{file.name}</span>
-                           </div>
-                        </td>
-                        <td className="p-4 text-sm text-gray-400 font-mono">{file.size}</td>
-                        <td className="p-4 text-sm text-gray-400">{file.date}</td>
-                        <td className="p-4">
-                           <StatusBadge status={file.status} />
-                        </td>
-                        <td className="p-4 text-right">
-                           <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button className="p-1.5 text-gray-400 hover:text-white bg-white/5 rounded hover:bg-white/10" title="Download">
-                                 <Download size={14} />
-                              </button>
-                              <button className="p-1.5 text-gray-400 hover:text-white bg-white/5 rounded hover:bg-white/10" title="More">
-                                 <MoreHorizontal size={14} />
-                              </button>
-                              <button className="p-1.5 text-gray-400 hover:text-red-400 bg-white/5 rounded hover:bg-white/10" title="Delete">
-                                 <Trash2 size={14} />
-                              </button>
-                           </div>
-                        </td>
-                     </tr>
-                  ))}
-               </tbody>
-            </table>
-         </div>
-      </div>
+         {/* Upload Dialog */}
+         <UploadDocumentDialog
+            open={uploadDialogOpen}
+            onClose={() => setUploadDialogOpen(false)}
+            collectionId={collectionId!}
+            onSuccess={fetchDocuments}
+         />
 
-      <Modal
-        isOpen={isUploadModalOpen}
-        onClose={() => setIsUploadModalOpen(false)}
-        title="Upload Documents"
-        maxWidth="max-w-xl"
-      >
-        <div className="space-y-6">
-           <div className="border-2 border-dashed border-white/10 rounded-2xl p-10 flex flex-col items-center justify-center text-center bg-white/[0.02] hover:bg-white/[0.05] transition-colors cursor-pointer group">
-              <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                 <FileUp size={32} className="text-violet-400" />
-              </div>
-              <p className="text-white font-medium mb-1">Click to upload or drag and drop</p>
-              <p className="text-sm text-gray-500">PDF, DOCX, TXT or CSV (max 25MB)</p>
-           </div>
-           
-           <div className="bg-white/5 rounded-xl p-4">
-              <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Processing Options</h4>
-              <div className="space-y-3">
-                 <label className="flex items-center gap-3">
-                    <input type="checkbox" className="w-4 h-4 rounded border-gray-600 text-violet-600 focus:ring-violet-500 bg-gray-800" defaultChecked />
-                    <span className="text-sm text-gray-300">Automatic OCR for images</span>
-                 </label>
-                 <label className="flex items-center gap-3">
-                    <input type="checkbox" className="w-4 h-4 rounded border-gray-600 text-violet-600 focus:ring-violet-500 bg-gray-800" defaultChecked />
-                    <span className="text-sm text-gray-300">Generate summaries immediately</span>
-                 </label>
-              </div>
-           </div>
-
-           <div className="flex justify-end gap-3">
-              <button 
-                onClick={() => setIsUploadModalOpen(false)}
-                className="px-5 py-2.5 text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 rounded-xl transition-colors"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={() => setIsUploadModalOpen(false)}
-                className="px-5 py-2.5 text-sm font-medium text-white bg-violet-600 hover:bg-violet-500 rounded-xl shadow-lg shadow-violet-900/20 transition-all"
-              >
-                Start Upload
-              </button>
-           </div>
-        </div>
-      </Modal>
-    </motion.div>
-  );
+         {/* Share Dialog */}
+         {collection && (
+            <ShareCollectionDialog
+               open={shareDialogOpen}
+               onClose={() => setShareDialogOpen(false)}
+               collectionId={collectionId!}
+               collectionName={collection.collection_name}
+            />
+         )}
+      </motion.div>
+   );
 };
 
 export default CollectionDetail;

@@ -1,6 +1,6 @@
 import React, { memo, useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, MoreHorizontal, Trash2, Loader2, MessageSquare, Edit2, Check, X } from 'lucide-react';
+import { Plus, MoreHorizontal, Trash2, Loader2, MessageSquare, Edit2, Check, X, Bot } from 'lucide-react';
 import type { ConversationSummary } from '@/types';
 
 interface ConversationSidebarProps {
@@ -181,9 +181,12 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                                                     }}
                                                 >
                                                     <div className="flex-1 min-w-0">
-                                                        <p className={`text-sm font-medium truncate ${currentId === conv.id ? 'text-violet-300' : 'text-gray-200'}`}>
-                                                            {conv.title || conv.first_message || 'New Conversation'}
-                                                        </p>
+                                                        <div className="flex items-center gap-2">
+                                                            {conv.botId && <Bot className="shrink-0 text-violet-400" size={14} />}
+                                                            <p className={`text-sm font-medium truncate ${currentId === conv.id ? 'text-violet-300' : 'text-gray-200'}`}>
+                                                                {conv.title || conv.first_message || 'New Conversation'}
+                                                            </p>
+                                                        </div>
                                                         <p className="text-xs text-gray-500 truncate">
                                                             {formatRelativeTime(conv.timestamp || conv.created_at || new Date())}
                                                         </p>

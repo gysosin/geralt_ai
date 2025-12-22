@@ -21,6 +21,7 @@ class SearchWithConversationRequest(BaseModel):
     query: str
     conversation_id: Optional[str] = None
     collection_id: Optional[str] = None
+    bot_token: Optional[str] = None
 
 
 # =============================================================================
@@ -38,7 +39,8 @@ async def search_document_with_conversation(
         identity=current_user,
         query=data.query,
         collection_id=data.collection_id,
-        conversation_id=data.conversation_id
+        conversation_id=data.conversation_id,
+        bot_token=data.bot_token
     )
     if not result.success:
         raise HTTPException(status_code=result.status_code, detail=result.error)
@@ -65,6 +67,19 @@ async def get_conversations_by_collection(
 ):
     """Get conversations by collection."""
     result = service.list_by_collection(current_user, collection_id)
+    if not result.success:
+        raise HTTPException(status_code=result.status_code, detail=result.error)
+    return result.data
+
+
+@router.get("/by-bot", response_model=List[Dict[str, Any]])
+async def get_conversations_by_bot(
+    bot_token: str = Query(...),
+    current_user: str = Depends(get_current_user),
+    service: ConversationService = Depends(get_conversation_service),
+):
+    """Get conversations by bot."""
+    result = service.get_all_for_bot(current_user, bot_token)
     if not result.success:
         raise HTTPException(status_code=result.status_code, detail=result.error)
     return result.data

@@ -6,6 +6,7 @@ interface ChatState {
     conversations: ConversationSummary[]
     currentConversation: Conversation | null
     currentCollectionId: string | null
+    currentBotToken: string | null // Added bot context
     messages: Message[]
     areConversationsLoading: boolean // Added for sidebar
     isConversationLoading: boolean  // Renamed from isLoading for active chat
@@ -18,7 +19,7 @@ interface ChatState {
     sendMessage: (query: string) => Promise<void>
     deleteConversation: (id: string) => Promise<void>
     renameConversation: (id: string, title: string) => Promise<void>
-    startNewConversation: (collectionId?: string | null) => void
+    startNewConversation: (collectionId?: string | null, botToken?: string | null) => void
     setCollectionId: (id: string | null) => void
     clearError: () => void
 }
@@ -29,6 +30,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     conversations: [],
     currentConversation: null,
     currentCollectionId: null,
+    currentBotToken: null,
     messages: [],
     areConversationsLoading: false,
     isConversationLoading: false,
@@ -36,14 +38,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
     error: null,
 
     fetchConversations: async () => {
-        const { conversations } = get()
+        const { conversations, currentBotToken } = get()
         // Only show loading if we don't have any conversations yet
         if (conversations.length === 0) {
             set({ areConversationsLoading: true })
         }
         set({ error: null })
         try {
-            const rawConversations = await conversationService.getAllConversations()
+            let rawConversations: ConversationSummary[] = []
+            
+            if (currentBotToken) {
+                rawConversations = await conversationService.getConversationsByBot(currentBotToken)
+            } else {
+                // Fetch all, then filter for those WITHOUT a bot_token to keep "Default" view clean
+                const all = await conversationService.getAllConversations()
+                rawConversations = all.filter(c => !c.botId)
+            }
+
             // Sort by timestamp descending (newest first)
             const sortedConversations = rawConversations.sort((a, b) => {
                 const dateA = new Date(a.timestamp || a.created_at || 0).getTime()
@@ -117,6 +128,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 currentConversation: { ...conversation, id: (conversation as any)._id || conversation.id || id },
                 messages: normalizedMessages,
                 isConversationLoading: false,
+                currentBotToken: (conversation as any).bot_token || null,
             })
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : 'Failed to fetch conversation'
@@ -125,7 +137,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     },
 
     sendMessage: async (query) => {
-        const { currentConversation, messages, currentCollectionId } = get()
+        const { currentConversation, messages, currentCollectionId, currentBotToken } = get()
 
         // Add user message
         const userMessage: Message = {
@@ -154,7 +166,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
             const response = await conversationService.searchWithConversation(
                 query,
                 currentConversation?.id,
-                currentCollectionId || undefined
+                currentCollectionId || undefined,
+                currentBotToken || undefined
             )
 
             // Handle response
@@ -256,12 +269,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }
     },
 
-    startNewConversation: (collectionId = null) => {
+    startNewConversation: (collectionId = null, botToken = null) => {
         set({
             currentConversation: null,
             messages: [],
             error: null,
             currentCollectionId: collectionId,
+            currentBotToken: botToken,
         })
     },
 
