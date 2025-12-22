@@ -107,8 +107,8 @@ async def create_token(
     # FastAPI handles this best with explicit params, but to keep dynamic form support
     # we can parse the request.
     form_data = await request.form()
-    # Cast FormData to dict for service
-    data_dict = dict(form_data)
+    # Pass FormData directly to service to preserve .getlist() capability
+    data_dict = form_data
     # Extract files if any
     files = {}
     if "icon" in data_dict and isinstance(data_dict["icon"], UploadFile):
