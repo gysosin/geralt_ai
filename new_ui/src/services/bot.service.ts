@@ -215,10 +215,11 @@ export const collectionService = {
             const response = await api.get<any>(
                 `/api/v1/collections/?tenant_id=${tenantId}`
             )
-            // Backend returns array, normalize _id to id
+            // Backend returns array with collection_id - use that as the primary ID
             const data = Array.isArray(response.data) ? response.data : (response.data as any).collections || []
             return data.map((c: any) => ({
-                id: c._id || c.id || c.collection_id,
+                // IMPORTANT: Use collection_id as the id since that's what the bot creation API expects
+                id: c.collection_id || c._id || c.id,
                 name: c.collection_name || c.name || 'Unnamed',
                 fileCount: c.file_count || c.document_count || 0,
                 size: c.size || 'Unknown',

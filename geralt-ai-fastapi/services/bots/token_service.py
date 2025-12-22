@@ -93,6 +93,11 @@ class BotTokenService(BaseService, CRUDMixin):
                 return ServiceResult.fail("Bot name is required", 400)
             
             collection_ids = form_data.getlist("collection_ids") if hasattr(form_data, 'getlist') else form_data.get("collection_ids", [])
+            
+            # Ensure collection_ids is a list (handle single value or string input)
+            if isinstance(collection_ids, str):
+                collection_ids = [collection_ids]
+                
             if not collection_ids:
                 return ServiceResult.fail("At least one collection ID is required", 400)
             
@@ -444,11 +449,12 @@ class BotTokenService(BaseService, CRUDMixin):
     def _validate_collection_access(self, collection_ids: List[str], username: str) -> ServiceResult:
         """Validate that user has access to all specified collections."""
         for cid in collection_ids:
+            # Use case-insensitive matching for username, consistent with other queries
             collection = self.collections_db.find_one({
                 "collection_id": cid,
                 "$or": [
-                    {"created_by": username},
-                    {"shared_with": {"$elemMatch": {"username": username}}},
+                    {"created_by": {"$regex": f"^{username}$", "$options": "i"}},
+                    {"shared_with": {"$elemMatch": {"username": {"$regex": f"^{username}$", "$options": "i"}}}},
                 ],
             })
             if not collection:
@@ -652,6 +658,11 @@ class BotTokenService(BaseService, CRUDMixin):
         
         # Collection IDs
         new_collection_ids = form_data.getlist("collection_ids") if hasattr(form_data, 'getlist') else form_data.get("collection_ids")
+        
+        # Ensure list
+        if isinstance(new_collection_ids, str):
+            new_collection_ids = [new_collection_ids]
+            
         if new_collection_ids:
             for cid in new_collection_ids:
                 coll = self.collections_db.find_one({
@@ -719,6 +730,11 @@ class BotTokenService(BaseService, CRUDMixin):
         
         # Handle collection_ids
         new_collection_ids = form_data.getlist("collection_ids") if hasattr(form_data, 'getlist') else form_data.get("collection_ids")
+        
+        # Ensure list
+        if isinstance(new_collection_ids, str):
+            new_collection_ids = [new_collection_ids]
+
         if new_collection_ids:
             current = set(bot.get("collection_ids", []))
             new_set = set(new_collection_ids)
