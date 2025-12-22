@@ -1,0 +1,4 @@
+This is a sample document about GeraltAI.
+GeraltAI is a powerful AI assistant helping with recruitment.
+It uses advanced RAG to find candidates.
+Gemini embeddings are used for vector search.
