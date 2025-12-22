@@ -82,12 +82,13 @@ export const botService = {
         icon_url?: string
     }, iconFile?: File): Promise<{ bot_token: string }> {
         const formData = new FormData()
-        formData.append('name', data.bot_name)
+        formData.append('bot_name', data.bot_name)
         formData.append('tenant_id', data.tenant_id)
 
-        if (data.collection_ids && data.collection_ids.length > 0) {
-            formData.append('collection_ids', JSON.stringify(data.collection_ids))
-        }
+        // collection_ids is required by backend - send at least an empty array
+        const collectionIds = data.collection_ids || []
+        collectionIds.forEach((id) => formData.append('collection_ids', id))
+
         if (data.welcome_message) formData.append('welcome_message', data.welcome_message)
         if (data.icon_url) formData.append('icon_url', data.icon_url)
         if (iconFile) formData.append('icon', iconFile)

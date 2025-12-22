@@ -85,6 +85,10 @@ const CreateBotDialog: React.FC<CreateBotDialogProps> = ({
             setError('Bot name is required');
             return;
         }
+        if (!bot && selectedCollections.length === 0) {
+            setError('Please select at least one collection for the knowledge base');
+            return;
+        }
 
         setIsSubmitting(true);
         setError(null);
