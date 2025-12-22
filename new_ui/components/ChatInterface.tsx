@@ -18,7 +18,7 @@ const SUGGESTIONS = [
   { title: "Summarize Docs", desc: "Key takeaways from uploaded PDFs" },
 ];
 
-const ChatInterface: React.FC = () => {
+const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => {
   const { conversationId } = useParams<{ conversationId?: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -45,7 +45,7 @@ const ChatInterface: React.FC = () => {
   const { bots, fetchBots } = useBotStore();
 
   const [input, setInput] = useState('');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(!minimal);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showBotMenu, setShowBotMenu] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -59,12 +59,16 @@ const ChatInterface: React.FC = () => {
 
   // Fetch conversations and bots on mount or when bot context changes
   useEffect(() => {
-    fetchConversations();
-    if (bots.length === 0) fetchBots();
-  }, [fetchConversations, fetchBots, bots.length, currentBotToken]);
+    if (!minimal) {
+        fetchConversations();
+        if (bots.length === 0) fetchBots();
+    }
+  }, [fetchConversations, fetchBots, bots.length, currentBotToken, minimal]);
 
   // Handle URL params for conversation or bot
   useEffect(() => {
+    if (minimal) return; // Skip URL logic in minimal mode
+
     const botParam = searchParams.get('bot');
     const isNew = searchParams.get('new');
 
@@ -84,7 +88,7 @@ const ChatInterface: React.FC = () => {
       // Default new conversation if nothing specified
       startNewConversation(null);
     }
-  }, [conversationId, searchParams, currentBotToken, fetchConversation, startNewConversation, messages.length]);
+  }, [conversationId, searchParams, currentBotToken, fetchConversation, startNewConversation, messages.length, minimal]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -113,22 +117,22 @@ const ChatInterface: React.FC = () => {
     // Fetch conversation directly without waiting for URL change effect
     fetchConversation(id);
     // Update URL without causing full navigation  
-    navigate(`/chat/${id}`, { replace: true });
+    if (!minimal) navigate(`/chat/${id}`, { replace: true });
     setMobileSidebarOpen(false);
-  }, [fetchConversation, navigate]);
+  }, [fetchConversation, navigate, minimal]);
 
   const handleNewChat = useCallback(() => {
-    startNewConversation(null);
-    navigate('/chat', { replace: true });
+    startNewConversation(currentCollectionId, currentBotToken); // Preserve context in minimal mode
+    if (!minimal) navigate('/chat', { replace: true });
     setMobileSidebarOpen(false);
-  }, [startNewConversation, navigate]);
+  }, [startNewConversation, navigate, minimal, currentCollectionId, currentBotToken]);
 
   const handleDeleteConversation = useCallback(async (id: string) => {
     await deleteConversation(id);
-    if (conversationId === id) {
+    if (!minimal && conversationId === id) {
       navigate('/chat');
     }
-  }, [deleteConversation, conversationId, navigate]);
+  }, [deleteConversation, conversationId, navigate, minimal]);
 
   const handleSuggestionClick = async (suggestion: string) => {
     if (isSending) return;
@@ -144,16 +148,16 @@ const ChatInterface: React.FC = () => {
     if (botToken !== currentBotToken) {
         startNewConversation(null, botToken);
         // Clean URL
-        navigate('/chat', { replace: true });
+        if (!minimal) navigate('/chat', { replace: true });
     }
   };
 
   return (
-    <div className="flex h-[calc(100vh-6rem)] gap-0 relative overflow-hidden rounded-2xl bg-surface/30 border border-white/5 shadow-2xl backdrop-blur-sm">
+    <div className={`flex h-full gap-0 relative overflow-hidden ${minimal ? 'bg-transparent' : 'rounded-2xl bg-surface/30 border border-white/5 shadow-2xl backdrop-blur-sm h-[calc(100vh-6rem)]'}`}>
 
-      {/* Desktop History Sidebar */}
+      {/* Desktop History Sidebar - Hide in minimal mode */}
       <AnimatePresence mode="wait">
-        {sidebarOpen && (
+        {!minimal && sidebarOpen && (
           <motion.div
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: 280, opacity: 1 }}
@@ -173,9 +177,9 @@ const ChatInterface: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Mobile Sidebar Overlay */}
+      {/* Mobile Sidebar Overlay - Hide in minimal mode */}
       <AnimatePresence>
-        {mobileSidebarOpen && (
+        {!minimal && mobileSidebarOpen && (
           <>
             <motion.div
               initial={{ opacity: 0 }}
@@ -208,7 +212,8 @@ const ChatInterface: React.FC = () => {
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col relative min-w-0">
 
-        {/* Header */}
+        {/* Header - Hide in minimal mode */}
+        {!minimal && (
         <div className="h-14 border-b border-white/5 flex items-center justify-between px-4 lg:px-6 bg-surface/20 backdrop-blur-md z-10">
           <div className="flex items-center gap-3">
             {/* Mobile menu button */}
@@ -314,6 +319,7 @@ const ChatInterface: React.FC = () => {
             )}
           </div>
         </div>
+        )}
 
         {/* Messages Content */}
         <div className="flex-1 overflow-y-auto scroll-smooth">

@@ -622,6 +622,16 @@ class BotTokenService(BaseService, CRUDMixin):
             bot["icon_url"] = self._get_icon_url(bot["icon_file_path"])
         else:
             bot["icon_url"] = ""
+            
+        # Calculate stats
+        bot_token = bot.get("bot_token")
+        chat_count = self.conversations_db.count_documents({"bot_token": bot_token})
+        self.logger.info(f"Calculating stats for bot {bot_token}: found {chat_count} chats")
+        
+        bot["stats"] = {
+            "chats": chat_count,
+            "rating": 5.0 # Default/placeholder
+        }
         
         return bot
     
