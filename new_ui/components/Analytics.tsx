@@ -6,11 +6,11 @@ import {
 } from 'recharts';
 import {
   Calendar, Download, TrendingUp, AlertCircle, CheckCircle,
-  ChevronDown, Check, Loader2, RefreshCw, BarChart3, Coins, Cpu
+  ChevronDown, Check, Loader2, RefreshCw, BarChart3, Coins, Cpu, Users, Activity
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { analyticsService } from '@/src/services';
-import type { AnalyticsDashboard, DailyUsage, TopModel } from '@/types';
+import type { AnalyticsDashboard, DailyUsage, TopModel, TokenUsageLog } from '@/types';
 
 const COLORS = ['#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#3b82f6'];
 
@@ -59,6 +59,7 @@ const Analytics: React.FC = () => {
   const [selectedDateRange, setSelectedDateRange] = useState('This Month');
   const [isLoading, setIsLoading] = useState(true);
   const [dashboard, setDashboard] = useState<AnalyticsDashboard | null>(null);
+  const [logs, setLogs] = useState<TokenUsageLog[]>([]);
 
   const models = ['All Models', 'GPT-4 Turbo', 'Claude 3 Opus', 'Gemini 1.5 Pro'];
   const dateRanges = ['Today', 'Yesterday', 'Last 7 Days', 'This Month', 'Last Month'];
@@ -70,8 +71,12 @@ const Analytics: React.FC = () => {
   const fetchAnalytics = async () => {
     setIsLoading(true);
     try {
-      const data = await analyticsService.getDashboard();
+      const [data, logsData] = await Promise.all([
+        analyticsService.getDashboard(),
+        analyticsService.getTokenLogs(1, 20).catch(() => ({ logs: [], total: 0, pages: 1 }))
+      ]);
       setDashboard(data);
+      setLogs(logsData.logs || []);
     } catch (error) {
       console.error('Failed to fetch analytics:', error);
     } finally {
@@ -386,6 +391,70 @@ const Analytics: React.FC = () => {
               Apply Settings
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Top Users & Recent Activity Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Top Users */}
+        {dashboard?.top_users && dashboard.top_users.length > 0 && (
+          <div className="bg-surface/30 backdrop-blur-sm border border-white/5 rounded-3xl p-6">
+            <div className="flex items-center gap-2 mb-6">
+              <Users className="h-5 w-5 text-blue-400" />
+              <h2 className="text-lg font-semibold text-white">Top Users</h2>
+            </div>
+            <div className="space-y-3">
+              {dashboard.top_users.slice(0, 5).map((user, i) => (
+                <div
+                  key={user.user_id}
+                  className="flex items-center justify-between p-3 rounded-xl bg-white/5"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-violet-600/20 flex items-center justify-center text-sm font-medium text-violet-400">
+                      {i + 1}
+                    </div>
+                    <span className="font-medium text-white">{user.username}</span>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-medium text-white">{formatNumber(user.total_tokens)}</p>
+                    <p className="text-xs text-gray-500">{user.total_requests} requests</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Recent Activity */}
+        <div className="bg-surface/30 backdrop-blur-sm border border-white/5 rounded-3xl p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <Activity className="h-5 w-5 text-emerald-400" />
+            <h2 className="text-lg font-semibold text-white">Recent Activity</h2>
+          </div>
+          {logs.length === 0 ? (
+            <div className="flex items-center justify-center h-48 text-gray-500">
+              <p>No recent activity</p>
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {logs.map((log) => (
+                <div
+                  key={log.log_id}
+                  className="flex items-center justify-between p-3 rounded-xl bg-white/5 text-sm"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-white truncate">{log.username}</p>
+                    <p className="text-xs text-gray-500">
+                      {log.model} • {new Date(log.timestamp).toLocaleString()}
+                    </p>
+                  </div>
+                  <span className="px-2 py-1 bg-violet-600/20 text-violet-400 rounded-lg text-xs font-medium">
+                    {formatNumber(log.total_tokens)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

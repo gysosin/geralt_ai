@@ -121,7 +121,7 @@ class ConversationService(BaseService):
             # If no collections, chat directly with AI (no RAG)
             if not allowed_collections:
                 return await self._execute_direct_chat(
-                    username, conv_id, query_text, context_str, llm
+                    username, conv_id, query_text, context_str, llm, bot_token
                 )
             
             # RAG mode: Retrieve from collections
@@ -141,7 +141,7 @@ class ConversationService(BaseService):
             # If no relevant documents found, fallback to direct chat
             if not valid_results:
                 return await self._execute_direct_chat(
-                    username, conv_id, query_text, context_str, llm
+                    username, conv_id, query_text, context_str, llm, bot_token
                 )
             
             # Chunk processing - include more detail for UI display
@@ -219,7 +219,7 @@ Assistant:"""
             if "CONTEXT_IRRELEVANT" in response_text:
                 self.logger.info(f"LLM found context irrelevant for query: {query_text}. Falling back to direct chat.")
                 return await self._execute_direct_chat(
-                    username, conv_id, query_text, history_str, llm
+                    username, conv_id, query_text, history_str, llm, bot_token
                 )
             
             # Log token usage for analytics
@@ -254,7 +254,7 @@ Assistant:"""
             }
             
             # Save
-            self._save_conversation(username, conv_id, query_text, final_data, allowed_collections)
+            await self._save_conversation(username, conv_id, query_text, final_data, allowed_collections, bot_token)
             
             return ServiceResult.ok(final_data)
             
@@ -296,7 +296,7 @@ Assistant:"""
             "mode": "direct_chat"
         }
         
-        self._save_conversation(username, conv_id, query_text, final_data, [])
+        await self._save_conversation(username, conv_id, query_text, final_data, [], bot_token)
         return ServiceResult.ok(final_data)
 
     # =========================================================================
@@ -333,7 +333,8 @@ Assistant:"""
         conversation_id: str, 
         query: str, 
         response: Dict, 
-        collection_ids: List[str]
+        collection_ids: List[str],
+        bot_token: Optional[str] = None
     ):
         now = datetime.utcnow().isoformat()
         msgs = [
@@ -350,6 +351,9 @@ Assistant:"""
         }
         if collection_ids:
             update_data["$addToSet"] = {"collection_ids": {"$each": collection_ids}}
+            
+        if bot_token:
+            update_data["$set"] = {"bot_token": bot_token}
             
         self.db.update_one(
             {"_id": conversation_id, "username": username},

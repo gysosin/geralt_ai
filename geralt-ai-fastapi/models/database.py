@@ -285,6 +285,9 @@ quiz_collection = mongo_client.bot_db.quizzes
 quiz_results_collection = mongo_client.bot_db.quiz_results
 quiz_attempts_collection = mongo_client.bot_db.quiz_attempts
 
+# Notification collection
+notifications_collection = db.notifications
+
 
 __all__ = [
     # OOP Classes
@@ -312,4 +315,5 @@ __all__ = [
     "quiz_collection",
     "quiz_results_collection",
     "quiz_attempts_collection",
+    "notifications_collection",
 ]

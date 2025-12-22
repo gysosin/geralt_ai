@@ -19,8 +19,8 @@ export const botService = {
                 icon: b.icon_url || 'https://picsum.photos/id/1/200/200',
                 collectionIds: b.collection_ids || [],
                 stats: {
-                    chats: b.chat_count || 0,
-                    rating: b.rating || 4.5,
+                    chats: b.stats?.chats || b.chat_count || 0,
+                    rating: b.stats?.rating || b.rating || 4.5,
                 },
                 bot_token: b.bot_token,
                 bot_name: b.name || b.bot_name,
@@ -53,8 +53,8 @@ export const botService = {
                 icon: b.icon_url || 'https://picsum.photos/id/1/200/200',
                 collectionIds: b.collection_ids || [],
                 stats: {
-                    chats: b.chat_count || 0,
-                    rating: b.rating || 4.5,
+                    chats: b.stats?.chats || b.chat_count || 0,
+                    rating: b.stats?.rating || b.rating || 4.5,
                 },
                 bot_token: b.bot_token,
                 bot_name: b.name || b.bot_name,
