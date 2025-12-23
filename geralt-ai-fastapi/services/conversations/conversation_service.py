@@ -211,10 +211,11 @@ class ConversationService(BaseService):
                 # Get chunks for this document
                 doc_chunks = [c for c in top_chunks if c["document_id"] == doc_id]
                 
-                # Extract page numbers, page_images, and snippets from chunks
+                # Extract page numbers, page_images with bbox, and snippets from chunks
                 page_numbers = set()
-                page_images = []  # Store unique page images
+                page_images = []  # Store unique page images with highlighting data
                 chunk_snippets = []
+                chunk_details = [] # Store full details for each chunk
                 best_score = 0
                 
                 seen_page_images = set()
@@ -222,25 +223,38 @@ class ConversationService(BaseService):
                     meta = chunk.get("metadata", {})
                     if "page_number" in meta:
                         page_numbers.add(meta["page_number"])
-                    # Extract page_image if present
+                    # Extract page_image with bbox for highlighting
                     if "page_image" in meta and meta["page_image"] not in seen_page_images:
                         page_images.append({
                             "page": meta.get("page_number", 0),
-                            "path": meta["page_image"]
+                            "path": meta["page_image"],
+                            "bbox": meta.get("bbox"),  # [x0, y0, x1, y1] for highlighting
+                            "image_dimensions": meta.get("image_dimensions")  # {width, height}
                         })
                         seen_page_images.add(meta["page_image"])
                     # Get snippet (first 200 chars of content)
                     content = chunk.get("content", "")
                     if content:
-                        chunk_snippets.append(content[:200] + "..." if len(content) > 200 else content)
+                        snippet = content[:200] + "..." if len(content) > 200 else content
+                        chunk_snippets.append(snippet)
+                        
+                        chunk_details.append({
+                            "text": snippet,
+                            "page": meta.get("page_number"),
+                            "page_image": meta.get("page_image"),
+                            "bbox": meta.get("bbox"),
+                            "image_dimensions": meta.get("image_dimensions")
+                        })
+
                     if chunk.get("score", 0) > best_score:
                         best_score = chunk.get("score", 0)
                 
                 enhanced_doc = {
                     **doc_meta,
                     "page_numbers": sorted(list(page_numbers)) if page_numbers else None,
-                    "page_images": page_images if page_images else None,  # Include page snapshot paths
+                    "page_images": page_images if page_images else None,  # Include bbox and dims
                     "chunk_snippets": chunk_snippets,
+                    "chunk_details": chunk_details,
                     "score": best_score,
                     "chunk_count": len(doc_chunks),
                 }

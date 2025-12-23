@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText, ExternalLink, ChevronDown, ChevronUp, Layers, Eye, X } from 'lucide-react';
 import type { Source } from '@/types';
+import { HighlightedSnapshot } from './highlighted-snapshot';
 
 interface SourcesListProps {
     sources: Source[];
@@ -11,7 +12,7 @@ interface SourcesListProps {
 export function SourcesList({ sources, className = '' }: SourcesListProps) {
     const [isListExpanded, setIsListExpanded] = useState(false);
     const [expandedSourceId, setExpandedSourceId] = useState<string | null>(null);
-    const [mediaPreview, setMediaPreview] = useState<{ type: 'pdf' | 'image'; url: string; title: string; pages?: number[] } | null>(null);
+    const [mediaPreview, setMediaPreview] = useState<{ type: 'pdf' | 'image'; url: string; title: string; pages?: number[]; bbox?: number[]; bboxes?: number[][]; imageDimensions?: { width: number; height: number } } | null>(null);
 
     if (!sources || sources.length === 0) {
         return null;
@@ -42,11 +43,11 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
         setMediaPreview({ type: 'pdf', url: pdfUrl, title, pages });
     };
 
-    const handleViewImage = (path: string, title: string, e?: React.MouseEvent) => {
+    const handleViewImage = (path: string, title: string, bbox?: number[], imageDimensions?: { width: number; height: number }, e?: React.MouseEvent, bboxes?: number[][]) => {
         e?.stopPropagation();
         // Construct API URL if it's a relative path
         const fullUrl = path.startsWith('http') ? path : `/api/v1/files/${path}`;
-        setMediaPreview({ type: 'image', url: fullUrl, title });
+        setMediaPreview({ type: 'image', url: fullUrl, title, bbox, bboxes, imageDimensions });
     };
 
     return (
@@ -85,10 +86,22 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                             {displayedSources.map((source, index) => {
                                 const pageNumbers = source.metadata?.page_numbers as number[] | undefined;
                                 const chunkSnippets = source.metadata?.chunk_snippets as string[] | undefined;
+                                const chunkDetails = source.metadata?.chunk_details as {
+                                    text: string;
+                                    page?: number;
+                                    page_image?: string;
+                                    bbox?: number[];
+                                    image_dimensions?: { width: number; height: number };
+                                }[] | undefined;
                                 const chunkCount = source.metadata?.chunk_count as number | undefined;
                                 const sourceUrl = source.metadata?.url as string | undefined;
-                                // page_images is now an array of {page: number, path: string}
-                                const pageImages = source.metadata?.page_images as { page: number; path: string }[] | undefined;
+                                // page_images is now an array with bbox and image_dimensions
+                                const pageImages = source.metadata?.page_images as {
+                                    page: number;
+                                    path: string;
+                                    bbox?: number[];
+                                    image_dimensions?: { width: number; height: number };
+                                }[] | undefined;
                                 const firstPageImage = pageImages?.[0]?.path;
                                 const fileType = source.metadata?.file_type as string | undefined;
                                 const isSourceExpanded = expandedSourceId === (source.id || `source-${index}`);
@@ -144,9 +157,25 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                                             <div className="flex items-center gap-1">
                                                 {firstPageImage && (
                                                     <button
-                                                        onClick={(e) => handleViewImage(firstPageImage, source.title || 'Snapshot', e)}
+                                                        onClick={(e) => {
+                                                            const firstImage = pageImages?.[0];
+                                                            // Collect all bboxes for this page
+                                                            const pageBBoxes = chunkDetails
+                                                                ?.filter(cd => cd.page === firstImage?.page || cd.page_image === firstPageImage)
+                                                                .map(cd => cd.bbox)
+                                                                .filter((b): b is number[] => !!b) || (firstImage?.bbox ? [firstImage.bbox] : []);
+                                                            
+                                                            handleViewImage(
+                                                                firstPageImage,
+                                                                source.title || 'Snapshot',
+                                                                undefined, // Don't send single bbox if sending multiple
+                                                                firstImage?.image_dimensions,
+                                                                e,
+                                                                pageBBoxes
+                                                            );
+                                                        }}
                                                         className="p-1.5 hover:bg-white/10 rounded text-emerald-400 transform hover:scale-105 transition-all"
-                                                        title="View Page Snapshot"
+                                                        title="View Page Snapshot with Highlighting"
                                                     >
                                                         <Eye className="h-4 w-4" />
                                                     </button>
@@ -189,7 +218,7 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
 
                                         {/* Expanded content with chunks */}
                                         <AnimatePresence>
-                                            {isSourceExpanded && chunkSnippets && chunkSnippets.length > 0 && (
+                                            {isSourceExpanded && (chunkDetails || chunkSnippets) && (
                                                 <motion.div
                                                     initial={{ height: 0, opacity: 0 }}
                                                     animate={{ height: 'auto', opacity: 1 }}
@@ -201,14 +230,42 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                                                         <p className="text-xs font-medium text-gray-500">
                                                             Relevant Excerpts:
                                                         </p>
-                                                        {chunkSnippets.map((snippet, i) => (
-                                                            <div
-                                                                key={i}
-                                                                className="text-xs text-gray-400 bg-black/30 p-2 rounded border-l-2 border-violet-500/30"
-                                                            >
-                                                                "{snippet}"
-                                                            </div>
-                                                        ))}
+                                                        {chunkDetails ? (
+                                                            chunkDetails.map((chunk, i) => (
+                                                                <div
+                                                                    key={i}
+                                                                    className="text-xs text-gray-400 bg-black/30 p-2 rounded border-l-2 border-violet-500/30 flex flex-col gap-2"
+                                                                >
+                                                                    <span>"{chunk.text}"</span>
+                                                                    {chunk.page_image && (
+                                                                        <div className="flex justify-end">
+                                                                            <button
+                                                                                onClick={(e) => handleViewImage(
+                                                                                    chunk.page_image!, 
+                                                                                    `Page ${chunk.page || '?'}`,
+                                                                                    chunk.bbox,
+                                                                                    chunk.image_dimensions,
+                                                                                    e
+                                                                                )}
+                                                                                className="flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 transition-colors bg-emerald-500/10 px-2 py-1 rounded"
+                                                                            >
+                                                                                <Eye className="h-3 w-3" />
+                                                                                View Highlight
+                                                                            </button>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            ))
+                                                        ) : (
+                                                            chunkSnippets?.map((snippet, i) => (
+                                                                <div
+                                                                    key={i}
+                                                                    className="text-xs text-gray-400 bg-black/30 p-2 rounded border-l-2 border-violet-500/30"
+                                                                >
+                                                                    "{snippet}"
+                                                                </div>
+                                                            ))
+                                                        )}
                                                     </div>
                                                 </motion.div>
                                             )}
@@ -230,65 +287,64 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                 )}
             </div>
 
-            {/* Media Preview Dialog */}
+            {/* Media Preview Modal */}
             {mediaPreview && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md">
-                    <div className="w-full max-w-5xl h-[85vh] bg-surface rounded-xl border border-white/10 overflow-hidden flex flex-col shadow-2xl">
-                        <div className="flex items-center justify-between p-3 border-b border-white/10 bg-black/30">
-                            <div>
-                                <h3 className="font-medium text-sm text-gray-200">{mediaPreview.title}</h3>
-                                {mediaPreview.type === 'pdf' && mediaPreview.pages && mediaPreview.pages.length > 0 && (
-                                    <p className="text-xs text-gray-500">
-                                        Highlighted: {formatPageNumbers(mediaPreview.pages)}
-                                    </p>
-                                )}
-                                {mediaPreview.type === 'image' && (
-                                    <p className="text-xs text-emerald-400 flex items-center gap-1">
-                                        <Eye size={10} />
-                                        Page Snapshot
-                                    </p>
-                                )}
-                            </div>
-                            <button
-                                onClick={() => setMediaPreview(null)}
-                                className="p-2 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors"
-                            >
-                                <X className="h-5 w-5" />
-                            </button>
-                        </div>
-                        <div className="flex-1 bg-black/50 flex items-center justify-center overflow-auto p-4 relative">
-                            {mediaPreview.type === 'pdf' ? (
-                                <object
-                                    data={mediaPreview.url}
-                                    type="application/pdf"
-                                    className="w-full h-full"
-                                >
-                                    <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
-                                        <FileText className="h-12 w-12 text-gray-500" />
-                                        <p className="text-gray-400">
-                                            Unable to display PDF preview.
-                                        </p>
-                                        <a
-                                            href={mediaPreview.url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-violet-400 hover:underline flex items-center gap-2"
-                                        >
-                                            <ExternalLink className="h-4 w-4" />
-                                            Open in new tab
-                                        </a>
+                <>
+                    {mediaPreview.type === 'image' ? (
+                        <HighlightedSnapshot
+                            imageUrl={mediaPreview.url}
+                            title={mediaPreview.title}
+                            bbox={mediaPreview.bbox}
+                            bboxes={mediaPreview.bboxes}
+                            imageDimensions={mediaPreview.imageDimensions}
+                            onClose={() => setMediaPreview(null)}
+                        />
+                    ) : (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md">
+                            <div className="w-full max-w-5xl h-[85vh] bg-surface rounded-xl border border-white/10 overflow-hidden flex flex-col shadow-2xl">
+                                <div className="flex items-center justify-between p-3 border-b border-white/10 bg-black/30">
+                                    <div>
+                                        <h3 className="font-medium text-sm text-gray-200">{mediaPreview.title}</h3>
+                                        {mediaPreview.pages && mediaPreview.pages.length > 0 && (
+                                            <p className="text-xs text-gray-500">
+                                                Highlighted: {formatPageNumbers(mediaPreview.pages)}
+                                            </p>
+                                        )}
                                     </div>
-                                </object>
-                            ) : (
-                                <img
-                                    src={mediaPreview.url}
-                                    alt={mediaPreview.title}
-                                    className="max-w-full max-h-full object-contain rounded-md shadow-lg"
-                                />
-                            )}
+                                    <button
+                                        onClick={() => setMediaPreview(null)}
+                                        className="p-2 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors"
+                                    >
+                                        <X className="h-5 w-5" />
+                                    </button>
+                                </div>
+                                <div className="flex-1 bg-black/50 flex items-center justify-center overflow-auto p-4 relative">
+                                    <object
+                                        data={mediaPreview.url}
+                                        type="application/pdf"
+                                        className="w-full h-full"
+                                    >
+                                        <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
+                                            <FileText className="h-12 w-12 text-gray-500" />
+                                            <p className="text-gray-400">
+                                                Unable to display PDF preview.
+                                            </p>
+                                            <a
+                                                href={mediaPreview.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-violet-400 hover:underline flex items-center gap-2"
+                                            >
+                                                <ExternalLink className="h-4 w-4" />
+                                                Open in new tab
+                                            </a>
+                                        </div>
+                                    </object>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                </div>
+                    )}
+                </>
             )}
         </>
     );

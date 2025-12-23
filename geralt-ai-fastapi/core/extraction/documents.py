@@ -16,68 +16,114 @@ class PDFExtractor(BaseExtractor):
         import fitz  # PyMuPDF
 
         if isinstance(file, bytes):
-            # Create a new BytesIO stream to avoid closing the original if validation checks it
             stream = io.BytesIO(file)
         elif isinstance(file, io.BytesIO):
             stream = file
         else:
-            # Assuming file path string
             stream = open(file, "rb")
 
         extracted_pages = []
         try:
-            # Open the PDF from the stream
-            # We read the stream into bytes for fitz if it's not a filepath
+            # Open PDF
             if isinstance(stream, io.BytesIO):
                  file_bytes = stream.read()
                  doc = fitz.open(stream=file_bytes, filetype="pdf")
             else:
-                 # It's a file object from open(), but fitz needs path or bytes usually
-                 # If stream was opened from file path in 'else' block above:
                  doc = fitz.open(stream.name)
             
+            # Zoom factor for rendering (2x for quality)
+            zoom_matrix = fitz.Matrix(2, 2)
+            
             for page_num, page in enumerate(doc):
-                # 1. Render Page Image (Snapshot)
-                # Matrix(2, 2) = 2x zoom for better OCR quality and viewing
-                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                # 1. Render page image (snapshot)
+                pix = page.get_pixmap(matrix=zoom_matrix)
                 img_bytes = pix.tobytes("png")
+                img_width, img_height = pix.width, pix.height
                 
-                # 2. Extract Text
-                text = page.get_text()
+                # 2. Extract text blocks with bbox coordinates
+                # get_text("dict") returns structured text with bounding boxes
+                text_dict = page.get_text("dict")
+                blocks = text_dict.get("blocks", [])
                 
-                # 3. OCR fallback (if text is sparse)
-                if not text.strip() or len(text.strip()) < 10:
+                # 3. OCR fallback if no text blocks
+                use_ocr = len(blocks) == 0 or all(
+                    len(b.get("lines", [])) == 0 for b in blocks if b.get("type") == 0
+                )
+                
+                if use_ocr:
                     try:
-                        # Convert raw samples to PIL Image for Tesseract
                         pil_img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
                         ocr_text = pytesseract.image_to_string(pil_img)
                         if ocr_text.strip():
-                            text = ocr_text
-                    except Exception as e:
-                        # OCR failed (maybe tesseract not installed), proceed with empty/sparse text
+                            # Create single block for OCR text (no precise bbox available)
+                            blocks = [{
+                                "type": 0,
+                                "bbox": [0, 0, page.rect.width, page.rect.height],
+                                "lines": [{
+                                    "spans": [{
+                                        "text": ocr_text,
+                                        "bbox": [0, 0, page.rect.width, page.rect.height]
+                                    }]
+                                }]
+                            }]
+                    except Exception:
                         pass
-
-                # 4. Create chunks
-                if text.strip():
-                    paragraphs = text.split("\n\n")
-                    first_para_of_page = True
-                    for p_idx, paragraph in enumerate(paragraphs, start=1):
-                        paragraph = paragraph.strip()
-                        if paragraph:
-                            item = {
-                                "content": paragraph,
-                                "metadata": {
-                                    "page_number": page_num + 1,
-                                    "paragraph_index": p_idx,
-                                },
+                
+                # 4. Process text blocks into chunks
+                first_block_of_page = True
+                block_idx = 0
+                
+                for block in blocks:
+                    if block.get("type") != 0:  # Skip image blocks
+                        continue
+                    
+                    # Extract all text from this block
+                    block_text = ""
+                    block_bbox = block.get("bbox", [0, 0, page.rect.width, page.rect.height])
+                    
+                    for line in block.get("lines", []):
+                        for span in line.get("spans", []):
+                            block_text += span.get("text", "") + " "
+                        block_text += "\n"
+                    
+                    block_text = block_text.strip()
+                    if not block_text:
+                        continue
+                    
+                    block_idx += 1
+                    
+                    # Convert PDF coordinates to image coordinates (apply zoom)
+                    # PyMuPDF bbox: [x0, y0, x1, y1] in PDF units
+                    # We need to scale to match rendered image
+                    scale_x = zoom_matrix.a  # 2.0
+                    scale_y = zoom_matrix.d  # 2.0
+                    
+                    bbox_scaled = [
+                        int(block_bbox[0] * scale_x),
+                        int(block_bbox[1] * scale_y),
+                        int(block_bbox[2] * scale_x),
+                        int(block_bbox[3] * scale_y)
+                    ]
+                    
+                    item = {
+                        "content": block_text,
+                        "metadata": {
+                            "page_number": page_num + 1,
+                            "block_index": block_idx,
+                            "bbox": bbox_scaled,  # [x0, y0, x1, y1] in image coordinates
+                            "image_dimensions": {
+                                "width": img_width,
+                                "height": img_height
                             }
-                            # Attach image to the first paragraph of the page
-                            # The DocumentProcessor will strip this before embedding
-                            if first_para_of_page:
-                                item["_page_image_bytes"] = img_bytes
-                                first_para_of_page = False
-                            
-                            extracted_pages.append(item)
+                        },
+                    }
+                    
+                    # Attach snapshot to first block of page
+                    if first_block_of_page:
+                        item["_page_image_bytes"] = img_bytes
+                        first_block_of_page = False
+                    
+                    extracted_pages.append(item)
                 else: 
                      # If page is essentially empty even after OCR, we might want to skip or just store image?
                      # For Retrieval purpose, if no text, nothing to retrieve.
