@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Bot, User, Loader2, Plus, Trash2, MoreHorizontal, History } from 'lucide-react'
+import { Send, Bot, User, Loader2, Plus, Trash2, MoreHorizontal, History, Edit } from 'lucide-react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/input'
@@ -21,7 +21,8 @@ import {
 } from '@/components/ui/sheet'
 import { MarkdownRenderer, SourcesList, SuggestionChips, CollectionPicker } from '@/components/chat'
 import { ConversationSidebar } from '@/components/chat/conversation-sidebar'
-import { useChatStore, useAuthStore } from '@/store'
+import { useChatStore, useAuthStore, useBotStore } from '@/store'
+import { CreateBotDialog } from '@/components/bots/create-bot-dialog'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import type { Message, ConversationListItem } from '@/types'
 
@@ -176,14 +177,40 @@ export function ChatPage() {
     sendMessage,
     deleteConversation,
     startNewConversation,
+    setBotToken,
   } = useChatStore()
+  
+  const { 
+    currentBot, 
+    fetchBotByToken, 
+    updateBot, 
+    fetchCollections, 
+    collections 
+  } = useBotStore()
 
   const [input, setInput] = useState('')
+  const [isEditBotOpen, setIsEditBotOpen] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Get collection state from store
   const { currentCollectionId, setCollectionId } = useChatStore()
+
+  const searchParams = new URLSearchParams(location.search)
+  const botToken = searchParams.get('bot')
+
+  // Fetch bot info if token is present
+  useEffect(() => {
+    if (botToken) {
+      fetchBotByToken(botToken)
+      fetchCollections()
+    }
+  }, [botToken, fetchBotByToken, fetchCollections])
+
+  // Update chat store with bot token
+  useEffect(() => {
+    setBotToken(botToken)
+  }, [botToken, setBotToken])
 
   // Fetch conversations on mount
   useEffect(() => {
@@ -196,9 +223,9 @@ export function ChatPage() {
       fetchConversation(conversationId)
     } else {
       const stateCollectionId = location.state?.collectionId
-      startNewConversation(stateCollectionId || null)
+      startNewConversation(stateCollectionId || null, botToken || null)
     }
-  }, [conversationId, fetchConversation, startNewConversation, location.state])
+  }, [conversationId, fetchConversation, startNewConversation, location.state, botToken])
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -228,8 +255,8 @@ export function ChatPage() {
   }
 
   const handleNewChat = () => {
-    startNewConversation(null)
-    navigate('/chat')
+    startNewConversation(null, botToken || null)
+    navigate(botToken ? `/chat?bot=${botToken}` : '/chat')
   }
 
   const handleDeleteConversation = async (id: string) => {
@@ -277,9 +304,6 @@ export function ChatPage() {
                 currentId={conversationId}
                 onSelect={(id) => {
                   handleSelectConversation(id)
-                  // Note: Sheet will not close automatically unless we control its state or tap outside.
-                  // For a simple fix, user taps outside or we'd need to lift state up.
-                  // Given constraints, this is acceptable for now.
                 }}
                 onNew={handleNewChat}
                 onDelete={handleDeleteConversation}
@@ -294,6 +318,19 @@ export function ChatPage() {
               onSelect={setCollectionId}
             />
           </div>
+
+          {/* Edit Bot Button */}
+          {currentBot && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setIsEditBotOpen(true)}
+              className="gap-2 ml-2"
+            >
+              <Edit className="h-4 w-4" />
+              <span className="hidden sm:inline">Edit Bot</span>
+            </Button>
+          )}
         </div>
 
         {messages.length === 0 ? (
@@ -352,6 +389,19 @@ export function ChatPage() {
           </form>
         </div>
       </div>
+
+      {currentBot && (
+        <CreateBotDialog
+          open={isEditBotOpen}
+          onClose={() => setIsEditBotOpen(false)}
+          onSubmit={async (data) => {
+             await updateBot({ ...data, bot_token: currentBot.bot_token })
+             setIsEditBotOpen(false)
+          }}
+          bot={currentBot}
+          collections={collections}
+        />
+      )}
     </div>
   )
 }
