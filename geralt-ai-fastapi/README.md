@@ -8,9 +8,10 @@ Modern, high-performance FastAPI backend for GeraltAI. Features comprehensive RA
 - **Multi-AI Support**: Seamlessly switch between Google Gemini, OpenAI, and Mistral.
 - **Advanced RAG**: Hybrid search using Elasticsearch (BM25) and Vector embeddings.
 - **Document Intelligence**: 
-  - Automated text extraction from PDFs, DOCX, PPTX, and more.
+  - **Universal Processing**: Converts DOCX, PPTX, XLSX to PDF for unified processing pipeline.
+  - Automated text extraction with **pixel-perfect bounding box coordinates**.
   - **Integrated OCR** (Tesseract) for scanned documents and images.
-  - **Smart Snapshots**: Generates and serves visual snapshots of document pages for context verification.
+  - **Smart Snapshots**: Generates visual page snapshots with **highlighted regions** showing exact extraction points.
 - **Real-time Updates**: Socket.IO integration for live processing status.
 - **Background Processing**: Celery + Redis for robust asynchronous task management.
 
@@ -20,24 +21,35 @@ Before setting up the Python environment, ensure the following system-level depe
 
 ### Linux (Ubuntu/Debian)
 ```bash
-# Required for OCR (Optical Character Recognition)
 sudo apt-get update
-sudo apt-get install -y tesseract-ocr
-sudo apt-get install -y libtesseract-dev
 
-# Required for PDF processing
+# OCR (Optical Character Recognition)
+sudo apt-get install -y tesseract-ocr libtesseract-dev
+
+# PDF processing
 sudo apt-get install -y poppler-utils
+
+# Document conversion (DOCX, PPTX, XLSX → PDF)
+sudo apt-get install -y libreoffice-writer libreoffice-impress libreoffice-calc
 ```
 
 ### Linux (Fedora)
 ```bash
+# OCR and PDF tools
 sudo dnf install -y tesseract tesseract-langpack-eng poppler-utils
+
+# Document conversion (required for DOCX, PPTX, XLSX → PDF)
+sudo dnf install -y libreoffice-headless libreoffice-writer libreoffice-impress libreoffice-calc
 ```
 
 ### macOS
 ```bash
+# OCR and PDF tools
 brew install tesseract
 brew install poppler
+
+# Document conversion
+brew install --cask libreoffice
 ```
 
 ## 📦 Installation

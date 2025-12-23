@@ -55,7 +55,7 @@ class DocumentProcessor:
                 self.logger.error(f"Document {self.document_id} not found")
                 return False
             
-            self._emit_progress(0, 0)
+            self._emit_progress(0, 0)  # Start: 0%
             
             file_path = doc.get("file_path")
             file_name = doc.get("file_name", "")
@@ -64,8 +64,8 @@ class DocumentProcessor:
             username = doc["added_by"]
             conversation_id = doc.get("conversation_id")
             
-            # Step 2: Download/Prep
-            self._emit_progress(1, 10)
+            # Step 1: Fetching document
+            self._emit_progress(1, 5)
             extracted = []
             
             if file_path:
@@ -84,7 +84,7 @@ class DocumentProcessor:
                 return False
 
             # Step 4-6: Store chunks & Embed
-            self._emit_progress(3, 50)
+            self._emit_progress(3, 30)  # Extracted, starting embeddings
             try:
                 self._embed_and_store(
                     self.document_id, extracted, collection_id
@@ -119,13 +119,36 @@ class DocumentProcessor:
             temp_file.close()
         
         # Step 3: Extract
-        self._emit_progress(2, 30)
+        self._emit_progress(2, 15)  # Downloaded
         file_ext = file_name.split(".")[-1].lower()
+        
         try:
+            # Check if we should convert to PDF first for universal processing
+            from core.extraction.converters import UniversalExtractor
+            
+            if UniversalExtractor.should_convert(file_ext):
+                self.logger.info(f"Converting {file_ext} to PDF for universal processing")
+                
+                # Convert to PDF
+                with open(local_path, 'rb') as f:
+                    pdf_bytes = UniversalExtractor.extract_via_pdf(f.read(), file_ext)
+                
+                if pdf_bytes:
+                    # Process as PDF for snapshots and bbox
+                    from core.extraction.documents import PDFExtractor
+                    pdf_extractor = PDFExtractor()
+                    extracted = pdf_extractor.extract(pdf_bytes)
+                    self.logger.info(f"Successfully converted and extracted {len(extracted)} blocks from {file_ext}")
+                    return extracted
+                else:
+                    # Fallback to native extractor if conversion failed
+                    self.logger.warning(f"PDF conversion failed for {file_ext}, using native extractor")
+            
+            # Use native extractor (either because conversion failed or not needed)
             extractor = ExtractorFactory.get_extractor(file_ext)
-            # Pass local_path. ExtractorFactory implementations handle paths.
             extracted = extractor.extract(local_path)
             return extracted
+            
         except Exception as e:
             self._handle_error(f"Extraction error: {e}", "Extraction error", 30)
             return []
@@ -135,7 +158,7 @@ class DocumentProcessor:
     
     def _process_url(self, doc, url):
         """Process a URL-based document."""
-        self._emit_progress(2, 30)
+        self._emit_progress(2, 15)  # Fetched URL
         try:
             if "youtube.com" in url or "youtu.be" in url:
                 extractor = ExtractorFactory.get_extractor("youtube")
@@ -154,13 +177,17 @@ class DocumentProcessor:
         EMBEDDING_BATCH_SIZE = 5
         MAX_CHARS_PER_CHUNK = 5000
 
-        # Handle page images (snapshots)
+        # Handle page images (snapshots) and propagate to all chunks of the same page
         import io
+        page_image_map = {} # page_num -> snapshot_path
+
+        # First pass: Identify and upload images from chunks that have them
         for item in extracted_chunks:
             img_bytes = item.pop("_page_image_bytes", None)
+            page_num = item["metadata"].get("page_number", 0)
+            
             if img_bytes:
                 try:
-                    page_num = item["metadata"].get("page_number", 0)
                     # Create a path for the snapshot: documents/{doc_id}/snapshots/page_{num}.png
                     snapshot_path = f"documents/{document_id}/snapshots/page_{page_num}.png"
                     
@@ -173,10 +200,15 @@ class DocumentProcessor:
                         content_type="image/png"
                     )
                     
-                    # Add to metadata so UI can retrieve it
-                    item["metadata"]["page_image"] = snapshot_path
+                    page_image_map[page_num] = snapshot_path
                 except Exception as e:
                     self.logger.warning(f"Failed to upload page snapshot for doc {document_id}: {e}")
+
+        # Second pass: Assign page_image to all chunks based on page_number
+        for item in extracted_chunks:
+            page_num = item["metadata"].get("page_number", 0)
+            if page_num in page_image_map:
+                item["metadata"]["page_image"] = page_image_map[page_num]
 
         reshaped_chunks = []
         for item in extracted_chunks:

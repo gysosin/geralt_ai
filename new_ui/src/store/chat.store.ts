@@ -98,8 +98,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
                                 file_type: doc.file_type,
                                 url: doc.other_metadata?.url || doc.url || '',
                                 page_numbers: doc.page_numbers || [],
+                                page_images: doc.page_images || [],
                                 chunk_count: doc.chunk_count || 1,
                                 chunk_snippets: doc.chunk_snippets || [],
+                                chunk_details: doc.chunk_details || [],
                                 ...doc.other_metadata,
                             }
                         }))
@@ -186,8 +188,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     file_type: doc.file_type,
                     url: doc.other_metadata?.url || doc.url || '',
                     page_numbers: doc.page_numbers || [],
+                    page_images: doc.page_images || [],
                     chunk_count: doc.chunk_count || 1,
                     chunk_snippets: doc.chunk_snippets || [],
+                    chunk_details: doc.chunk_details || [],
                     ...doc.other_metadata,
                 }
             }))

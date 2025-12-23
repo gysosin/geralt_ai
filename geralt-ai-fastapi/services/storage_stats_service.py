@@ -258,34 +258,44 @@ class StorageStatsService:
             client = get_milvus_client()
             client.connect()
             
-            for collection_name in ["embedding_collection", "public_embedding_collection"]:
-                try:
-                    if utility.has_collection(collection_name):
-                        from pymilvus import Collection, MilvusException
-                        coll = Collection(collection_name)
-                        try:
-                            # Only attempt to load if we think there's data, but explicit load is needed for num_entities accuracy?
-                            # Actually, num_entities might be available without load if we just want count?
-                            # No, usually need load for searching, but query count might work.
-                            # However, 'coll.num_entities' property often needs recent flush or load.
-                            # Safest is to try load, and catch the index not found error.
-                            coll.load()
-                            num_entities = coll.num_entities
-                            if num_entities > 0:
-                                total_vectors += num_entities
-                                collections_info.append({
-                                    "name": f"milvus_{collection_name}",
-                                    "count": num_entities
-                                })
-                                index_status = "active"
-                        except MilvusException as me:
-                             # Ignore index not found, treated as empty/inactive
-                             if me.code == 700 or "index not found" in me.message:
-                                 pass
-                             else:
-                                 raise me
-                except Exception:
-                    pass
+            # Suppress pymilvus internal error logging to prevent console spam
+            import logging as pymilvus_logging
+            pymilvus_logger = pymilvus_logging.getLogger("pymilvus")
+            original_level = pymilvus_logger.level
+            pymilvus_logger.setLevel(pymilvus_logging.CRITICAL)
+            
+            try:
+                for collection_name in ["embedding_collection", "public_embedding_collection"]:
+                    try:
+                        if utility.has_collection(collection_name):
+                            from pymilvus import Collection, MilvusException
+                            coll = Collection(collection_name)
+                            try:
+                                # Only attempt to load if we think there's data, but explicit load is needed for num_entities accuracy?
+                                # Actually, num_entities might be available without load if we just want count?
+                                # No, usually need load for searching, but query count might work.
+                                # However, 'coll.num_entities' property often needs recent flush or load.
+                                # Safest is to try load, and catch the index not found error.
+                                coll.load()
+                                num_entities = coll.num_entities
+                                if num_entities > 0:
+                                    total_vectors += num_entities
+                                    collections_info.append({
+                                        "name": f"milvus_{collection_name}",
+                                        "count": num_entities
+                                    })
+                                    index_status = "active"
+                            except MilvusException as me:
+                                 # Ignore index not found, treated as empty/inactive
+                                 if me.code == 700 or "index not found" in me.message:
+                                     pass
+                                 else:
+                                     raise me
+                    except Exception:
+                        pass
+            finally:
+                # Restore original log level
+                pymilvus_logger.setLevel(original_level)
         except Exception as e:
             self.logger.warning(f"Could not get Milvus vector stats: {e}")
         
