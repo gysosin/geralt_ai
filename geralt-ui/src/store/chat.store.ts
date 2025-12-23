@@ -6,7 +6,8 @@ import { generateId } from '@/lib/utils'
 interface ChatState {
   conversations: ConversationListItem[]
   currentConversation: Conversation | null
-  currentCollectionId: string | null  // Added
+  currentCollectionId: string | null
+  currentBotToken: string | null // Added
   messages: Message[]
   isLoading: boolean
   isSending: boolean
@@ -17,15 +18,17 @@ interface ChatState {
   fetchConversation: (id: string) => Promise<void>
   sendMessage: (query: string) => Promise<void>
   deleteConversation: (id: string) => Promise<void>
-  startNewConversation: (collectionId?: string | null) => void
-  setCollectionId: (id: string | null) => void // Added
+  startNewConversation: (collectionId?: string | null, botToken?: string | null) => void // Updated
+  setCollectionId: (id: string | null) => void
+  setBotToken: (token: string | null) => void // Added
   clearError: () => void
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
   conversations: [],
   currentConversation: null,
-  currentCollectionId: null, // Added
+  currentCollectionId: null,
+  currentBotToken: null, // Added
   messages: [],
   isLoading: false,
   isSending: false,
@@ -107,14 +110,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }
       })
 
-      // If conversation has a collection_id, set it? 
-      // Backend conversation object might have it. Let's check type definition later or assume it might.
-      // For now, just set state.
       set({
         currentConversation: { ...conversation, id: (conversation as any)._id || conversation.id || id },
         messages: normalizedMessages,
         isLoading: false,
-        // Optional: currentCollectionId: conversation.collection_id || null
+        // Preserve bot token if it was part of conversation metadata (not yet in conversation type but good to have)
+        currentBotToken: (conversation as any).bot_token || null
       })
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Failed to fetch conversation'
@@ -123,7 +124,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   sendMessage: async (query) => {
-    const { currentConversation, messages, currentCollectionId } = get()
+    const { currentConversation, messages, currentCollectionId, currentBotToken } = get()
 
     // Add user message
     const userMessage: Message = {
@@ -152,7 +153,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const response = await conversationService.searchWithConversation(
         query,
         currentConversation?.id,
-        currentCollectionId || undefined
+        currentCollectionId || undefined,
+        currentBotToken || undefined
       )
 
       // Handle response (backend returns 'response' or 'answer')
@@ -233,16 +235,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  startNewConversation: (collectionId = null) => {
+  startNewConversation: (collectionId = null, botToken = null) => {
     set({
       currentConversation: null,
       messages: [],
       error: null,
       currentCollectionId: collectionId,
+      currentBotToken: botToken,
     })
   },
 
   setCollectionId: (id) => set({ currentCollectionId: id }),
+
+  setBotToken: (token) => set({ currentBotToken: token }),
 
   clearError: () => set({ error: null }),
 }))
