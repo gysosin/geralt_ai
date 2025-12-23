@@ -9,6 +9,7 @@ from typing import Dict, List, Optional
 from models.database import collection_collection
 from helpers.cache_invalidation import invalidate_collections_cache
 from services.collections import BaseService, ServiceResult
+from services.notifications import get_notification_service
 
 
 class CollectionSharingService(BaseService):
@@ -116,6 +117,17 @@ class CollectionSharingService(BaseService):
                                collection_id=collection_id,
                                shared_with=shared_user,
                                role=role)
+            
+            # Send notification to shared user
+            try:
+                notification_service = get_notification_service()
+                notification_service.collection_shared(
+                    user_id=shared_user,
+                    collection_name=coll.get("name", "Collection"),
+                    shared_by=username
+                )
+            except Exception as ne:
+                self.logger.warning(f"Failed to send share notification: {ne}")
             
             return ServiceResult.ok({
                 "message": f"Collection shared with {shared_user} as {role}."

@@ -25,7 +25,7 @@ const BotCard = ({
 
   return (
     <div
-      onClick={() => navigate(`/bots/${bot.id}`)}
+      onClick={() => navigate(`/bots/${bot.bot_token}`)}
       className="bg-surface/40 border border-white/5 rounded-2xl p-6 hover:border-violet-500/30 transition-all group relative overflow-visible flex flex-col h-full cursor-pointer hover:bg-white/[0.03]"
     >
       <div className="absolute inset-0 bg-gradient-to-br from-violet-600/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl pointer-events-none" />

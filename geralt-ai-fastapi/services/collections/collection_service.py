@@ -18,6 +18,7 @@ from models.database import (
 from helpers.cache_invalidation import invalidate_collections_cache
 from helpers.utils import get_utility_service
 from services.collections import BaseService, ServiceResult
+from services.notifications import get_notification_service
 
 
 class CollectionService(BaseService):
@@ -95,6 +96,17 @@ class CollectionService(BaseService):
             self.db.insert_one(collection_data)
             invalidate_collections_cache(username)
             self.log_operation("create_collection", username=username, collection_id=collection_id)
+            
+            # Send notification
+            try:
+                notification_service = get_notification_service()
+                notification_service.collection_created(
+                    user_id=username,
+                    collection_name=collection_name,
+                    collection_id=collection_id
+                )
+            except Exception as ne:
+                self.logger.warning(f"Failed to send collection created notification: {ne}")
             
             return ServiceResult.ok({
                 "message": "Collection created successfully",
