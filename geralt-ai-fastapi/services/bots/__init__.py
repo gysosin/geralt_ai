@@ -145,6 +145,11 @@ def get_analytics_service():
     from services.bots.analytics_service import get_analytics_service as _get
     return _get()
 
+def get_configuration_service():
+    """Get the configuration service."""
+    from services.bots.configuration_service import get_configuration_service as _get
+    return _get()
+
 # Import classes for direct usage
 from services.bots.token_service import BotTokenService
 from services.bots.sharing_service import BotSharingService
@@ -153,6 +158,7 @@ from services.bots.template_service import TemplateService
 from services.bots.embed_service import EmbedService
 from services.bots.quiz_service import QuizService
 from services.bots.analytics_service import AnalyticsService
+from services.bots.configuration_service import ConfigurationService
 
 
 __all__ = [
@@ -168,6 +174,7 @@ __all__ = [
     "EmbedService",
     "QuizService",
     "AnalyticsService",
+    "ConfigurationService",
     # Service getters
     "get_token_service",
     "get_sharing_service",
@@ -176,4 +183,5 @@ __all__ = [
     "get_search_service",
     "get_quiz_service",
     "get_analytics_service",
+    "get_configuration_service",
 ]

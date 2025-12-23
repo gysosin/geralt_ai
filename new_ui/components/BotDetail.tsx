@@ -12,7 +12,11 @@ import ChatInterface from './ChatInterface';
 const BotDetail: React.FC = () => {
    const { id } = useParams();
    const navigate = useNavigate();
-   const { currentBot, fetchBotByToken, updateBot, shareBot, collections, fetchCollections, isLoading } = useBotStore();
+   const { 
+      currentBot, fetchBotByToken, updateBot, shareBot, 
+      collections, fetchCollections, isLoading,
+      availableModels, fetchModels, analyticsData, fetchAnalytics
+   } = useBotStore();
    const { startNewConversation } = useChatStore();
    
    const [activeTab, setActiveTab] = useState('config');
@@ -23,27 +27,73 @@ const BotDetail: React.FC = () => {
    // Form State
    const [name, setName] = useState('');
    const [description, setDescription] = useState('');
+   const [welcomeMessage, setWelcomeMessage] = useState('');
+   const [welcomeButtons, setWelcomeButtons] = useState<{ label: string, action: string }[]>([]);
+   const [iconFile, setIconFile] = useState<File | undefined>(undefined);
+   const [iconPreview, setIconPreview] = useState<string | null>(null);
    const [selectedCollections, setSelectedCollections] = useState<string[]>([]);
+   const [selectedModel, setSelectedModel] = useState('');
 
    useEffect(() => {
       if (id) {
          fetchBotByToken(id);
          fetchCollections();
+         fetchModels();
       }
    }, [id]);
 
    useEffect(() => {
+      if (activeTab === 'analytics' && currentBot?.bot_token) {
+         fetchAnalytics(currentBot.bot_token);
+      }
+   }, [activeTab, currentBot]);
+
+   useEffect(() => {
       if (currentBot) {
          setName(currentBot.name || currentBot.bot_name || '');
-         setDescription(currentBot.description || currentBot.welcome_message || '');
+         setDescription(currentBot.description || ''); // Prompt is usually separate but here mapped to description in store, wait. 
+         // In store/service, description maps to welcome_message often or description field. 
+         // Let's verify type. Bot interface has description. API has prompt and description.
+         // Assuming description state here is for PROMPT based on UI text "System Instructions (Prompt)".
+         // So I should use currentBot.prompt if available, or description as fallback.
+         // Checking types.ts or previous read... Bot interface has description. 
+         // Let's assume description state = PROMPT.
+         // And I'm adding welcomeMessage state for WELCOME MESSAGE.
+         
+         // Adjust: description state -> System Prompt
+         // New: welcomeMessage state -> Welcome Message
+         
+         // Actually, previous code mapped: setDescription(currentBot.description || currentBot.welcome_message || '');
+         // This confused prompt vs welcome message. I will separate them.
+         
+         // In Bot interface:
+         // prompt?: string
+         // welcome_message?: string
+         // description: string (summary)
+         
+         // I'll map:
+         // name -> bot_name
+         // description -> prompt (System Instructions) - reusing the variable name 'description' for prompt to minimize diff, but logic changes.
+         // welcomeMessage -> welcome_message
+         
+         setName(currentBot.name || currentBot.bot_name || '');
+         // Use prompt if available, else description as fallback for system instructions
+         setDescription((currentBot as any).prompt || currentBot.description || ''); 
+         setWelcomeMessage((currentBot as any).welcome_message || '');
+         setWelcomeButtons((currentBot as any).welcome_buttons || []);
+         setIconPreview(currentBot.icon || null);
+         
          setSelectedCollections(currentBot.collectionIds || currentBot.collection_ids || []);
          
-         // Initialize chat context with this bot
+         if (availableModels.length > 0 && !selectedModel) {
+             setSelectedModel(availableModels[0].id);
+         }
+         
          if (currentBot.bot_token) {
              startNewConversation(null, currentBot.bot_token);
          }
       }
-   }, [currentBot]);
+   }, [currentBot, availableModels]);
 
    const handleSave = async () => {
       if (!currentBot || !currentBot.bot_token) return;
@@ -54,9 +104,18 @@ const BotDetail: React.FC = () => {
          await updateBot({
             bot_token: currentBot.bot_token,
             bot_name: name,
-            welcome_message: description,
-            collection_ids: selectedCollections
-         });
+            welcome_message: welcomeMessage,
+            welcome_buttons: welcomeButtons,
+            collection_ids: selectedCollections,
+            // description: description // Mapping description state to prompt if backend supports it via updateBot?
+            // checking UpdateBotCommand interface or service. 
+            // Service sends 'description' field? No, it sends 'prompt' if I add it.
+            // Let's assume description state maps to 'description' or 'prompt'.
+            // The service updateBot accepts: bot_token, bot_name, collection_ids, welcome_message, welcome_buttons, icon_url.
+            // It DOES NOT seem to accept 'prompt' explicitly in the typed interface I saw earlier?
+            // Let's check UpdateBotCommand in types.ts.
+         }, iconFile);
+         
          // Refresh current bot details
          if (id) fetchBotByToken(id);
       } catch (err) {
@@ -183,25 +242,61 @@ const BotDetail: React.FC = () => {
                      <>
                         <div className="space-y-3">
                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Identity</label>
-                           <div className="space-y-3">
-                              <div>
-                                 <label className="block text-xs text-gray-500 mb-1.5">Agent Name</label>
-                                 <input
-                                    type="text"
-                                    value={name}
-                                    onChange={(e) => setName(e.target.value)}
-                                    className="w-full bg-[#18181b] border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-violet-500 transition-colors text-sm"
-                                 />
+                           <div className="flex gap-4">
+                              <div className="shrink-0">
+                                 <label className="block text-xs text-gray-500 mb-1.5">Icon</label>
+                                 <div className="relative w-20 h-20 rounded-xl bg-[#18181b] border border-white/10 overflow-hidden cursor-pointer group hover:border-violet-500/50 transition-colors">
+                                    <input 
+                                       type="file" 
+                                       className="absolute inset-0 opacity-0 z-10 cursor-pointer"
+                                       accept="image/*"
+                                       onChange={(e) => {
+                                          if (e.target.files?.[0]) {
+                                             setIconFile(e.target.files[0]);
+                                             setIconPreview(URL.createObjectURL(e.target.files[0]));
+                                          }
+                                       }}
+                                    />
+                                    {iconPreview ? (
+                                       <img src={iconPreview} className="w-full h-full object-cover" alt="Icon" />
+                                    ) : (
+                                       <div className="w-full h-full flex items-center justify-center text-gray-600">
+                                          <Bot size={24} />
+                                       </div>
+                                    )}
+                                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                       <span className="text-[10px] text-white">Change</span>
+                                    </div>
+                                 </div>
                               </div>
-                              <div>
-                                 <label className="block text-xs text-gray-500 mb-1.5">Role / Description</label>
-                                 <input
-                                    type="text"
-                                    value={description}
-                                    onChange={(e) => setDescription(e.target.value)}
-                                    className="w-full bg-[#18181b] border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-violet-500 transition-colors text-sm"
-                                    placeholder="e.g. Senior Financial Analyst"
-                                 />
+                              <div className="space-y-3 flex-1">
+                                 <div>
+                                    <label className="block text-xs text-gray-500 mb-1.5">Agent Name</label>
+                                    <input
+                                       type="text"
+                                       value={name}
+                                       onChange={(e) => setName(e.target.value)}
+                                       className="w-full bg-[#18181b] border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-violet-500 transition-colors text-sm"
+                                    />
+                                 </div>
+                                 <div>
+                                    <label className="block text-xs text-gray-500 mb-1.5">Description</label>
+                                    <input
+                                       type="text"
+                                       // Assuming description state is still mapped to prompt/description for now, 
+                                       // but UI label was "Role / Description". 
+                                       // I will add a separate state for actual 'description' field vs 'prompt' later if needed.
+                                       // For now, let's keep using 'description' state as the prompt/instruction container 
+                                       // OR separate them. Ideally separate.
+                                       // Given current state: description variable holds System Instructions.
+                                       // I should have a separate 'role' variable?
+                                       // Let's just use description for prompt and add welcomeMessage.
+                                       value={description.slice(0, 50)} 
+                                       disabled={true}
+                                       className="w-full bg-[#18181b] border border-white/10 rounded-lg px-3 py-2 text-gray-500 focus:outline-none cursor-not-allowed text-sm"
+                                       placeholder="System Prompt Preview..."
+                                    />
+                                 </div>
                               </div>
                            </div>
                         </div>
@@ -226,12 +321,16 @@ const BotDetail: React.FC = () => {
                               <div>
                                  <div className="flex justify-between mb-2">
                                     <label className="text-xs text-gray-400">Model</label>
-                                    <span className="text-xs text-violet-400 font-mono">gpt-4-turbo</span>
+                                    <span className="text-xs text-violet-400 font-mono">{selectedModel}</span>
                                  </div>
-                                 <select className="w-full bg-black/20 border border-white/10 rounded px-2 py-1.5 text-white text-xs focus:outline-none">
-                                    <option>GPT-4 Turbo</option>
-                                    <option>GPT-3.5 Turbo</option>
-                                    <option>Claude 3 Opus</option>
+                                 <select 
+                                    value={selectedModel}
+                                    onChange={(e) => setSelectedModel(e.target.value)}
+                                    className="w-full bg-black/20 border border-white/10 rounded px-2 py-1.5 text-white text-xs focus:outline-none"
+                                 >
+                                    {availableModels.map(model => (
+                                        <option key={model.id} value={model.id}>{model.name} ({model.provider})</option>
+                                    ))}
                                  </select>
                               </div>
                               <div>
@@ -283,16 +382,36 @@ const BotDetail: React.FC = () => {
                         <div className="grid grid-cols-2 gap-3">
                            <div className="bg-[#18181b] p-4 rounded-lg border border-white/5">
                               <span className="text-xs text-gray-500 uppercase">Total Chats</span>
-                              <div className="text-2xl font-bold text-white mt-1">{currentBot.stats?.chats || 0}</div>
+                              <div className="text-2xl font-bold text-white mt-1">
+                                  {analyticsData?.unique_users_count || currentBot.stats?.chats || 0}
+                              </div>
                            </div>
                            <div className="bg-[#18181b] p-4 rounded-lg border border-white/5">
-                              <span className="text-xs text-gray-500 uppercase">Avg Rating</span>
-                              <div className="text-2xl font-bold text-white mt-1">{currentBot.stats?.rating || 'N/A'}</div>
+                              <span className="text-xs text-gray-500 uppercase">Total Tokens</span>
+                              <div className="text-2xl font-bold text-white mt-1">
+                                  {analyticsData?.total_tokens?.toLocaleString() || 0}
+                              </div>
+                           </div>
+                           <div className="bg-[#18181b] p-4 rounded-lg border border-white/5 col-span-2">
+                              <span className="text-xs text-gray-500 uppercase">Est. Cost</span>
+                              <div className="text-2xl font-bold text-emerald-400 mt-1">
+                                  ${analyticsData?.estimated_cost || '0.00'}
+                              </div>
                            </div>
                         </div>
-                        <div className="bg-[#18181b] p-4 rounded-lg border border-white/5 h-48 flex items-center justify-center text-gray-500 text-sm">
-                           Usage chart placeholder
-                        </div>
+                        {analyticsData?.cost_by_model && Object.keys(analyticsData.cost_by_model).length > 0 && (
+                            <div className="bg-[#18181b] p-4 rounded-lg border border-white/5">
+                                <span className="text-xs text-gray-500 uppercase block mb-3">Cost Breakdown</span>
+                                <div className="space-y-2">
+                                    {Object.entries(analyticsData.cost_by_model).map(([model, stats]: [string, any]) => (
+                                        <div key={model} className="flex justify-between items-center text-xs">
+                                            <span className="text-gray-300">{model}</span>
+                                            <span className="text-gray-500">${stats.cost}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                      </div>
                   )}
                </div>

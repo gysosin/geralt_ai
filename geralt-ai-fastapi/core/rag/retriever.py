@@ -82,11 +82,18 @@ class HybridRetriever:
             List of RetrievalResult objects sorted by score
         """
         try:
+            # Debug: Log the collection filter being applied
+            logger.info(f"[HybridRetriever] Query: '{query[:50]}...' with collection_ids filter: {collection_ids}")
+            
             # 1. Generate query embedding
             query_vector = await self.embedder.embed(query, task_type="retrieval_query")
             
             # 2. Build hybrid query
             body = self._build_query(query, query_vector, collection_ids, top_k)
+            
+            # Debug: Log the actual ES query filter part
+            if collection_ids:
+                logger.debug(f"[HybridRetriever] ES filter: {body.get('query', {}).get('script_score', {}).get('query', {}).get('bool', {}).get('filter', [])}")
             
             # 3. Execute search
             response = self.es.search(index=self.index, body=body)
@@ -94,7 +101,17 @@ class HybridRetriever:
                 response = await response
             
             # 4. Parse and return results
-            return self._parse_results(response)
+            results = self._parse_results(response)
+            
+            # Debug: Log what collection_ids were actually returned
+            returned_collection_ids = set(r.collection_id for r in results if r.collection_id)
+            if collection_ids and returned_collection_ids:
+                unexpected_collections = returned_collection_ids - set(collection_ids)
+                if unexpected_collections:
+                    logger.warning(f"[HybridRetriever] UNEXPECTED COLLECTIONS in results: {unexpected_collections}. Expected only: {collection_ids}")
+                logger.info(f"[HybridRetriever] Returned {len(results)} results from collections: {returned_collection_ids}")
+            
+            return results
             
         except Exception as e:
             logger.error(f"Hybrid retrieval error: {e}")

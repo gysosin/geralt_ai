@@ -197,10 +197,12 @@ class CollectionService(BaseService):
         self,
         identity: str,
         collection_id: str,
-        new_name: str,
-        tenant_id: str
+        new_name: str = None,
+        tenant_id: str = None,
+        description: str = None,
+        collection_type: str = None
     ) -> ServiceResult:
-        """Update collection name."""
+        """Update collection fields (name, description, type)."""
         try:
             username = self.extract_username(identity)
             
@@ -216,21 +218,31 @@ class CollectionService(BaseService):
                 if not shared or shared.get("role") != "admin":
                      return ServiceResult.fail("Access denied", 403)
             
-            # Check duplicates
-            if new_name != coll["name"]:
+            update_fields = {}
+            
+            # Check name duplicates if changing name
+            if new_name and new_name != coll.get("name"):
                 existing = self.db.find_one({
                     "name": {"$regex": f"^{new_name}$", "$options": "i"},
                     "created_by": coll["created_by"], # Scope to owner
-                    "tenant_id": tenant_id,
+                    "tenant_id": tenant_id or coll.get("tenant_id"),
                     "collection_id": {"$ne": collection_id}
                 })
                 if existing:
                     return ServiceResult.fail("Collection name already exists", 409)
+                update_fields["name"] = new_name
             
-            self.db.update_one(
-                {"collection_id": collection_id},
-                {"$set": {"name": new_name}}
-            )
+            if description is not None:
+                update_fields["description"] = description
+                
+            if collection_type is not None:
+                update_fields["type"] = collection_type
+            
+            if update_fields:
+                self.db.update_one(
+                    {"collection_id": collection_id},
+                    {"$set": update_fields}
+                )
             
             invalidate_collections_cache(username)
             self.log_operation("update_collection", username=username, collection_id=collection_id)

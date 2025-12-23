@@ -84,12 +84,6 @@ const BotCard = ({
 
       <div className="flex gap-2 relative z-10 mt-auto">
         <button
-          onClick={(e) => { e.stopPropagation(); onEdit(bot); }}
-          className="flex-1 py-2 bg-white/5 hover:bg-white/10 text-white text-sm font-medium rounded-lg border border-white/5 transition-colors"
-        >
-          Edit
-        </button>
-        <button
           onClick={(e) => { e.stopPropagation(); navigate(`/chat?bot=${bot.bot_token}&new=true`); }}
           className="flex-1 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium rounded-lg shadow-lg shadow-violet-900/20 transition-all"
         >
@@ -131,8 +125,7 @@ const Bots: React.FC = () => {
   };
 
   const handleEdit = (bot: Bot) => {
-    setSelectedBot(bot);
-    setCreateOpen(true);
+    navigate(`/bots/${bot.bot_token}`);
   };
 
   const handleDelete = async (bot: Bot) => {

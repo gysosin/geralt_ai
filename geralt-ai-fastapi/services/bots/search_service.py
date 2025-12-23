@@ -142,17 +142,47 @@ class BotSearchService(BaseService):
         retrieval_results = await retriever.retrieve(query_text, collection_ids=allowed_collections, top_k=15)
         
         # Convert RetrievalResult to dict chunks for compatibility
+        # Include collection_id from retrieval results for proper filtering
         top_chunks = []
         for r in retrieval_results:
             top_chunks.append({
                 "content": r.content,
                 "metadata": r.metadata,
                 "document_id": r.document_id,
+                "collection_id": r.collection_id,  # Include for filtering
             })
         
-        # Build document metadata
+        # Build document metadata (only for documents that exist in MongoDB)
         doc_ids = list(set(c["document_id"] for c in top_chunks))
         doc_meta_dict = self._build_doc_metadata(doc_ids)
+        
+        # Filter out chunks from documents that don't exist in MongoDB (stale ES data)
+        # AND strictly enforce that the chunk's collection_id is in the allowed_collections
+        valid_doc_ids = set(doc_meta_dict.keys())
+        
+        filtered_chunks = []
+        for c in top_chunks:
+            # Check 1: Document exists in MongoDB
+            if c["document_id"] not in valid_doc_ids:
+                continue
+                
+            # Check 2: Collection ID matches allowed list (Strict Enforcement)
+            # Handle potential missing collection_id in chunk by checking doc metadata as fallback
+            chunk_coll_id = c.get("collection_id")
+            if not chunk_coll_id:
+                # Fallback to document metadata from MongoDB
+                chunk_coll_id = doc_meta_dict[c["document_id"]].get("collection_id")
+            
+            if chunk_coll_id and chunk_coll_id in allowed_collections:
+                filtered_chunks.append(c)
+            else:
+                self.logger.warning(f"Filtered out leaking chunk from collection {chunk_coll_id} (not in allowed: {allowed_collections})")
+
+        top_chunks = filtered_chunks
+        
+        if not top_chunks:
+            self.logger.warning(f"No valid chunks found after filtering stale data/collections for bot {bot_token}")
+        
         aggregated_doc_metadata = self._aggregate_chunk_metadata(top_chunks, doc_meta_dict)
         
         # Build context and prompt
@@ -357,14 +387,10 @@ Instructions:
                 },
             }
         
-        # Fill missing ones
+        # Log missing documents (stale ES data) but don't include them
         for did in doc_ids:
             if did not in found_ids:
-                doc_meta_dict[did] = {
-                    "document_id": did,
-                    "file_type": "unknown",
-                    "other_metadata": {},
-                }
+                self.logger.warning(f"Document {did} exists in Elasticsearch but not in MongoDB (stale data)")
         
         return doc_meta_dict
     
