@@ -78,6 +78,12 @@ class ConversationService(BaseService):
                 if conv:
                     allowed_collections = conv.get("collection_ids", [])
             
+            # If no collections found yet, check bot configuration
+            if not allowed_collections and bot_token:
+                bot = self.tokens_db.find_one({"bot_token": bot_token})
+                if bot:
+                    allowed_collections = bot.get("collection_ids", [])
+            
             # If no collection context, get user's collections (owned + shared)
             if not allowed_collections:
                 from models.database import collection_collection
@@ -152,10 +158,43 @@ class ConversationService(BaseService):
                     "metadata": r.metadata,
                     "document_id": r.document_id,
                     "score": getattr(r, 'score', 0),
+                    "collection_id": r.collection_id,  # Include for reference
                 })
             
             doc_ids = list(set(c["document_id"] for c in top_chunks))
             doc_meta_dict = self._build_doc_metadata(doc_ids)
+            
+            # Filter out chunks from documents that don't exist in MongoDB (stale ES data)
+            # AND strictly enforce that the chunk's collection_id is in the allowed_collections
+            valid_doc_ids = set(doc_meta_dict.keys())
+            stale_doc_ids = set(doc_ids) - valid_doc_ids
+            if stale_doc_ids:
+                self.logger.warning(f"Found {len(stale_doc_ids)} stale document(s) in ES: {stale_doc_ids}")
+            
+            filtered_chunks = []
+            for c in top_chunks:
+                if c["document_id"] not in valid_doc_ids:
+                    continue
+                
+                # Strict enforcement of allowed collections
+                chunk_coll_id = c.get("collection_id")
+                if not chunk_coll_id:
+                     chunk_coll_id = doc_meta_dict[c["document_id"]].get("collection_id")
+                
+                if chunk_coll_id and chunk_coll_id in allowed_collections:
+                    filtered_chunks.append(c)
+                else:
+                    self.logger.warning(f"Filtered out leaking chunk from collection {chunk_coll_id}")
+            
+            top_chunks = filtered_chunks
+            
+            # If no valid chunks after filtering, fallback to direct chat
+            if not top_chunks:
+                self.logger.warning("No valid chunks after filtering stale data, falling back to direct chat")
+                return await self._execute_direct_chat(
+                    username, conv_id, query_text, context_str, llm, bot_token
+                )
+            
             aggregated_doc_metadata = self._aggregate_chunk_metadata(top_chunks, doc_meta_dict)
             
             # Build enhanced top_documents with chunk details
@@ -228,7 +267,8 @@ Assistant:"""
                 model=llm.model_name,
                 prompt_text=final_prompt,
                 response_text=response_text,
-                operation="rag_chat"
+                operation="rag_chat",
+                bot_token=bot_token
             )
             
             # Suggestions - pass query, response, and conversation history
@@ -283,7 +323,8 @@ Assistant:"""
             model=llm.model_name,
             prompt_text=direct_prompt,
             response_text=response_text,
-            operation="direct_chat"
+            operation="direct_chat",
+            bot_token=bot_token
         )
         
         final_data = {
@@ -626,7 +667,8 @@ Assistant:"""
         model: str,
         prompt_text: str,
         response_text: str,
-        operation: str = "chat"
+        operation: str = "chat",
+        bot_token: Optional[str] = None
     ):
         """Log token usage for analytics."""
         try:
@@ -635,7 +677,7 @@ Assistant:"""
             completion_tokens = len(response_text) // 4
             total_tokens = prompt_tokens + completion_tokens
             
-            token_logs_collection.insert_one({
+            log_entry = {
                 "user_id": username,
                 "model": model,
                 "prompt_tokens": prompt_tokens,
@@ -643,7 +685,12 @@ Assistant:"""
                 "total_tokens": total_tokens,
                 "operation": operation,
                 "timestamp": datetime.utcnow(),
-            })
+            }
+            
+            if bot_token:
+                log_entry["bot_token"] = bot_token
+            
+            token_logs_collection.insert_one(log_entry)
         except Exception as e:
             self.logger.warning(f"Failed to log token usage: {e}")
 
