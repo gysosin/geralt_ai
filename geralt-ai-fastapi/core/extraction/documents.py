@@ -13,34 +13,85 @@ from core.extraction.factory import ExtractorFactory
 # -------------------------------------------------------------------------
 class PDFExtractor(BaseExtractor):
     def extract(self, file: Union[str, bytes, io.BytesIO], **kwargs) -> List[Dict[str, Any]]:
-        import pdfplumber
+        import fitz  # PyMuPDF
 
         if isinstance(file, bytes):
-            file = io.BytesIO(file)
+            # Create a new BytesIO stream to avoid closing the original if validation checks it
+            stream = io.BytesIO(file)
+        elif isinstance(file, io.BytesIO):
+            stream = file
+        else:
+            # Assuming file path string
+            stream = open(file, "rb")
 
         extracted_pages = []
         try:
-            with pdfplumber.open(file) as pdf:
-                total_pages = len(pdf.pages)
-                for idx in range(total_pages):
-                    page = pdf.pages[idx]
-                    text_content = page.extract_text()
-                    if text_content:
-                        paragraphs = text_content.split("\n\n")
-                        for p_idx, paragraph in enumerate(paragraphs, start=1):
-                            paragraph = paragraph.strip()
-                            if paragraph:
-                                extracted_pages.append(
-                                    {
-                                        "content": paragraph,
-                                        "metadata": {
-                                            "page_number": idx + 1,
-                                            "paragraph_index": p_idx,
-                                        },
-                                    }
-                                )
+            # Open the PDF from the stream
+            # We read the stream into bytes for fitz if it's not a filepath
+            if isinstance(stream, io.BytesIO):
+                 file_bytes = stream.read()
+                 doc = fitz.open(stream=file_bytes, filetype="pdf")
+            else:
+                 # It's a file object from open(), but fitz needs path or bytes usually
+                 # If stream was opened from file path in 'else' block above:
+                 doc = fitz.open(stream.name)
+            
+            for page_num, page in enumerate(doc):
+                # 1. Render Page Image (Snapshot)
+                # Matrix(2, 2) = 2x zoom for better OCR quality and viewing
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                img_bytes = pix.tobytes("png")
+                
+                # 2. Extract Text
+                text = page.get_text()
+                
+                # 3. OCR fallback (if text is sparse)
+                if not text.strip() or len(text.strip()) < 10:
+                    try:
+                        # Convert raw samples to PIL Image for Tesseract
+                        pil_img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                        ocr_text = pytesseract.image_to_string(pil_img)
+                        if ocr_text.strip():
+                            text = ocr_text
+                    except Exception as e:
+                        # OCR failed (maybe tesseract not installed), proceed with empty/sparse text
+                        pass
+
+                # 4. Create chunks
+                if text.strip():
+                    paragraphs = text.split("\n\n")
+                    first_para_of_page = True
+                    for p_idx, paragraph in enumerate(paragraphs, start=1):
+                        paragraph = paragraph.strip()
+                        if paragraph:
+                            item = {
+                                "content": paragraph,
+                                "metadata": {
+                                    "page_number": page_num + 1,
+                                    "paragraph_index": p_idx,
+                                },
+                            }
+                            # Attach image to the first paragraph of the page
+                            # The DocumentProcessor will strip this before embedding
+                            if first_para_of_page:
+                                item["_page_image_bytes"] = img_bytes
+                                first_para_of_page = False
+                            
+                            extracted_pages.append(item)
+                else: 
+                     # If page is essentially empty even after OCR, we might want to skip or just store image?
+                     # For Retrieval purpose, if no text, nothing to retrieve.
+                     # But we might want to see the image?
+                     # Currently we only store chunks for RAG. If no text, no chunks.
+                     pass
+
+            doc.close()
+            if hasattr(stream, 'close') and stream is not file: # Close if we opened it
+                stream.close()
+
         except Exception as e:
             raise ValueError(f"Error processing PDF: {str(e)}")
+            
         return extracted_pages
 
 ExtractorFactory.register("pdf", PDFExtractor)

@@ -4,12 +4,13 @@ import {
   Send, Paperclip, Mic, Bot, User, Sparkles,
   MoreHorizontal, ChevronDown, X,
   Maximize2, Share, ThumbsUp, ThumbsDown, Copy,
-  ArrowRight, Menu, Loader2
+  ArrowRight, Menu, Loader2, Edit
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useChatStore, useAuthStore, useBotStore } from '../src/store';
 import { MarkdownRenderer, SourcesList, SuggestionChips, CollectionPicker, ConversationSidebar } from '../src/components/chat';
-import type { Message, Source } from '../types';
+import CreateBotDialog from './bots/CreateBotDialog';
+import type { Message, Source, CreateBotCommand } from '../types';
 
 const SUGGESTIONS = [
   { title: "Analyze Financials", desc: "Review Q3 profit margins vs Q2" },
@@ -40,14 +41,16 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
     renameConversation,
     startNewConversation,
     setCollectionId,
+    setBotToken,
   } = useChatStore();
 
-  const { bots, fetchBots } = useBotStore();
+  const { bots, fetchBots, updateBot, collections, fetchCollections } = useBotStore();
 
   const [input, setInput] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(!minimal);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showBotMenu, setShowBotMenu] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -64,6 +67,13 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
         if (bots.length === 0) fetchBots();
     }
   }, [fetchConversations, fetchBots, bots.length, currentBotToken, minimal]);
+
+  // Fetch collections for edit dialog if bot is active
+  useEffect(() => {
+    if (activeBot && collections.length === 0) {
+      fetchCollections();
+    }
+  }, [activeBot, collections.length, fetchCollections]);
 
   // Handle URL params for conversation or bot
   useEffect(() => {
@@ -88,7 +98,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
       // Default new conversation if nothing specified
       startNewConversation(null);
     }
-  }, [conversationId, searchParams, currentBotToken, fetchConversation, startNewConversation, messages.length, minimal]);
+  }, [conversationId, searchParams, currentBotToken, fetchConversation, startNewConversation, messages.length, minimal, navigate]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -149,6 +159,13 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
         startNewConversation(null, botToken);
         // Clean URL
         if (!minimal) navigate('/chat', { replace: true });
+    }
+  };
+
+  const handleUpdateBot = async (data: CreateBotCommand, iconFile?: File) => {
+    if (activeBot && activeBot.bot_token) {
+      await updateBot({ ...data, bot_token: activeBot.bot_token }, iconFile);
+      await fetchBots(); // Refresh bots list to get updated info
     }
   };
 
@@ -215,7 +232,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
         {/* Header - Hide in minimal mode */}
         {!minimal && (
         <div className="h-14 border-b border-white/5 flex items-center justify-between px-4 lg:px-6 bg-surface/20 backdrop-blur-md z-10">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             {/* Mobile menu button */}
             <button
               onClick={() => setMobileSidebarOpen(true)}
@@ -240,7 +257,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                             <div className="w-6 h-6 rounded-md bg-gray-800 border border-white/10 overflow-hidden shrink-0">
                                 <img src={activeBot.icon || 'https://picsum.photos/200'} alt={activeBot.name} className="w-full h-full object-cover" />
                             </div>
-                            <span className="font-semibold text-gray-200">{activeBot.name}</span>
+                            <span className="font-semibold text-gray-200 truncate max-w-[120px] sm:max-w-none">{activeBot.name}</span>
                         </>
                     ) : (
                         <>
@@ -293,10 +310,22 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
 
             <div className="h-4 w-[1px] bg-white/10 mx-1 hidden sm:block" />
 
-            <div className="hidden sm:flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-md border border-emerald-500/20">
-              <Sparkles size={12} />
-              <span>RAG Enabled</span>
-            </div>
+            {activeBot && (
+                <button 
+                  onClick={() => setIsEditDialogOpen(true)}
+                  className="flex items-center gap-1.5 px-2 py-1 text-xs text-violet-400 hover:text-violet-300 hover:bg-violet-500/10 rounded-md transition-all border border-violet-500/20"
+                >
+                    <Edit size={12} />
+                    <span>Edit Agent</span>
+                </button>
+            )}
+
+            {!activeBot && (
+                <div className="hidden sm:flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-md border border-emerald-500/20">
+                    <Sparkles size={12} />
+                    <span>RAG Enabled</span>
+                </div>
+            )}
 
             {/* Collection Picker (Only show if no bot is selected, or let user override) */}
             {!activeBot && (
@@ -322,7 +351,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
         )}
 
         {/* Messages Content */}
-        <div className="flex-1 overflow-y-auto scroll-smooth">
+        <div className="flex-1 overflow-y-auto scroll-smooth scrollbar-hide">
           {isConversationLoading ? (
             <div className="flex flex-col items-center justify-center h-full">
               <Loader2 className="animate-spin text-violet-500" size={32} />
@@ -447,6 +476,14 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
           </div>
         </div>
       </div>
+
+      <CreateBotDialog
+        isOpen={isEditDialogOpen}
+        onClose={() => setIsEditDialogOpen(false)}
+        onSubmit={handleUpdateBot}
+        bot={activeBot}
+        collections={collections}
+      />
     </div>
   );
 };

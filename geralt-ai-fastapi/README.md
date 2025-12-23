@@ -1,75 +1,137 @@
 # GeraltAI FastAPI
 
-Modern FastAPI backend for GeraltAI with Gemini AI support and enhanced RAG.
+Modern, high-performance FastAPI backend for GeraltAI. Features comprehensive RAG (Retrieval-Augmented Generation) support, multi-provider AI integration (Gemini, OpenAI, Mistral), and advanced document processing with OCR capabilities.
 
-## Quick Start
+## 🚀 Features
 
+- **FastAPI Core**: Fully async, high-performance Python framework.
+- **Multi-AI Support**: Seamlessly switch between Google Gemini, OpenAI, and Mistral.
+- **Advanced RAG**: Hybrid search using Elasticsearch (BM25) and Vector embeddings.
+- **Document Intelligence**: 
+  - Automated text extraction from PDFs, DOCX, PPTX, and more.
+  - **Integrated OCR** (Tesseract) for scanned documents and images.
+  - **Smart Snapshots**: Generates and serves visual snapshots of document pages for context verification.
+- **Real-time Updates**: Socket.IO integration for live processing status.
+- **Background Processing**: Celery + Redis for robust asynchronous task management.
+
+## 🛠️ System Requirements
+
+Before setting up the Python environment, ensure the following system-level dependencies are installed:
+
+### Linux (Ubuntu/Debian)
 ```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate
+# Required for OCR (Optical Character Recognition)
+sudo apt-get update
+sudo apt-get install -y tesseract-ocr
+sudo apt-get install -y libtesseract-dev
 
-# Install dependencies
-pip install -r requirements.txt
+# Required for PDF processing
+sudo apt-get install -y poppler-utils
+```
 
-# Set environment variables
-cp .env.example .env
-# Edit .env with your API keys
+### Linux (Fedora)
+```bash
+sudo dnf install -y tesseract tesseract-langpack-eng poppler-utils
+```
 
-# Run server
+### macOS
+```bash
+brew install tesseract
+brew install poppler
+```
+
+## 📦 Installation
+
+1.  **Clone the repository**
+    ```bash
+    git clone <repository-url>
+    cd geralt-ai-fastapi
+    ```
+
+2.  **Create a Virtual Environment**
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    ```
+
+3.  **Install Python Dependencies**
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+## ⚙️ Configuration
+
+1.  **Environment Variables**
+    Copy the example configuration:
+    ```bash
+    cp .env.example .env
+    ```
+
+2.  **Update `.env`**
+    Edit `.env` to include your configuration. Key variables include:
+
+    ```env
+    # --- Core ---
+    SECRET_KEY=your_secure_jwt_secret_here
+    DEBUG=True
+    
+    # --- Databases ---
+    MONGO_URI=mongodb://localhost:27017
+    ELASTICSEARCH_URL=http://localhost:9200
+    REDIS_URL=redis://localhost:6379/0
+    
+    # --- Object Storage (MinIO) ---
+    MINIO_ENDPOINT=localhost:9000
+    MINIO_ACCESS_KEY=minioadmin
+    MINIO_SECRET_KEY=minioadmin
+    MINIO_BUCKET=geralt-docs
+    
+    # --- AI Providers (Set your active keys) ---
+    GEMINI_API_KEY=your_gemini_key
+    OPENAI_API_KEY=your_openai_key
+    MISTRAL_API_KEY=your_mistral_key
+    
+    # --- RAG configuration ---
+    DEFAULT_AI_MODEL=gemini
+    ```
+
+## 🏃 Running the Application
+
+GeraltAI requires both the API server and the Celery worker to be running.
+
+### 1. Start Infrastructure (Docker)
+Ensure your supporting services (MongoDB, Redis, Elasticsearch, MinIO) are running. If you have a `docker-compose.yml` for these:
+```bash
+docker-compose up -d
+```
+
+### 2. Start the API Server
+This handles HTTP requests and WebSocket connections.
+```bash
 uvicorn main:app --reload --port 8000
 ```
+*   **API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
+*   **Root**: [http://localhost:8000](http://localhost:8000)
 
-## Access
-
-- **API**: http://localhost:8000
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-
-## Environment Variables
-
-```env
-# Required
-SECRET_KEY=your_jwt_secret
-MONGO_URI=mongodb://127.0.0.1:27018
-ELASTICSEARCH_URL=http://127.0.0.1:9209
-
-# AI (set at least one)
-GEMINI_API_KEY=your_gemini_key
-OPENAI_API_KEY=your_openai_key
-MISTRAL_API_KEY=your_mistral_key
-
-# Default AI model (gemini, openai, mistral)
-DEFAULT_AI_MODEL=gemini
+### 3. Start the Celery Worker
+This processes background tasks like document ingestion, embedding generation, and OCR.
+```bash
+celery -A core.tasks worker --loglevel=info
 ```
+> **Note:** The API server attempts to auto-start a worker process for development convenience, but running it separately is recommended for production or debugging.
 
-## Project Structure
+## 📂 Project Structure
 
 ```
 geralt-ai-fastapi/
-├── main.py              # FastAPI app entry
-├── api/                 # API routes
-│   └── v1/
-│       ├── auth/
-│       ├── bots/
-│       ├── collections/
-│       ├── conversations/
-│       └── users/
-├── core/                # Core modules
-│   ├── ai/              # AI providers (Gemini, OpenAI, Mistral)
-│   ├── rag/             # RAG pipeline
-│   └── security/        # JWT auth
-├── services/            # Business logic
-├── helpers/             # Utilities
-└── models/              # Database models
+├── main.py              # Application entry point & AppFactory
+├── api/
+│   └── v1/              # API Routes (Auth, Bots, Collections, Files, etc.)
+├── core/
+│   ├── ai/              # AI Interface & Providers (Gemini/OpenAI/Mistral)
+│   ├── extraction/      # Document Extraction & OCR Logic
+│   ├── rag/             # Retrieval & Ranking Logic
+│   └── tasks/           # Celery Tasks (background jobs)
+├── services/            # Business Logic Layer
+└── models/              # Pydantic & DB Models
 ```
-
-## Features
-
-- ✅ FastAPI with async support
-- ✅ Gemini AI embeddings + LLM
-- ✅ Hybrid RAG (BM25 + vector)
-- ✅ Semantic chunking
-- ✅ JWT authentication
-- ✅ Pydantic validation
-- ✅ Auto-generated OpenAPI docs
