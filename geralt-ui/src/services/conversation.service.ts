@@ -5,12 +5,14 @@ export const conversationService = {
   async searchWithConversation(
     query: string,
     conversationId?: string,
-    collectionId?: string
+    collectionId?: string,
+    botToken?: string
   ): Promise<SearchResponse> {
     const response = await api.post<SearchResponse>('/api/v1/conversations/search', {
       query,
       conversation_id: conversationId,
       collection_id: collectionId,
+      bot_token: botToken,
     })
     return response.data
   },
