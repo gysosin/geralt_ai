@@ -211,15 +211,24 @@ class ConversationService(BaseService):
                 # Get chunks for this document
                 doc_chunks = [c for c in top_chunks if c["document_id"] == doc_id]
                 
-                # Extract page numbers from chunks
+                # Extract page numbers, page_images, and snippets from chunks
                 page_numbers = set()
+                page_images = []  # Store unique page images
                 chunk_snippets = []
                 best_score = 0
                 
+                seen_page_images = set()
                 for chunk in doc_chunks[:3]:  # Limit to top 3 chunks per doc
                     meta = chunk.get("metadata", {})
                     if "page_number" in meta:
                         page_numbers.add(meta["page_number"])
+                    # Extract page_image if present
+                    if "page_image" in meta and meta["page_image"] not in seen_page_images:
+                        page_images.append({
+                            "page": meta.get("page_number", 0),
+                            "path": meta["page_image"]
+                        })
+                        seen_page_images.add(meta["page_image"])
                     # Get snippet (first 200 chars of content)
                     content = chunk.get("content", "")
                     if content:
@@ -230,6 +239,7 @@ class ConversationService(BaseService):
                 enhanced_doc = {
                     **doc_meta,
                     "page_numbers": sorted(list(page_numbers)) if page_numbers else None,
+                    "page_images": page_images if page_images else None,  # Include page snapshot paths
                     "chunk_snippets": chunk_snippets,
                     "score": best_score,
                     "chunk_count": len(doc_chunks),

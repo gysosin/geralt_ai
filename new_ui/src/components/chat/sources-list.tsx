@@ -11,7 +11,7 @@ interface SourcesListProps {
 export function SourcesList({ sources, className = '' }: SourcesListProps) {
     const [isListExpanded, setIsListExpanded] = useState(false);
     const [expandedSourceId, setExpandedSourceId] = useState<string | null>(null);
-    const [pdfPreview, setPdfPreview] = useState<{ url: string; title: string; pages?: number[] } | null>(null);
+    const [mediaPreview, setMediaPreview] = useState<{ type: 'pdf' | 'image'; url: string; title: string; pages?: number[] } | null>(null);
 
     if (!sources || sources.length === 0) {
         return null;
@@ -39,7 +39,14 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
         if (pages && pages.length > 0) {
             pdfUrl = `${url}#page=${pages[0]}`;
         }
-        setPdfPreview({ url: pdfUrl, title, pages });
+        setMediaPreview({ type: 'pdf', url: pdfUrl, title, pages });
+    };
+
+    const handleViewImage = (path: string, title: string, e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        // Construct API URL if it's a relative path
+        const fullUrl = path.startsWith('http') ? path : `/api/v1/files/${path}`;
+        setMediaPreview({ type: 'image', url: fullUrl, title });
     };
 
     return (
@@ -80,6 +87,9 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                                 const chunkSnippets = source.metadata?.chunk_snippets as string[] | undefined;
                                 const chunkCount = source.metadata?.chunk_count as number | undefined;
                                 const sourceUrl = source.metadata?.url as string | undefined;
+                                // page_images is now an array of {page: number, path: string}
+                                const pageImages = source.metadata?.page_images as { page: number; path: string }[] | undefined;
+                                const firstPageImage = pageImages?.[0]?.path;
                                 const fileType = source.metadata?.file_type as string | undefined;
                                 const isSourceExpanded = expandedSourceId === (source.id || `source-${index}`);
                                 const scoreDisplay = formatScore(source.score);
@@ -132,7 +142,20 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                                             </div>
 
                                             <div className="flex items-center gap-1">
-                                                {isPdf && sourceUrl && (
+                                                {firstPageImage && (
+                                                    <button
+                                                        onClick={(e) => handleViewImage(firstPageImage, source.title || 'Snapshot', e)}
+                                                        className="p-1.5 hover:bg-white/10 rounded text-emerald-400 transform hover:scale-105 transition-all"
+                                                        title="View Page Snapshot"
+                                                    >
+                                                        <Eye className="h-4 w-4" />
+                                                    </button>
+                                                )}
+
+                                                {/* Only show PDF eye if it's a PDF AND we didn't just show the snapshot eye 
+                                                    (or show both? User might want PDF view if available). 
+                                                    Let's show PDF view if URL exists. */}
+                                                {isPdf && sourceUrl && !firstPageImage && (
                                                     <button
                                                         onClick={(e) => handleViewPdf(sourceUrl, source.title || 'Document', pageNumbers, e)}
                                                         className="p-1.5 hover:bg-white/10 rounded text-blue-400"
@@ -141,6 +164,7 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                                                         <Eye className="h-4 w-4" />
                                                     </button>
                                                 )}
+
                                                 {sourceUrl && (
                                                     <a
                                                         href={sourceUrl}
@@ -206,48 +230,62 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                 )}
             </div>
 
-            {/* PDF Preview Dialog */}
-            {pdfPreview && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-                    <div className="w-full max-w-5xl h-[85vh] bg-surface rounded-xl border border-white/10 overflow-hidden flex flex-col">
+            {/* Media Preview Dialog */}
+            {mediaPreview && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md">
+                    <div className="w-full max-w-5xl h-[85vh] bg-surface rounded-xl border border-white/10 overflow-hidden flex flex-col shadow-2xl">
                         <div className="flex items-center justify-between p-3 border-b border-white/10 bg-black/30">
                             <div>
-                                <h3 className="font-medium text-sm text-gray-200">{pdfPreview.title}</h3>
-                                {pdfPreview.pages && pdfPreview.pages.length > 0 && (
+                                <h3 className="font-medium text-sm text-gray-200">{mediaPreview.title}</h3>
+                                {mediaPreview.type === 'pdf' && mediaPreview.pages && mediaPreview.pages.length > 0 && (
                                     <p className="text-xs text-gray-500">
-                                        Highlighted: {formatPageNumbers(pdfPreview.pages)}
+                                        Highlighted: {formatPageNumbers(mediaPreview.pages)}
+                                    </p>
+                                )}
+                                {mediaPreview.type === 'image' && (
+                                    <p className="text-xs text-emerald-400 flex items-center gap-1">
+                                        <Eye size={10} />
+                                        Page Snapshot
                                     </p>
                                 )}
                             </div>
                             <button
-                                onClick={() => setPdfPreview(null)}
+                                onClick={() => setMediaPreview(null)}
                                 className="p-2 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors"
                             >
                                 <X className="h-5 w-5" />
                             </button>
                         </div>
-                        <div className="flex-1 bg-black/50">
-                            <object
-                                data={pdfPreview.url}
-                                type="application/pdf"
-                                className="w-full h-full"
-                            >
-                                <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
-                                    <FileText className="h-12 w-12 text-gray-500" />
-                                    <p className="text-gray-400">
-                                        Unable to display PDF preview.
-                                    </p>
-                                    <a
-                                        href={pdfPreview.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-violet-400 hover:underline flex items-center gap-2"
-                                    >
-                                        <ExternalLink className="h-4 w-4" />
-                                        Open in new tab
-                                    </a>
-                                </div>
-                            </object>
+                        <div className="flex-1 bg-black/50 flex items-center justify-center overflow-auto p-4 relative">
+                            {mediaPreview.type === 'pdf' ? (
+                                <object
+                                    data={mediaPreview.url}
+                                    type="application/pdf"
+                                    className="w-full h-full"
+                                >
+                                    <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
+                                        <FileText className="h-12 w-12 text-gray-500" />
+                                        <p className="text-gray-400">
+                                            Unable to display PDF preview.
+                                        </p>
+                                        <a
+                                            href={mediaPreview.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-violet-400 hover:underline flex items-center gap-2"
+                                        >
+                                            <ExternalLink className="h-4 w-4" />
+                                            Open in new tab
+                                        </a>
+                                    </div>
+                                </object>
+                            ) : (
+                                <img
+                                    src={mediaPreview.url}
+                                    alt={mediaPreview.title}
+                                    className="max-w-full max-h-full object-contain rounded-md shadow-lg"
+                                />
+                            )}
                         </div>
                     </div>
                 </div>

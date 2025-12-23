@@ -21,4 +21,6 @@ api_router.include_router(collections_router, prefix="/collections", tags=["Coll
 api_router.include_router(conversations_router, prefix="/conversations", tags=["Conversations"])
 api_router.include_router(users_router, prefix="/users", tags=["Users"])
 api_router.include_router(notifications_router, prefix="/notifications", tags=["Notifications"])
+from api.v1.files.router import router as files_router
+api_router.include_router(files_router, prefix="/files", tags=["Files"])
 

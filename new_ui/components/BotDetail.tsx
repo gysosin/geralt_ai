@@ -26,7 +26,8 @@ const BotDetail: React.FC = () => {
 
    // Form State
    const [name, setName] = useState('');
-   const [description, setDescription] = useState('');
+   const [summary, setSummary] = useState('');
+   const [prompt, setPrompt] = useState('');
    const [welcomeMessage, setWelcomeMessage] = useState('');
    const [welcomeButtons, setWelcomeButtons] = useState<{ label: string, action: string }[]>([]);
    const [iconFile, setIconFile] = useState<File | undefined>(undefined);
@@ -51,34 +52,8 @@ const BotDetail: React.FC = () => {
    useEffect(() => {
       if (currentBot) {
          setName(currentBot.name || currentBot.bot_name || '');
-         setDescription(currentBot.description || ''); // Prompt is usually separate but here mapped to description in store, wait. 
-         // In store/service, description maps to welcome_message often or description field. 
-         // Let's verify type. Bot interface has description. API has prompt and description.
-         // Assuming description state here is for PROMPT based on UI text "System Instructions (Prompt)".
-         // So I should use currentBot.prompt if available, or description as fallback.
-         // Checking types.ts or previous read... Bot interface has description. 
-         // Let's assume description state = PROMPT.
-         // And I'm adding welcomeMessage state for WELCOME MESSAGE.
-         
-         // Adjust: description state -> System Prompt
-         // New: welcomeMessage state -> Welcome Message
-         
-         // Actually, previous code mapped: setDescription(currentBot.description || currentBot.welcome_message || '');
-         // This confused prompt vs welcome message. I will separate them.
-         
-         // In Bot interface:
-         // prompt?: string
-         // welcome_message?: string
-         // description: string (summary)
-         
-         // I'll map:
-         // name -> bot_name
-         // description -> prompt (System Instructions) - reusing the variable name 'description' for prompt to minimize diff, but logic changes.
-         // welcomeMessage -> welcome_message
-         
-         setName(currentBot.name || currentBot.bot_name || '');
-         // Use prompt if available, else description as fallback for system instructions
-         setDescription((currentBot as any).prompt || currentBot.description || ''); 
+         setSummary(currentBot.description || '');
+         setPrompt((currentBot as any).prompt || ''); 
          setWelcomeMessage((currentBot as any).welcome_message || '');
          setWelcomeButtons((currentBot as any).welcome_buttons || []);
          setIconPreview(currentBot.icon || null);
@@ -104,16 +79,11 @@ const BotDetail: React.FC = () => {
          await updateBot({
             bot_token: currentBot.bot_token,
             bot_name: name,
+            description: summary,
+            prompt: prompt,
             welcome_message: welcomeMessage,
             welcome_buttons: welcomeButtons,
             collection_ids: selectedCollections,
-            // description: description // Mapping description state to prompt if backend supports it via updateBot?
-            // checking UpdateBotCommand interface or service. 
-            // Service sends 'description' field? No, it sends 'prompt' if I add it.
-            // Let's assume description state maps to 'description' or 'prompt'.
-            // The service updateBot accepts: bot_token, bot_name, collection_ids, welcome_message, welcome_buttons, icon_url.
-            // It DOES NOT seem to accept 'prompt' explicitly in the typed interface I saw earlier?
-            // Let's check UpdateBotCommand in types.ts.
          }, iconFile);
          
          // Refresh current bot details
@@ -131,6 +101,22 @@ const BotDetail: React.FC = () => {
       } else {
          setSelectedCollections([...selectedCollections, collectionId]);
       }
+   };
+
+   const handleAddButton = () => {
+      setWelcomeButtons([...welcomeButtons, { label: '', action: '' }]);
+   };
+
+   const handleRemoveButton = (index: number) => {
+      const newButtons = [...welcomeButtons];
+      newButtons.splice(index, 1);
+      setWelcomeButtons(newButtons);
+   };
+
+   const handleButtonChange = (index: number, field: 'label' | 'action', value: string) => {
+      const newButtons = [...welcomeButtons];
+      newButtons[index][field] = value;
+      setWelcomeButtons(newButtons);
    };
 
    if (isLoading) {
@@ -277,24 +263,17 @@ const BotDetail: React.FC = () => {
                                        value={name}
                                        onChange={(e) => setName(e.target.value)}
                                        className="w-full bg-[#18181b] border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-violet-500 transition-colors text-sm"
+                                       placeholder="e.g. Financial Analyst"
                                     />
                                  </div>
                                  <div>
-                                    <label className="block text-xs text-gray-500 mb-1.5">Description</label>
+                                    <label className="block text-xs text-gray-500 mb-1.5">Description (Summary)</label>
                                     <input
                                        type="text"
-                                       // Assuming description state is still mapped to prompt/description for now, 
-                                       // but UI label was "Role / Description". 
-                                       // I will add a separate state for actual 'description' field vs 'prompt' later if needed.
-                                       // For now, let's keep using 'description' state as the prompt/instruction container 
-                                       // OR separate them. Ideally separate.
-                                       // Given current state: description variable holds System Instructions.
-                                       // I should have a separate 'role' variable?
-                                       // Let's just use description for prompt and add welcomeMessage.
-                                       value={description.slice(0, 50)} 
-                                       disabled={true}
-                                       className="w-full bg-[#18181b] border border-white/10 rounded-lg px-3 py-2 text-gray-500 focus:outline-none cursor-not-allowed text-sm"
-                                       placeholder="System Prompt Preview..."
+                                       value={summary} 
+                                       onChange={(e) => setSummary(e.target.value)}
+                                       className="w-full bg-[#18181b] border border-white/10 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-violet-500 transition-colors text-sm"
+                                       placeholder="Short description of what this agent does..."
                                     />
                                  </div>
                               </div>
@@ -307,11 +286,68 @@ const BotDetail: React.FC = () => {
                               <label className="block text-xs text-gray-500 mb-1.5">System Instructions (Prompt)</label>
                               <textarea
                                  className="w-full h-64 bg-[#18181b] border border-white/10 rounded-lg p-3 text-white focus:outline-none focus:border-violet-500 font-mono text-sm leading-relaxed resize-none"
-                                 value={description} // Using description field for prompt for now, usually prompt is separate
-                                 onChange={(e) => setDescription(e.target.value)}
+                                 value={prompt}
+                                 onChange={(e) => setPrompt(e.target.value)}
                                  placeholder="Define how the agent should behave, answer, and think..."
                               />
                               <p className="text-[10px] text-gray-500 mt-1">Use specific instructions to control tone and output format.</p>
+                           </div>
+                        </div>
+
+                        <div className="space-y-3">
+                           <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Interaction</label>
+                           <div>
+                              <label className="block text-xs text-gray-500 mb-1.5">Welcome Message</label>
+                              <textarea
+                                 className="w-full h-24 bg-[#18181b] border border-white/10 rounded-lg p-3 text-white focus:outline-none focus:border-violet-500 text-sm resize-none"
+                                 value={welcomeMessage}
+                                 onChange={(e) => setWelcomeMessage(e.target.value)}
+                                 placeholder="Hi! How can I help you today?"
+                              />
+                           </div>
+                           <div>
+                              <div className="flex justify-between items-center mb-2">
+                                 <label className="text-xs text-gray-500">Welcome Buttons</label>
+                                 <button
+                                    type="button"
+                                    onClick={handleAddButton}
+                                    className="text-[10px] flex items-center gap-1 text-violet-400 hover:text-violet-300 transition-colors"
+                                 >
+                                    <Plus size={12} /> Add Button
+                                 </button>
+                              </div>
+                              <div className="space-y-2">
+                                 {welcomeButtons.map((btn, idx) => (
+                                    <div key={idx} className="flex gap-2">
+                                       <input
+                                          type="text"
+                                          value={btn.label}
+                                          onChange={(e) => handleButtonChange(idx, 'label', e.target.value)}
+                                          placeholder="Label"
+                                          className="flex-1 bg-[#18181b] border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500"
+                                       />
+                                       <input
+                                          type="text"
+                                          value={btn.action}
+                                          onChange={(e) => handleButtonChange(idx, 'action', e.target.value)}
+                                          placeholder="Query to send"
+                                          className="flex-[2] bg-[#18181b] border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500"
+                                       />
+                                       <button
+                                          type="button"
+                                          onClick={() => handleRemoveButton(idx)}
+                                          className="p-2 text-gray-500 hover:text-red-400 transition-colors"
+                                       >
+                                          <Trash2 size={14} />
+                                       </button>
+                                    </div>
+                                 ))}
+                                 {welcomeButtons.length === 0 && (
+                                    <div className="text-center py-4 border border-dashed border-white/10 rounded-lg text-gray-600 text-xs">
+                                       No welcome buttons configured
+                                    </div>
+                                 )}
+                              </div>
                            </div>
                         </div>
 

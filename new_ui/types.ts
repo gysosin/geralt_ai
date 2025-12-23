@@ -39,6 +39,8 @@ export interface WelcomeButton {
 
 export interface CreateBotCommand {
   bot_name: string;
+  description?: string; // Summary of what the bot does
+  prompt?: string;      // System Instructions for the AI
   icon_url?: string;
   welcome_message?: string;
   welcome_buttons?: Array<{ label: string; action: string }>;
