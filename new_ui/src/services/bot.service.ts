@@ -42,10 +42,10 @@ export const botService = {
      */
     async getBotByToken(botToken: string, tenantId: string): Promise<Bot | null> {
         try {
-            const response = await api.get<{ bot_details: any }>(
+            const response = await api.get<any>(
                 `/api/v1/bots/tokens/${botToken}?tenant_id=${tenantId}`
             )
-            const b = response.data.bot_details
+            const b = response.data
             return {
                 id: b._id || b.id || b.bot_token,
                 name: b.name || b.bot_name || 'Unnamed Bot',
@@ -66,7 +66,8 @@ export const botService = {
                 updated_at: b.updated_at,
                 owner_id: b.owner || b.owner_id,
             }
-        } catch {
+        } catch (error) {
+            console.error("Error in getBotByToken:", error);
             return null
         }
     },

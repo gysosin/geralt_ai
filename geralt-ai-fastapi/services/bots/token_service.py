@@ -186,12 +186,26 @@ class BotTokenService(BaseService, CRUDMixin):
             ServiceResult with bot details
         """
         try:
+            self.logger.info(f"Getting bot: {bot_token}, tenant: {tenant_id}")
+            
+            # Allow looking up by bot_token OR _id
             query = {"bot_token": bot_token}
+            
+            # Fallback: If it looks like an ObjectId, try querying by _id
+            if len(bot_token) == 24 and all(c in "0123456789abcdefABCDEF" for c in bot_token):
+                try:
+                    from bson.objectid import ObjectId
+                    query = {"_id": ObjectId(bot_token)}
+                    self.logger.info(f"Token looks like ObjectId, switching query to _id: {bot_token}")
+                except Exception:
+                    pass # Keep original query if conversion fails
+
             if tenant_id:
                 query["tenant_id"] = tenant_id
             
             bot = self.db.find_one(query)
             if not bot:
+                self.logger.warning(f"Bot not found with query: {query}")
                 return ServiceResult.fail("Bot not found or access denied", 404)
             
             # Serialize for response

@@ -15,6 +15,7 @@ import Auth from './components/Auth';
 import { AuthCallback } from './src/pages/AuthCallback';
 import { useAuthStore } from './src/store';
 import { ProtectedRoute, PublicRoute } from './src/components/auth';
+import NotificationProvider from './src/components/NotificationProvider';
 
 const App: React.FC = () => {
   const { isAuthenticated, logout } = useAuthStore();
@@ -62,26 +63,28 @@ const App: React.FC = () => {
           path="/*"
           element={
             <ProtectedRoute>
-              <Layout onLogout={handleLogout}>
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="chat/:conversationId?" element={<ChatInterface />} />
+              <NotificationProvider>
+                <Layout onLogout={handleLogout}>
+                  <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="chat/:conversationId?" element={<ChatInterface />} />
 
-                  <Route path="bots" element={<Bots />} />
-                  <Route path="bots/:id" element={<BotDetail />} />
+                    <Route path="bots" element={<Bots />} />
+                    <Route path="bots/:id" element={<BotDetail />} />
 
-                  <Route path="collections" element={<Collections />} />
-                  <Route path="collections/:id" element={<CollectionDetail />} />
+                    <Route path="collections" element={<Collections />} />
+                    <Route path="collections/:id" element={<CollectionDetail />} />
 
-                  <Route path="analytics" element={<Analytics />} />
+                    <Route path="analytics" element={<Analytics />} />
 
-                  <Route path="history" element={<History />} />
-                  <Route path="history/:id" element={<HistoryDetail />} />
+                    <Route path="history" element={<History />} />
+                    <Route path="history/:id" element={<HistoryDetail />} />
 
-                  <Route path="settings" element={<Settings />} />
-                  <Route path="*" element={<div className="flex items-center justify-center h-full text-gray-500">Page not found</div>} />
-                </Routes>
-              </Layout>
+                    <Route path="settings" element={<Settings />} />
+                    <Route path="*" element={<div className="flex items-center justify-center h-full text-gray-500">Page not found</div>} />
+                  </Routes>
+                </Layout>
+              </NotificationProvider>
             </ProtectedRoute>
           }
         />

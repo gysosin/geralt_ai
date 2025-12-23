@@ -20,6 +20,7 @@ from core.ai.factory import AIProviderFactory
 from helpers.status_updates import emit_status, update_document_status, _finalize_error
 from helpers.socketio_instance import socketio
 from helpers.utils import get_utility_service
+from services.notifications import get_notification_service, NotificationType, NotificationPriority
 
 
 class DocumentProcessor:
@@ -280,10 +281,28 @@ class DocumentProcessor:
     def _handle_error(self, error: str, status: str, progress: int):
         """Handle processing error."""
         _finalize_error(self.document_id, error, status, progress)
+        
+        # Send error notification
+        try:
+            doc = document_collection.find_one({"_id": self.document_id})
+            if doc:
+                notification_service = get_notification_service()
+                notification_service.document_processed(
+                    user_id=doc.get("added_by", ""),
+                    document_name=doc.get("file_name", "Document"),
+                    success=False,
+                    error=status
+                )
+        except Exception as e:
+            self.logger.warning(f"Failed to send error notification: {e}")
     
     def _finalize_success(self):
         """Finalize successful processing."""
         self._emit_progress(6, 90)
+        
+        # Get document info for notification
+        doc = document_collection.find_one({"_id": self.document_id})
+        
         document_collection.update_one(
             {"_id": self.document_id},
             {"$set": {
@@ -297,6 +316,18 @@ class DocumentProcessor:
         )
         emit_status(self.document_id, "Processing completed", 100)
         update_document_status(self.document_id, "Processing completed", 100)
+        
+        # Send notification to user
+        if doc:
+            try:
+                notification_service = get_notification_service()
+                notification_service.document_processed(
+                    user_id=doc.get("added_by", ""),
+                    document_name=doc.get("file_name", "Document"),
+                    success=True
+                )
+            except Exception as e:
+                self.logger.warning(f"Failed to send notification: {e}")
 
 
 class DocumentDeleter:
