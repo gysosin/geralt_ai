@@ -19,13 +19,15 @@ from services.bots import (
     get_embed_service,
     get_quiz_service,
     get_analytics_service,
+    get_configuration_service,
     BotTokenService,
     BotSharingService,
     BotSearchService,
     TemplateService, # type: ignore
     EmbedService,    # type: ignore
     QuizService,     # type: ignore
-    AnalyticsService # type: ignore
+    AnalyticsService, # type: ignore
+    ConfigurationService # type: ignore
 )
 from services.conversations.conversation_service import get_conversation_service, ConversationService
 
@@ -90,6 +92,21 @@ class UpdateConversationRequest(BaseModel):
     conversation_id: str
     name: str
     bot_token: str
+
+
+# =============================================================================
+# Configuration Routes
+# =============================================================================
+
+@router.get("/config")
+async def get_configuration(
+    service: ConfigurationService = Depends(get_configuration_service)
+):
+    """Get application configuration (available models)."""
+    result = service.get_available_models()
+    if not result.success:
+        raise HTTPException(status_code=result.status_code, detail=result.error)
+    return result.data
 
 
 # =============================================================================
@@ -631,10 +648,11 @@ async def dashboard_summary(
 @router.get("/analytics/summary")
 async def usage_summary(
     current_user: str = Depends(get_current_user),
+    bot_token: Optional[str] = Query(None),
     service: AnalyticsService = Depends(get_analytics_service)
 ):
     """Get usage summary statistics."""
-    result = service.usage_summary()
+    result = service.usage_summary(bot_token=bot_token)
     if not result.success:
         raise HTTPException(status_code=result.status_code, detail=result.error)
     return result.data
@@ -643,13 +661,14 @@ async def usage_summary(
 async def daily_usage(
     days: int = Query(30),
     current_user: str = Depends(get_current_user),
+    bot_token: Optional[str] = Query(None),
     service: AnalyticsService = Depends(get_analytics_service)
 ):
     """Get daily usage data."""
     from datetime import datetime, timedelta
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days)
-    result = service.daily_usage(start_date, end_date)
+    result = service.daily_usage(start_date, end_date, bot_token=bot_token)
     if not result.success:
         raise HTTPException(status_code=result.status_code, detail=result.error)
     return result.data

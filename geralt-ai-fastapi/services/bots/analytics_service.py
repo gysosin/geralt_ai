@@ -430,7 +430,7 @@ class AnalyticsService(BaseService):
         output_cost = (completion_tokens / 1_000_000) * pricing["output"]
         return input_cost + output_cost
     
-    def usage_summary(self, start_date=None, end_date=None) -> ServiceResult:
+    def usage_summary(self, start_date=None, end_date=None, bot_token=None) -> ServiceResult:
         """Summarize total tokens, unique users, unique models with per-model cost calculation."""
         try:
             from models.database import token_logs_collection
@@ -441,6 +441,9 @@ class AnalyticsService(BaseService):
                     match_filter["timestamp"]["$gte"] = start_date
                 if end_date:
                     match_filter["timestamp"]["$lte"] = end_date
+            
+            if bot_token:
+                match_filter["bot_token"] = bot_token
 
             # Aggregate by model to calculate per-model costs
             pipeline = [
@@ -517,7 +520,7 @@ class AnalyticsService(BaseService):
             self.logger.error(f"Error getting usage summary: {e}")
             return ServiceResult.fail(f"Internal server error: {str(e)}", 500)
 
-    def daily_usage(self, start_date=None, end_date=None) -> ServiceResult:
+    def daily_usage(self, start_date=None, end_date=None, bot_token=None) -> ServiceResult:
         """Returns daily usage stats."""
         try:
             from models.database import token_logs_collection
@@ -528,6 +531,9 @@ class AnalyticsService(BaseService):
                     match_filter["timestamp"]["$gte"] = start_date
                 if end_date:
                     match_filter["timestamp"]["$lte"] = end_date
+            
+            if bot_token:
+                match_filter["bot_token"] = bot_token
 
             pipeline = [
                 {"$match": match_filter},
@@ -554,7 +560,7 @@ class AnalyticsService(BaseService):
             self.logger.error(f"Error getting daily usage: {e}")
             return ServiceResult.fail(f"Internal server error: {str(e)}", 500)
 
-    def top_users(self, limit=5, start_date=None, end_date=None) -> ServiceResult:
+    def top_users(self, limit=5, start_date=None, end_date=None, bot_token=None) -> ServiceResult:
         """Return top N users by total_tokens usage."""
         try:
             from models.database import token_logs_collection
@@ -565,6 +571,9 @@ class AnalyticsService(BaseService):
                     match_filter["timestamp"]["$gte"] = start_date
                 if end_date:
                     match_filter["timestamp"]["$lte"] = end_date
+            
+            if bot_token:
+                match_filter["bot_token"] = bot_token
 
             pipeline = [
                 {"$match": match_filter},
@@ -578,7 +587,7 @@ class AnalyticsService(BaseService):
             self.logger.error(f"Error getting top users: {e}")
             return ServiceResult.fail(f"Internal server error: {str(e)}", 500)
 
-    def top_models(self, limit=5, start_date=None, end_date=None) -> ServiceResult:
+    def top_models(self, limit=5, start_date=None, end_date=None, bot_token=None) -> ServiceResult:
         """Return top N models by total_tokens usage."""
         try:
             from models.database import token_logs_collection
@@ -589,6 +598,9 @@ class AnalyticsService(BaseService):
                     match_filter["timestamp"]["$gte"] = start_date
                 if end_date:
                     match_filter["timestamp"]["$lte"] = end_date
+            
+            if bot_token:
+                match_filter["bot_token"] = bot_token
 
             pipeline = [
                 {"$match": match_filter},

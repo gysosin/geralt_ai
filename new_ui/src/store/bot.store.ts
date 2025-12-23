@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Bot, Collection, CreateBotCommand, UpdateBotCommand, ShareBotCommand } from '@/types'
 import { botService, collectionService } from '@/src/services/bot.service'
+import { configurationService, AIModel } from '@/src/services/configuration.service'
 import { useAuthStore } from './auth.store'
 
 // Helper to get tenant_id from auth store
@@ -12,6 +13,8 @@ const getTenantId = (): string => {
 interface BotState {
     bots: Bot[]
     collections: Collection[]
+    availableModels: AIModel[]
+    analyticsData: any | null
     currentBot: Bot | null
     isLoading: boolean
     error: string | null
@@ -25,6 +28,8 @@ interface BotState {
     shareBot: (data: ShareBotCommand) => Promise<void>
     generateEmbedCode: (token: string) => Promise<string>
     fetchCollections: () => Promise<void>
+    fetchModels: () => Promise<void>
+    fetchAnalytics: (botToken: string) => Promise<void>
     clearError: () => void
     setCurrentBot: (bot: Bot | null) => void
 }
@@ -32,6 +37,8 @@ interface BotState {
 export const useBotStore = create<BotState>((set) => ({
     bots: [],
     collections: [],
+    availableModels: [],
+    analyticsData: null,
     currentBot: null,
     isLoading: false,
     error: null,
@@ -140,6 +147,24 @@ export const useBotStore = create<BotState>((set) => ({
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : 'Failed to fetch collections'
             set({ error: message, isLoading: false })
+        }
+    },
+
+    fetchModels: async () => {
+        try {
+            const data = await configurationService.getAvailableModels()
+            set({ availableModels: data.models })
+        } catch (error) {
+            console.error("Failed to fetch models:", error)
+        }
+    },
+
+    fetchAnalytics: async (botToken: string) => {
+        try {
+            const data = await botService.getAnalytics(botToken)
+            set({ analyticsData: data })
+        } catch (error) {
+            console.error("Failed to fetch analytics:", error)
         }
     },
 

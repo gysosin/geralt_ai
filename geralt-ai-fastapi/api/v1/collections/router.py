@@ -115,12 +115,13 @@ async def update_collection(
     service: CollectionService = Depends(get_collection_service),
 ):
     """Update a collection."""
-    # Assuming update uses the new method I added
     result = service.update(
         identity=current_user,
         collection_id=data.collection_id,
         new_name=data.name,
-        tenant_id=data.tenant_id
+        tenant_id=data.tenant_id,
+        description=data.description,
+        collection_type=data.type
     )
     if not result.success:
         raise HTTPException(status_code=result.status_code, detail=result.error)

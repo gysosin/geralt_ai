@@ -21,6 +21,7 @@ class CollectionUpdate(BaseModel):
     tenant_id: str
     name: Optional[str] = None
     description: Optional[str] = None
+    type: Optional[str] = None
 
 
 class CollectionResponse(BaseModel):

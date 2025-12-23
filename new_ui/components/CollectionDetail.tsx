@@ -2,12 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
    ArrowLeft, FileText, UploadCloud, Search, Edit2, Check, X,
-   Share2, MessageSquare, Loader2, Database
+   Share2, MessageSquare, Loader2, Database, Tag
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { documentService, socketService } from '../src/services';
 import { useAuthStore } from '../src/store';
 import { DocumentList, UploadDocumentDialog, ShareCollectionDialog } from './collections';
+import Modal from './Modal';
 import type { Document, CollectionDetail as CollectionDetailType } from '../types';
 
 const CollectionDetail: React.FC = () => {
@@ -26,7 +27,11 @@ const CollectionDetail: React.FC = () => {
    // Edit mode state
    const [isEditing, setIsEditing] = useState(false);
    const [editName, setEditName] = useState('');
+   const [editDescription, setEditDescription] = useState('');
+   const [editType, setEditType] = useState('');
    const [isSaving, setIsSaving] = useState(false);
+
+   const tenantId = user?.tenant_id || 'default';
 
    // SocketIO Integration for real-time updates
    useEffect(() => {
@@ -91,6 +96,8 @@ const CollectionDetail: React.FC = () => {
          const details = await documentService.getCollectionDetails(collectionId);
          setCollection(details);
          setEditName(details.collection_name);
+         setEditDescription(details.description || '');
+         setEditType(details.type || 'general');
       } catch (error) {
          console.error('Failed to load collection:', error);
       } finally {
@@ -123,6 +130,9 @@ const CollectionDetail: React.FC = () => {
          await documentService.updateCollection({
             collection_id: collectionId,
             name: editName,
+            description: editDescription,
+            type: editType,
+            tenant_id: tenantId,
          });
          setIsEditing(false);
          fetchCollection();
@@ -137,6 +147,8 @@ const CollectionDetail: React.FC = () => {
       setIsEditing(false);
       if (collection) {
          setEditName(collection.collection_name);
+         setEditDescription(collection.description || '');
+         setEditType(collection.type || 'general');
       }
    };
 
@@ -239,49 +251,32 @@ const CollectionDetail: React.FC = () => {
                <ArrowLeft size={20} />
             </button>
             <div className="flex-1 min-w-0">
-               {isEditing ? (
-                  <div className="flex items-center gap-2">
-                     <input
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        className="text-2xl font-bold text-white bg-white/5 border border-white/10 rounded-lg px-3 py-1 focus:outline-none focus:border-violet-500"
-                        autoFocus
-                     />
+               <div className="flex items-center gap-3">
+                  <h1 className="text-2xl font-bold text-white">
+                     {collection.collection_name}
+                  </h1>
+                  {collection.public && (
+                     <span className="text-xs font-normal text-gray-500 bg-white/5 px-2 py-1 rounded uppercase tracking-wider">Public</span>
+                  )}
+                  {collection.type && (
+                     <span className="text-xs font-normal text-violet-400 bg-violet-500/10 px-2 py-1 rounded flex items-center gap-1">
+                        <Tag size={10} /> {collection.type.charAt(0).toUpperCase() + collection.type.slice(1)}
+                     </span>
+                  )}
+                  {collection.is_owner && (
                      <button
-                        onClick={handleSaveEdit}
-                        disabled={isSaving}
-                        className="p-2 text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"
+                        onClick={() => setIsEditing(true)}
+                        className="p-1.5 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
                      >
-                        <Check size={20} />
+                        <Edit2 size={16} />
                      </button>
-                     <button
-                        onClick={handleCancelEdit}
-                        disabled={isSaving}
-                        className="p-2 text-gray-400 hover:bg-white/5 rounded-lg transition-colors"
-                     >
-                        <X size={20} />
-                     </button>
-                  </div>
-               ) : (
-                  <div>
-                     <h1 className="text-2xl font-bold text-white flex items-center gap-3">
-                        {collection.collection_name}
-                        {collection.public && (
-                           <span className="text-xs font-normal text-gray-500 bg-white/5 px-2 py-1 rounded uppercase tracking-wider">Public</span>
-                        )}
-                        {collection.is_owner && (
-                           <button
-                              onClick={() => setIsEditing(true)}
-                              className="p-1.5 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
-                           >
-                              <Edit2 size={16} />
-                           </button>
-                        )}
-                     </h1>
-                     <p className="text-sm text-gray-400 mt-1">
-                        {documents.length} documents • Created by {collection.full_name || collection.created_by}
-                     </p>
-                  </div>
+                  )}
+               </div>
+               <p className="text-sm text-gray-400 mt-1">
+                  {documents.length} documents • Created by {collection.full_name || collection.created_by}
+               </p>
+               {collection.description && (
+                  <p className="text-sm text-gray-500 mt-1 max-w-xl truncate">{collection.description}</p>
                )}
             </div>
             <div className="flex gap-3">
@@ -377,6 +372,80 @@ const CollectionDetail: React.FC = () => {
                collectionName={collection.collection_name}
             />
          )}
+
+         {/* Edit Collection Modal */}
+         <Modal
+            isOpen={isEditing}
+            onClose={handleCancelEdit}
+            title="Edit Collection"
+         >
+            <div className="space-y-5">
+               <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Name *</label>
+                  <input
+                     type="text"
+                     value={editName}
+                     onChange={(e) => setEditName(e.target.value)}
+                     className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-violet-500 transition-colors"
+                     placeholder="Collection name"
+                  />
+               </div>
+
+               <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Description</label>
+                  <textarea
+                     value={editDescription}
+                     onChange={(e) => setEditDescription(e.target.value)}
+                     className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-violet-500 transition-colors min-h-[100px] resize-none"
+                     placeholder="What is this collection used for?"
+                  />
+               </div>
+
+               <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Category</label>
+                  <input
+                     type="text"
+                     value={editType}
+                     onChange={(e) => setEditType(e.target.value)}
+                     className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-violet-500 transition-colors mb-3"
+                     placeholder="e.g. Finance, Legal, Research..."
+                  />
+                  <div className="flex flex-wrap gap-2">
+                     {['finance', 'legal', 'technical', 'general', 'research', 'marketing'].map(type => (
+                        <button
+                           key={type}
+                           type="button"
+                           onClick={() => setEditType(type)}
+                           className={`px-3 py-1.5 text-xs rounded-lg transition-all ${editType === type
+                              ? 'bg-violet-600 text-white'
+                              : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white border border-white/10'
+                              }`}
+                        >
+                           {type.charAt(0).toUpperCase() + type.slice(1)}
+                        </button>
+                     ))}
+                  </div>
+               </div>
+
+               <div className="flex justify-end gap-3 pt-4 border-t border-white/5">
+                  <button
+                     onClick={handleCancelEdit}
+                     disabled={isSaving}
+                     className="px-5 py-2.5 text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 rounded-xl transition-colors disabled:opacity-50"
+                  >
+                     Cancel
+                  </button>
+                  <button
+                     onClick={handleSaveEdit}
+                     disabled={isSaving || !editName.trim()}
+                     className="px-5 py-2.5 text-sm font-medium text-white bg-violet-600 hover:bg-violet-500 rounded-xl shadow-lg shadow-violet-900/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                     {isSaving && <Loader2 size={16} className="animate-spin" />}
+                     {isSaving ? 'Saving...' : 'Save Changes'}
+                  </button>
+               </div>
+            </div>
+         </Modal>
       </motion.div>
    );
 };

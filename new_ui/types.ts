@@ -128,6 +128,7 @@ export interface CollectionDetail {
   collection_id: string;
   collection_name: string;
   description?: string;
+  type?: string;
   created_at: string;
   created_by: string;
   full_name?: string;
@@ -185,6 +186,8 @@ export interface ShareCollectionCommand {
 export interface UpdateCollectionCommand {
   collection_id: string;
   name?: string;
+  description?: string;
+  type?: string;
   tenant_id?: string;
   public?: boolean;
 }

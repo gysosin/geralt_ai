@@ -157,6 +157,8 @@ const StorageMeter = ({ stats, isLoading }: { stats: StorageStats | null; isLoad
   </div>
 );
 
+const DEFAULT_COLLECTION_TYPES = ['finance', 'legal', 'technical', 'general'];
+
 const Collections: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
@@ -170,6 +172,11 @@ const Collections: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
   const [isStatsLoading, setIsStatsLoading] = useState(true);
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<string>('all');
+
+  // Compute dynamic filter types from collections
+  const filterTypes = ['all', ...Array.from(new Set<string>([...DEFAULT_COLLECTION_TYPES, ...collections.map(c => (c.type || 'general').toLowerCase())]))];
 
   const tenantId = user?.tenant_id || 'default';
 
@@ -231,7 +238,10 @@ const Collections: React.FC = () => {
 
   const filteredCollections = collections.filter(col => {
     const name = col.name || col.collection_name || '';
-    return name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase());
+    const colType = (col.type || 'general').toLowerCase();
+    const matchesFilter = activeFilter === 'all' || colType === activeFilter;
+    return matchesSearch && matchesFilter;
   });
 
   const totalDocs = collections.reduce((acc, col) => acc + (col.fileCount || col.file_count || 0), 0);
@@ -245,9 +255,35 @@ const Collections: React.FC = () => {
           <p className="text-gray-400">Manage vector stores and document collections.</p>
         </div>
         <div className="flex gap-3">
-          <button className="flex items-center gap-2 px-4 py-2 bg-white/5 text-gray-300 hover:text-white hover:bg-white/10 rounded-xl transition-all border border-white/5">
-            <Filter size={16} /> Filter
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowFilterMenu(!showFilterMenu)}
+              className={`flex items-center gap-2 px-4 py-2 ${activeFilter !== 'all' ? 'bg-violet-600/20 text-violet-300 border-violet-500/30' : 'bg-white/5 text-gray-300 border-white/5'} hover:text-white hover:bg-white/10 rounded-xl transition-all border`}
+            >
+              <Filter size={16} />
+              {activeFilter === 'all' ? 'Filter' : activeFilter.charAt(0).toUpperCase() + activeFilter.slice(1)}
+            </button>
+            {showFilterMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowFilterMenu(false)} />
+                <div className="absolute right-0 top-full mt-2 bg-[#1a1a1d] border border-white/10 rounded-xl shadow-xl z-50 py-2 min-w-[160px] max-h-60 overflow-y-auto">
+                  {filterTypes.map((type) => (
+                    <button
+                      key={type}
+                      onClick={() => {
+                        setActiveFilter(type);
+                        setShowFilterMenu(false);
+                      }}
+                      className={`w-full px-4 py-2 text-left text-sm flex items-center justify-between gap-2 ${activeFilter === type ? 'text-violet-400 bg-violet-500/10' : 'text-gray-300 hover:bg-white/5 hover:text-white'}`}
+                    >
+                      <span>{type === 'all' ? 'All Types' : type.charAt(0).toUpperCase() + type.slice(1)}</span>
+                      {activeFilter === type && <span className="text-violet-400">✓</span>}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           <button
             onClick={() => setIsCreateModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white font-medium rounded-xl hover:bg-violet-500 transition-colors shadow-lg shadow-violet-900/20"
@@ -352,22 +388,37 @@ const Collections: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-400 mb-2">Collection Type</label>
-            <div className="grid grid-cols-2 gap-3">
-              {['Finance', 'Legal', 'Technical', 'General'].map(type => (
-                <label key={type} className="flex items-center gap-3 p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="type"
-                    value={type.toLowerCase()}
-                    checked={newCollectionType === type.toLowerCase()}
-                    onChange={(e) => setNewCollectionType(e.target.value)}
-                    className="text-violet-500 bg-gray-800 border-gray-600 focus:ring-violet-500"
-                  />
-                  <span className="text-sm text-gray-200">{type}</span>
-                </label>
-              ))}
-            </div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">Category</label>
+            <input
+              type="text"
+              placeholder="e.g. Finance, Legal, Research, Marketing..."
+              value={newCollectionType}
+              onChange={(e) => setNewCollectionType(e.target.value)}
+              className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-violet-500 transition-colors mb-3"
+            />
+            {/* Show existing categories as suggestions */}
+            {(() => {
+              const existingTypes = collections.map(c => (c.type || 'general').toLowerCase());
+              const defaultTypes = ['finance', 'legal', 'technical', 'general'];
+              const allTypes = Array.from(new Set<string>([...defaultTypes, ...existingTypes]));
+              return (
+                <div className="flex flex-wrap gap-2">
+                  {allTypes.map(type => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setNewCollectionType(type)}
+                      className={`px-3 py-1.5 text-xs rounded-lg transition-all ${newCollectionType === type
+                        ? 'bg-violet-600 text-white'
+                        : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white border border-white/10'
+                        }`}
+                    >
+                      {type.charAt(0).toUpperCase() + type.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
 
           <div className="flex justify-end gap-3 pt-4">
@@ -389,7 +440,7 @@ const Collections: React.FC = () => {
           </div>
         </div>
       </Modal>
-    </div>
+    </div >
   );
 };
 

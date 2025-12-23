@@ -205,6 +205,20 @@ export const botService = {
         })
         return response.data
     },
+
+    /**
+     * Get analytics summary for a bot
+     */
+    async getAnalytics(botToken: string): Promise<any> {
+        try {
+            const response = await api.get<any>(
+                `/api/v1/bots/analytics/summary?bot_token=${botToken}`
+            )
+            return response.data
+        } catch {
+            return null
+        }
+    },
 }
 
 export const collectionService = {
