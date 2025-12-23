@@ -5,6 +5,7 @@ Handles conversation CRUD and search operations.
 """
 import json
 import logging
+import re
 from datetime import datetime
 from uuid import uuid4
 from collections import defaultdict
@@ -24,6 +25,7 @@ from core.ai.intent import IntentAnalyzer
 from core.ai.query_rewriter import QueryRewriter
 from core.ai.suggestions import SuggestionGenerator
 from core.ai.summarizer import ConversationSummarizer
+from core.extraction.factory import ExtractorFactory
 
 
 class ConversationService(BaseService):
@@ -108,13 +110,19 @@ class ConversationService(BaseService):
             if summary:
                 context_str = f"Summary of previous conversation:\n{summary}\n\nRecent Messages:\n{history_str}"
             
+            # Attempt to fetch external context (URLs)
+            external_context = await self._fetch_external_context(query_text)
+            if external_context:
+                context_str += f"\n\n--- External Content ---\n{external_context}\n------------------------\n"
+
             # Intent Analysis to optimize RAG usage
             llm = AIProviderFactory.get_llm_provider()
             intent_analyzer = IntentAnalyzer(llm)
             intent = await intent_analyzer.determine_intent(query_text)
             
             # If intent is Greeting or General Chat, bypass RAG even if collections exist
-            if intent in ["GREETING", "GENERAL_CHAT"]:
+            # But if we found external content, we should process it regardless of intent
+            if intent in ["GREETING", "GENERAL_CHAT"] and not external_context:
                 allowed_collections = []
                 
             # Rewrite query for better retrieval if history exists
@@ -145,7 +153,7 @@ class ConversationService(BaseService):
             valid_results = [r for r in retrieval_results if getattr(r, 'score', 0) > RELEVANCE_THRESHOLD]
             
             # If no relevant documents found, fallback to direct chat
-            if not valid_results:
+            if not valid_results and not external_context:
                 return await self._execute_direct_chat(
                     username, conv_id, query_text, context_str, llm, bot_token
                 )
@@ -189,7 +197,7 @@ class ConversationService(BaseService):
             top_chunks = filtered_chunks
             
             # If no valid chunks after filtering, fallback to direct chat
-            if not top_chunks:
+            if not top_chunks and not external_context:
                 self.logger.warning("No valid chunks after filtering stale data, falling back to direct chat")
                 return await self._execute_direct_chat(
                     username, conv_id, query_text, context_str, llm, bot_token
@@ -301,6 +309,39 @@ Assistant:"""
         except Exception as e:
             self.logger.error(f"Error in conversation search: {e}")
             return ServiceResult.fail(str(e), 500)
+
+    async def _fetch_external_context(self, query: str) -> str:
+        """Extract URLs from query and fetch content."""
+        # Regex for URLs
+        url_pattern = re.compile(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
+        urls = url_pattern.findall(query)
+        
+        external_context = ""
+        if urls:
+            self.logger.info(f"Found URLs in query: {urls}. Attempting to fetch content...")
+            try:
+                # Assuming ExtractorFactory is available/imported
+                extractor = ExtractorFactory.get_extractor("web")
+                for url in urls:
+                    try:
+                        # WebExtractor.extract returns List[Dict] with 'content' key
+                        # Warning: This might block if not run in executor. 
+                        # Ideally, this should be offloaded to a task or run_in_executor
+                        import asyncio
+                        loop = asyncio.get_event_loop()
+                        
+                        chunks = await loop.run_in_executor(None, extractor.extract, url)
+                        
+                        for chunk in chunks:
+                            content = chunk.get("content", "")
+                            if content:
+                                external_context += f"\n\n[External Content from {url}]:\n{content[:2000]}" # Limit size
+                    except Exception as e:
+                        self.logger.warning(f"Failed to fetch content from {url}: {e}")
+            except Exception as e:
+                 self.logger.warning(f"Failed to get web extractor: {e}")
+        
+        return external_context
 
     async def _execute_direct_chat(self, username, conv_id, query_text, history_str, llm=None, bot_token=None):
         """Helper to execute direct chat without RAG."""
