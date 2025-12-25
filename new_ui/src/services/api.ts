@@ -1,4 +1,5 @@
 import axios, { type AxiosError, type AxiosInstance, type InternalAxiosRequestConfig } from 'axios'
+import { useAuthStore } from '../store'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -29,13 +30,10 @@ api.interceptors.response.use(
     (response) => response,
     (error: AxiosError) => {
         if (error.response?.status === 401) {
-            // Clear all auth-related storage to prevent redirect loops
-            localStorage.removeItem('token')
-            localStorage.removeItem('user')
-            // Clear the Zustand persisted auth store
-            localStorage.removeItem('auth-storage')
-
-            // Only redirect if not already on login page to prevent loops
+            // Trigger store logout to update UI state immediately
+            useAuthStore.getState().logout()
+            
+            // Redirect to login if not already there
             if (!window.location.hash.includes('/login')) {
                 window.location.href = '/#/login'
             }

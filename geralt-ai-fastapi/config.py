@@ -79,10 +79,13 @@ class Config:
     MINIO_SECURE = settings.MINIO_SECURE
     
     # ==========================================================================
-    # Milvus (Vector DB) - Legacy
+    # Milvus (Vector DB)
     # ==========================================================================
     MILVUS_HOST = settings.MILVUS_HOST
     MILVUS_PORT = settings.MILVUS_PORT
+    MILVUS_USER = settings.MILVUS_USER
+    MILVUS_PASSWORD = settings.MILVUS_PASSWORD
+    MILVUS_TOKEN = settings.MILVUS_TOKEN
     
     # ==========================================================================
     # AI Providers

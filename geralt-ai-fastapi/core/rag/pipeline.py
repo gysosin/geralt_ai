@@ -2,6 +2,7 @@
 RAG Pipeline
 
 Complete RAG (Retrieval-Augmented Generation) pipeline orchestrator.
+Provides retrieve → rerank → generate flow with comprehensive logging.
 """
 import logging
 from typing import List, Optional
@@ -20,6 +21,8 @@ class RAGResponse(BaseModel):
     sources: List[dict]
     query: str
     model: str
+    retrieval_count: int = 0
+    reranked: bool = False
 
 
 class RAGPipeline:
@@ -53,6 +56,7 @@ class RAGPipeline:
         self.retriever = retriever
         self.llm = llm
         self.reranker = reranker
+        self.logger = logging.getLogger(f"{self.__class__.__name__}")
     
     async def query(
         self,
@@ -80,7 +84,11 @@ class RAGPipeline:
             RAGResponse with answer and sources
         """
         try:
+            query_preview = question[:50] + "..." if len(question) > 50 else question
+            self.logger.info(f"RAG query: '{query_preview}' | Collections: {collection_ids}")
+            
             # 1. Retrieve relevant chunks
+            self.logger.debug(f"Retrieving top_k={top_k} chunks")
             results = await self.retriever.retrieve(
                 query=question,
                 collection_ids=collection_ids,
@@ -88,39 +96,57 @@ class RAGPipeline:
             )
             
             if not results:
+                self.logger.warning("No retrieval results found")
                 return RAGResponse(
                     answer="I couldn't find any relevant information to answer your question.",
                     sources=[],
                     query=question,
                     model=self.llm.model_name,
+                    retrieval_count=0,
+                    reranked=False,
                 )
             
+            self.logger.info(f"Retrieved {len(results)} chunks")
+            
             # 2. Rerank if reranker is available
+            reranked = False
             if self.reranker and len(results) > rerank_top_n:
+                self.logger.debug(f"Reranking {len(results)} results to top {rerank_top_n}")
                 results = await self._rerank_results(question, results, rerank_top_n)
+                reranked = True
+                self.logger.info(f"Reranked to {len(results)} chunks")
             else:
                 results = results[:rerank_top_n]
+                self.logger.debug(f"Using top {len(results)} results (no reranker)")
             
             # 3. Build context from top chunks
             context = self._build_context(results)
+            context_length = len(context)
+            self.logger.debug(f"Built context: {context_length} characters from {len(results)} chunks")
             
             # 4. Generate response with LLM
             prompt = self._build_prompt(system_prompt, context, question)
+            self.logger.debug(f"Generating response with {self.llm.model_name}")
+            
             answer = await self.llm.complete(
                 prompt=prompt,
                 max_tokens=max_tokens,
                 temperature=temperature,
             )
             
+            self.logger.info(f"Generated response: {len(answer)} chars")
+            
             return RAGResponse(
                 answer=answer,
                 sources=[r.model_dump() for r in results],
                 query=question,
                 model=self.llm.model_name,
+                retrieval_count=len(results),
+                reranked=reranked,
             )
             
         except Exception as e:
-            logger.error(f"RAG pipeline error: {e}")
+            self.logger.error(f"RAG pipeline error: {e}", exc_info=True)
             raise
     
     async def _rerank_results(
@@ -150,7 +176,7 @@ class RAGPipeline:
             return reranked_results
             
         except Exception as e:
-            logger.warning(f"Reranking failed, using original order: {e}")
+            self.logger.warning(f"Reranking failed, using original order: {e}")
             return results[:top_n]
     
     def _build_context(self, results: List[RetrievalResult]) -> str:
@@ -160,9 +186,14 @@ class RAGPipeline:
         for i, result in enumerate(results, 1):
             # Include source info if available
             source_info = ""
-            if result.metadata.get("source"):
-                source_info = f" (Source: {result.metadata['source']})"
+            metadata = result.metadata or {}
             
+            if metadata.get("source"):
+                source_info = f" (Source: {metadata['source']})"
+            elif metadata.get("page_number"):
+                source_info = f" (Page {metadata['page_number']})"
+            
+            # Include score for debugging
             context_parts.append(f"[{i}] {result.content}{source_info}")
         
         return "\n\n".join(context_parts)
@@ -211,6 +242,7 @@ class RAGPipelineBuilder:
         self._embedding_model = None
         self._llm_model = None
         self._use_reranker = False
+        self.logger = logging.getLogger(f"{self.__class__.__name__}")
     
     def with_embedding_model(self, model: str) -> "RAGPipelineBuilder":
         """Set embedding model (gemini, openai, mistral)."""
@@ -231,26 +263,37 @@ class RAGPipelineBuilder:
         """Build the RAG pipeline."""
         from elasticsearch import AsyncElasticsearch
         from core.ai.factory import AIProviderFactory, AIModel
+        from core.clients.milvus_client import get_milvus_client
+        
+        self.logger.info("Building RAG pipeline...")
         
         # Get embedding provider
         embedding_model = self._embedding_model or settings.DEFAULT_EMBEDDING_MODEL
         embedder = AIProviderFactory.get_embedding_provider(AIModel(embedding_model))
+        self.logger.debug(f"Embedding model: {embedding_model}")
         
         # Get LLM provider
         llm_model = self._llm_model or settings.DEFAULT_AI_MODEL
         llm = AIProviderFactory.get_llm_provider(AIModel(llm_model))
+        self.logger.debug(f"LLM model: {llm_model}")
         
         # Get reranker if enabled
         reranker = None
         if self._use_reranker:
             reranker = AIProviderFactory.get_reranker_provider()
+            self.logger.debug("Reranker enabled")
+            
+        # Get Milvus client
+        milvus_client = get_milvus_client()
+        milvus_client.connect()
+        self.logger.debug("Milvus connected")
         
         # Create retriever
         retriever = HybridRetriever(
             es_client=es_client,
             embedder=embedder,
-            vector_weight=settings.VECTOR_WEIGHT,
-            keyword_weight=settings.KEYWORD_WEIGHT,
+            milvus_client=milvus_client,
         )
         
+        self.logger.info("RAG pipeline built successfully")
         return RAGPipeline(retriever, llm, reranker)
