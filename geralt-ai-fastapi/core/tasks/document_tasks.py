@@ -2,18 +2,22 @@
 Document Processing Tasks
 
 Celery tasks for document processing and deletion.
+Provides robust logging and error handling throughout the processing pipeline.
 """
 import os
 import json
 import tempfile
 import logging
+import traceback
 import numpy as np
 from datetime import datetime
+from typing import List, Dict, Optional
 
 from core.tasks import celery_app
 from config import Config
 from models.database import document_collection
-from clients import minio_client, es_client
+from clients import minio_client
+from core.clients.elasticsearch_client import get_sync_elasticsearch_client
 
 from core.extraction.factory import ExtractorFactory
 from core.ai.factory import AIProviderFactory
@@ -21,6 +25,8 @@ from helpers.status_updates import emit_status, update_document_status, _finaliz
 from helpers.socketio_instance import socketio
 from helpers.utils import get_utility_service
 from services.notifications import get_notification_service, NotificationType, NotificationPriority
+
+logger = logging.getLogger(__name__)
 
 
 class DocumentProcessor:
@@ -45,14 +51,16 @@ class DocumentProcessor:
     
     def __init__(self, document_id: str):
         self.document_id = document_id
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(f"{self.__class__.__name__}[{document_id[:8]}]")
     
     def process(self) -> bool:
         """Process the document."""
+        self.logger.info(f"Starting document processing for {self.document_id}")
+        
         try:
             doc = document_collection.find_one({"_id": self.document_id})
             if not doc:
-                self.logger.error(f"Document {self.document_id} not found")
+                self.logger.error(f"Document {self.document_id} not found in database")
                 return False
             
             self._emit_progress(0, 0)  # Start: 0%
@@ -61,35 +69,49 @@ class DocumentProcessor:
             file_name = doc.get("file_name", "")
             url = doc.get("url", "")
             collection_id = doc["collection_id"]
-            username = doc["added_by"]
-            conversation_id = doc.get("conversation_id")
+            
+            self.logger.info(f"Document: {file_name or url}, Collection: {collection_id}")
             
             # Step 1: Fetching document
             self._emit_progress(1, 5)
             extracted = []
             
             if file_path:
+                self.logger.info(f"Processing file: {file_path}")
                 extracted = self._process_file(doc, file_path, file_name)
             elif url:
+                self.logger.info(f"Processing URL: {url}")
                 extracted = self._process_url(doc, url)
             else:
                 self._handle_error("No file_path or url found", "Missing source", 10)
                 return False
             
             if not extracted:
-                # If extraction failed but didn't raise exception (returned empty)
-                # Ensure we handled error inside or handle here
-                if not doc.get("error_message"): # Check if error wasn't already logged
-                     self._handle_error(f"No content extracted from {file_name or url}", "No extracted content", 30)
+                # Check if error was already logged
+                doc_check = document_collection.find_one({"_id": self.document_id})
+                if not doc_check.get("error_message"):
+                    self._handle_error(
+                        f"No content extracted from {file_name or url}",
+                        "No extracted content",
+                        30
+                    )
                 return False
+            
+            self.logger.info(f"Extraction complete: {len(extracted)} chunks extracted")
 
             # Step 4-6: Store chunks & Embed
-            self._emit_progress(3, 30)  # Extracted, starting embeddings
+            self._emit_progress(3, 30)
+            
             try:
-                self._embed_and_store(
-                    self.document_id, extracted, collection_id
-                )
+                # Cleanup existing data for idempotency
+                self.logger.info("Cleaning up existing data for reprocessing")
+                self._cleanup_existing(self.document_id)
+                
+                self.logger.info("Starting embedding and storage")
+                self._embed_and_store(self.document_id, extracted, collection_id)
+                
             except Exception as e:
+                self.logger.error(f"Embed/store failed: {e}", exc_info=True)
                 self._handle_error(f"Unable to store chunks: {e}", "Error storing data", 60)
                 return False
             
@@ -97,101 +119,169 @@ class DocumentProcessor:
             return True
             
         except Exception as e:
+            self.logger.error(f"Unexpected error during processing: {e}", exc_info=True)
             self._handle_error(str(e), "Unexpected error", 70)
             return False
     
-    def _process_file(self, doc, file_path, file_name):
+    def _process_file(self, doc: Dict, file_path: str, file_name: str) -> List[Dict]:
         """Process a file-based document."""
+        self.logger.info(f"Fetching file from MinIO: {file_path}")
+        
         try:
             minio_response = minio_client.get_object(Config.BUCKET_NAME, file_path)
         except Exception as e:
+            self.logger.error(f"MinIO fetch failed: {e}", exc_info=True)
             self._handle_error(f"Unable to retrieve file: {e}", "Error retrieving file", 10)
             return []
         
         temp_file = tempfile.NamedTemporaryFile(delete=False)
         local_path = None
+        
         try:
+            # Download file
+            bytes_downloaded = 0
             for chunk in minio_response.stream(1024 * 1024):
                 temp_file.write(chunk)
+                bytes_downloaded += len(chunk)
             temp_file.flush()
             local_path = temp_file.name
+            
+            self.logger.info(f"Downloaded {bytes_downloaded / 1024:.1f} KB to {local_path}")
+            
         finally:
             temp_file.close()
         
         # Step 3: Extract
-        self._emit_progress(2, 15)  # Downloaded
+        self._emit_progress(2, 15)
         file_ext = file_name.split(".")[-1].lower()
+        self.logger.info(f"File extension: {file_ext}")
         
         try:
-            # Check if we should convert to PDF first for universal processing
+            # Check if we should convert to PDF first
             from core.extraction.converters import UniversalExtractor
             
             if UniversalExtractor.should_convert(file_ext):
                 self.logger.info(f"Converting {file_ext} to PDF for universal processing")
                 
-                # Convert to PDF
                 with open(local_path, 'rb') as f:
                     pdf_bytes = UniversalExtractor.extract_via_pdf(f.read(), file_ext)
                 
                 if pdf_bytes:
-                    # Process as PDF for snapshots and bbox
                     from core.extraction.documents import PDFExtractor
                     pdf_extractor = PDFExtractor()
                     extracted = pdf_extractor.extract(pdf_bytes)
-                    self.logger.info(f"Successfully converted and extracted {len(extracted)} blocks from {file_ext}")
+                    self.logger.info(f"Converted and extracted {len(extracted)} blocks from {file_ext}")
                     return extracted
                 else:
-                    # Fallback to native extractor if conversion failed
                     self.logger.warning(f"PDF conversion failed for {file_ext}, using native extractor")
             
-            # Use native extractor (either because conversion failed or not needed)
+            # Use native extractor
+            self.logger.info(f"Using native extractor for {file_ext}")
             extractor = ExtractorFactory.get_extractor(file_ext)
             extracted = extractor.extract(local_path)
+            
+            self.logger.info(f"Native extraction complete: {len(extracted)} chunks")
             return extracted
             
-        except Exception as e:
+        except ValueError as e:
+            # Expected extraction errors
+            self.logger.error(f"Extraction error: {e}")
             self._handle_error(f"Extraction error: {e}", "Extraction error", 30)
             return []
+            
+        except Exception as e:
+            # Unexpected errors
+            self.logger.error(f"Unexpected extraction error: {e}", exc_info=True)
+            self._handle_error(f"Extraction error: {e}", "Extraction error", 30)
+            return []
+            
         finally:
             if local_path and os.path.exists(local_path):
-                os.remove(local_path)
+                try:
+                    os.remove(local_path)
+                    self.logger.debug(f"Cleaned up temp file: {local_path}")
+                except Exception as cleanup_err:
+                    self.logger.warning(f"Failed to cleanup temp file: {cleanup_err}")
     
-    def _process_url(self, doc, url):
+    def _process_url(self, doc: Dict, url: str) -> List[Dict]:
         """Process a URL-based document."""
-        self._emit_progress(2, 15)  # Fetched URL
+        self._emit_progress(2, 15)
+        
         try:
             if "youtube.com" in url or "youtu.be" in url:
+                self.logger.info("Detected YouTube URL, using YouTube extractor")
                 extractor = ExtractorFactory.get_extractor("youtube")
             else:
+                self.logger.info("Using web extractor")
                 extractor = ExtractorFactory.get_extractor("web")
             
             extracted = extractor.extract(url)
+            self.logger.info(f"URL extraction complete: {len(extracted)} chunks")
             return extracted
+            
         except Exception as e:
+            self.logger.error(f"URL extraction error: {e}", exc_info=True)
             self._handle_error(f"URL extraction error: {e}", "URL extraction error", 30)
             return []
 
-    def _embed_and_store(self, document_id: str, extracted_chunks: list, collection_id: str):
-        """Splits text and indexes chunk embeddings in BOTH Elasticsearch and Milvus for redundancy."""
-        CHUNK_INSERT_BATCH = 50
-        EMBEDDING_BATCH_SIZE = 5
-        MAX_CHARS_PER_CHUNK = 5000
+    def _cleanup_existing(self, document_id: str) -> None:
+        """Delete existing chunks from ES and Milvus before reprocessing."""
+        self.logger.info(f"Cleaning up existing data for doc {document_id}")
+        
+        # 1. Delete from Elasticsearch
+        try:
+            # Use sync delete_by_query
+            sync_es = get_sync_elasticsearch_client()
+            sync_es.delete_by_query(
+                query={"query": {"term": {"document_id.keyword": document_id}}},
+                index=Config.ELASTIC_INDEX
+            )
+            self.logger.info("Elasticsearch cleanup complete")
+        except Exception as e:
+            self.logger.warning(f"ES cleanup failed (might be empty): {e}")
 
-        # Handle page images (snapshots) and propagate to all chunks of the same page
+        # 2. Delete from Milvus
+        try:
+            from core.clients.milvus_client import get_milvus_client
+            milvus_client = get_milvus_client()
+            milvus_client.connect()
+            coll = milvus_client.embedding_collection
+            coll.load()
+            
+            expr = f"metadata['document_id'] == '{document_id}'"
+            coll.delete(expr)
+            self.logger.info("Milvus cleanup complete")
+        except Exception as e:
+            self.logger.warning(f"Milvus cleanup failed: {e}")
+
+    def _embed_and_store(
+        self,
+        document_id: str,
+        extracted_chunks: List[Dict],
+        collection_id: str
+    ) -> None:
+        """
+        Hierarchical Storage Strategy:
+        1. Split into Parent and Child chunks.
+        2. Store Parent chunks (Text + Metadata) in Elasticsearch for Context & Keyword search.
+        3. Store Child chunks (Vector + Metadata) in Milvus for Semantic search.
+        """
         import io
-        page_image_map = {} # page_num -> snapshot_path
+        
+        self.logger.info(f"Processing {len(extracted_chunks)} extracted chunks")
+        
+        # Handle page images (snapshots)
+        page_image_map = {}
 
-        # First pass: Identify and upload images from chunks that have them
+        # First pass: Identify and upload images
         for item in extracted_chunks:
             img_bytes = item.pop("_page_image_bytes", None)
-            page_num = item["metadata"].get("page_number", 0)
+            page_num = item.get("metadata", {}).get("page_number", 0)
             
             if img_bytes:
                 try:
-                    # Create a path for the snapshot: documents/{doc_id}/snapshots/page_{num}.png
                     snapshot_path = f"documents/{document_id}/snapshots/page_{page_num}.png"
                     
-                    # Upload to MinIO
                     minio_client.put_object(
                         Config.BUCKET_NAME,
                         snapshot_path,
@@ -201,141 +291,163 @@ class DocumentProcessor:
                     )
                     
                     page_image_map[page_num] = snapshot_path
+                    self.logger.debug(f"Uploaded page {page_num} snapshot")
                 except Exception as e:
-                    self.logger.warning(f"Failed to upload page snapshot for doc {document_id}: {e}")
+                    self.logger.warning(f"Failed to upload page snapshot: {e}")
 
-        # Second pass: Assign page_image to all chunks based on page_number
+        if page_image_map:
+            self.logger.info(f"Uploaded {len(page_image_map)} page snapshots")
+
+        # Second pass: Assign page_image to chunks
         for item in extracted_chunks:
-            page_num = item["metadata"].get("page_number", 0)
+            page_num = item.get("metadata", {}).get("page_number", 0)
             if page_num in page_image_map:
+                if "metadata" not in item:
+                    item["metadata"] = {}
                 item["metadata"]["page_image"] = page_image_map[page_num]
 
-        reshaped_chunks = []
+        # Inject metadata
         for item in extracted_chunks:
-            text = item.get("content", "")
-            meta = item.get("metadata", {})
-            if len(text) > MAX_CHARS_PER_CHUNK:
-                subs = get_utility_service().split_text_into_subchunks(
-                    text, max_chars=MAX_CHARS_PER_CHUNK, overlap=0
-                )
-                for st in subs:
-                    reshaped_chunks.append({"content": st, "metadata": meta})
-            else:
-                reshaped_chunks.append(item)
+            if "metadata" not in item:
+                item["metadata"] = {}
+            item["metadata"]["document_id"] = document_id
+            item["metadata"]["collection_id"] = collection_id
 
-        if not reshaped_chunks:
-            return
-
-        total_chunks = len(reshaped_chunks)
-        embedded_count = 0
-        partial_batch = []
+        # Hierarchical Chunking
+        from core.rag.chunker import HierarchicalChunker
+        chunker = HierarchicalChunker()
+        parents, children = chunker.chunk_documents(extracted_chunks)
         
-        # Get embedder
-        embedder = AIProviderFactory.get_embedding_provider()
+        self.logger.info(f"Chunked into {len(parents)} parents and {len(children)} children")
         
-        # Initialize Milvus client for dual storage
-        milvus_client = None
-        try:
-            from core.clients.milvus_client import get_milvus_client
-            milvus_client = get_milvus_client()
-            milvus_client.connect()
-            self.logger.info("Milvus connected for dual vector storage")
-        except Exception as e:
-            self.logger.warning(f"Could not connect to Milvus, using Elasticsearch only: {e}")
+        total_steps = len(parents) + len(children)
+        processed_steps = 0
 
-        async def flush_embedding_batch(batch):
-            nonlocal embedded_count
-            if not batch:
-                return
-            texts = [b["content"] for b in batch]
-            
-            # Since we are running in an async function (called via asyncio.run),
-            # we can directly await the async method.
-            vectors = await embedder.embed_batch(texts)
-            
-            if len(vectors) != len(batch):
-                raise Exception("Mismatch in embedding count vs. text batch size")
-            
-            # Prepare data for Milvus batch insert
-            milvus_ids = []
-            milvus_embeddings = []
-            milvus_metadata = []
+        # Store Parents in Elasticsearch
+        self.logger.info("Storing parent chunks in Elasticsearch")
+        es_success = 0
+        es_errors = 0
+        
+        for parent in parents:
+            try:
+                meta_dict = parent.metadata.model_dump()
                 
-            for i, chunk_item in enumerate(batch):
-                chunk_index = embedded_count + i
-                chunk_id = f"{document_id}_chunk_{chunk_index}"
-                
-                # 1. Store in Elasticsearch (primary)
                 es_doc = {
                     "document_id": document_id,
-                    "content": chunk_item["content"],
-                    "embedding": vectors[i],  # List[float]
-                    "metadata": json.dumps(chunk_item.get("metadata", {})),
-                    "chunk_id": chunk_id,
+                    "content": parent.content,
+                    "metadata": json.dumps(meta_dict),
+                    "chunk_id": parent.chunk_id,
                     "collection_id": collection_id,
+                    "chunk_type": "parent"
                 }
-                es_client.index(index=Config.ELASTIC_INDEX, body=es_doc)
                 
-                # 2. Prepare for Milvus (secondary/backup)
-                if milvus_client:
-                    # Generate a unique int64 id using hash
-                    milvus_id = abs(hash(chunk_id)) % (2**63 - 1)
-                    milvus_ids.append(milvus_id)
-                    milvus_embeddings.append(vectors[i])
-                    metadata_str = json.dumps({
-                        "document_id": document_id,
-                        "chunk_id": chunk_id,
-                        "collection_id": collection_id,
-                        "content_preview": chunk_item["content"][:500]  # Truncate for varchar limit
-                    })
-                    milvus_metadata.append(metadata_str[:2000])  # Milvus varchar limit
+                sync_es = get_sync_elasticsearch_client()
+                sync_es.index_document(es_doc, index=Config.ELASTIC_INDEX)
+                es_success += 1
+                
+            except Exception as e:
+                es_errors += 1
+                self.logger.error(f"Failed to index parent chunk {parent.chunk_id}: {e}")
             
-            # 3. Batch insert to Milvus
-            if milvus_client and milvus_ids:
-                try:
-                    from pymilvus import Collection, utility
-                    collection_name = "embedding_collection"
-                    
-                    # Ensure collection exists
-                    if not utility.has_collection(collection_name):
-                        milvus_client._get_or_create_collection(collection_name, "Document embeddings backup")
-                    
-                    coll = Collection(collection_name)
-                    data = [milvus_ids, milvus_embeddings, milvus_metadata]
-                    coll.insert(data)
-                except Exception as e:
-                    self.logger.warning(f"Milvus insert failed (ES still has data): {e}")
-            
-            embedded_count += len(batch)
+            processed_steps += 1
 
-        for chunk_item in reshaped_chunks:
-            partial_batch.append(chunk_item)
-            if len(partial_batch) >= EMBEDDING_BATCH_SIZE:
+        self.logger.info(f"ES indexing: {es_success} success, {es_errors} errors")
+
+        # Store Children in Milvus
+        self.logger.info("Storing child chunks in Milvus")
+        
+        embedder = AIProviderFactory.get_embedding_provider()
+        milvus_client_instance = None
+        
+        try:
+            from core.clients.milvus_client import get_milvus_client
+            milvus_client_instance = get_milvus_client()
+            milvus_client_instance.connect()
+        except Exception as e:
+            self.logger.error(f"Milvus connection failed: {e}")
+            # Continue without vector storage
+            self._emit_progress(6, 100)
+            return
+
+        # Batch embed children
+        BATCH_SIZE = 20
+        total_children = len(children)
+        milvus_success = 0
+        milvus_errors = 0
+        
+        for i in range(0, total_children, BATCH_SIZE):
+            batch = children[i:i+BATCH_SIZE]
+            texts = [c.content for c in batch]
+            batch_num = (i // BATCH_SIZE) + 1
+            total_batches = (total_children + BATCH_SIZE - 1) // BATCH_SIZE
+            
+            self.logger.debug(f"Processing batch {batch_num}/{total_batches}")
+            
+            try:
+                # Embed batch - use asyncio.run since embedder is async
                 import asyncio
-                # Run async flush synchronously
-                asyncio.run(flush_embedding_batch(partial_batch))  # Simplified for sync task
+                vectors = asyncio.run(embedder.embed_batch(texts))
                 
-                partial_batch.clear()
-                prog = 30 + int((embedded_count / total_chunks) * 70)
-                self._emit_progress(5, prog)
+                milvus_ids = []
+                milvus_embeddings = []
+                milvus_metadata = []
+                
+                for j, child in enumerate(batch):
+                    m_id = abs(hash(child.chunk_id)) % (2**63 - 1)
+                    
+                    milvus_ids.append(m_id)
+                    milvus_embeddings.append(vectors[j])
+                    
+                    meta_dict = child.metadata.model_dump()
+                    
+                    # Flatten 'extra' fields
+                    if "extra" in meta_dict and isinstance(meta_dict["extra"], dict):
+                        extra_data = meta_dict.pop("extra")
+                        meta_dict.update(extra_data)
+                    
+                    meta_dict["content_preview"] = child.content[:500]
+                    milvus_metadata.append(meta_dict)
+                
+                # Insert batch into Milvus
+                from pymilvus import Collection, utility
+                collection_name = "embedding_collection"
+                
+                if not utility.has_collection(collection_name):
+                    milvus_client_instance._get_or_create_collection(
+                        collection_name, "Document embeddings"
+                    )
+                
+                coll = Collection(collection_name)
+                coll.insert([milvus_ids, milvus_embeddings, milvus_metadata])
+                milvus_success += len(batch)
+                
+            except Exception as e:
+                milvus_errors += len(batch)
+                self.logger.error(f"Failed to process batch {batch_num}: {e}")
 
-        if partial_batch:
-            import asyncio
-            asyncio.run(flush_embedding_batch(partial_batch))
+            processed_steps += len(batch)
+            
+            # Progress update
+            prog = 30 + int((processed_steps / total_steps) * 70)
+            self._emit_progress(5, min(prog, 99))
 
+        self.logger.info(f"Milvus indexing: {milvus_success} success, {milvus_errors} errors")
         self._emit_progress(6, 100)
 
-    def _emit_progress(self, step: int, progress: int):
+    def _emit_progress(self, step: int, progress: int) -> None:
         """Emit progress update."""
         if step < len(self.STEP_MESSAGES):
-             msg = self.STEP_MESSAGES[step]
+            msg = self.STEP_MESSAGES[step]
         else:
-             msg = "Processing..."
+            msg = "Processing..."
+        
+        self.logger.debug(f"Progress: Step {step} - {progress}% - {msg}")
         emit_status(self.document_id, msg, progress)
         update_document_status(self.document_id, msg, progress)
     
-    def _handle_error(self, error: str, status: str, progress: int):
+    def _handle_error(self, error: str, status: str, progress: int) -> None:
         """Handle processing error."""
+        self.logger.error(f"Processing error: {status} - {error}")
         _finalize_error(self.document_id, error, status, progress)
         
         # Send error notification
@@ -352,11 +464,12 @@ class DocumentProcessor:
         except Exception as e:
             self.logger.warning(f"Failed to send error notification: {e}")
     
-    def _finalize_success(self):
+    def _finalize_success(self) -> None:
         """Finalize successful processing."""
+        self.logger.info(f"Document processing completed successfully for {self.document_id}")
+        
         self._emit_progress(6, 90)
         
-        # Get document info for notification
         doc = document_collection.find_one({"_id": self.document_id})
         
         document_collection.update_one(
@@ -373,7 +486,7 @@ class DocumentProcessor:
         emit_status(self.document_id, "Processing completed", 100)
         update_document_status(self.document_id, "Processing completed", 100)
         
-        # Send notification to user
+        # Send notification
         if doc:
             try:
                 notification_service = get_notification_service()
@@ -394,56 +507,63 @@ class DocumentDeleter:
     - Delete from MongoDB
     - Delete from MinIO
     - Delete from Elasticsearch
+    - Delete from Milvus
     """
     
     def __init__(self, document_id: str, username: str = None):
         self.document_id = document_id
         self.username = username
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(f"{self.__class__.__name__}[{document_id[:8]}]")
     
     def delete(self) -> bool:
         """Delete the document from all systems."""
+        self.logger.info(f"Starting deletion for document {self.document_id}")
+        
         try:
             doc = document_collection.find_one({"_id": self.document_id})
             if not doc:
+                self.logger.warning(f"Document {self.document_id} not found")
                 self._emit("Document not found", 100)
                 return False
+            
+            file_name = doc.get("file_name", "Unknown")
+            self.logger.info(f"Deleting document: {file_name}")
             
             # 1. Delete from MongoDB
             self._emit("Deleting from MongoDB", 20)
             document_collection.delete_one({"_id": self.document_id})
+            self.logger.info("Deleted from MongoDB (main document)")
+            
+            # Delete any chunk documents
+            result = document_collection.delete_many({"document_id": self.document_id})
+            if result.deleted_count > 0:
+                self.logger.info(f"Deleted {result.deleted_count} chunk documents from MongoDB")
+            
             self._emit("Deleted from MongoDB", 40)
             
-            # 2. Delete chunks (if any logical chunk store exists in Mongo, else skip)
-            # Original code did delete_many on document_collection? 
-            # Ah, maybe chunks were in document_collection too? 
-            # If so, they are deleted by id or doc_id. 
-            # The original code: result = document_collection.delete_many({"document_id": self.document_id})
-            # This implies chunks MIGHT be in mongo. I will keep it.
-            document_collection.delete_many({"document_id": self.document_id})
-            
-            # 3. Delete from MinIO
+            # 2. Delete from MinIO
             file_path = doc.get("file_path")
             if file_path:
                 try:
                     minio_client.remove_object(Config.BUCKET_NAME, file_path)
+                    self.logger.info(f"Deleted file from MinIO: {file_path}")
                     self._emit("Deleted file from MinIO", 60)
                 except Exception as e:
                     self.logger.error(f"Error deleting from MinIO: {e}")
             
-            # 4. Delete from Elasticsearch
+            # 3. Delete from Elasticsearch
             try:
-                # Use document_id.keyword since the field is text with keyword subfield
-                es_client.delete_by_query(
-                    index=Config.ELASTIC_INDEX,
-                    body={"query": {"term": {"document_id.keyword": self.document_id}}},
-                    refresh=True
+                sync_es = get_sync_elasticsearch_client()
+                sync_es.delete_by_query(
+                    query={"query": {"term": {"document_id.keyword": self.document_id}}},
+                    index=Config.ELASTIC_INDEX
                 )
+                self.logger.info("Deleted embeddings from Elasticsearch")
                 self._emit("Removed embeddings from Elasticsearch", 70)
             except Exception as e:
                 self.logger.error(f"Error deleting from ES: {e}")
             
-            # 5. Delete from Milvus (if connected)
+            # 4. Delete from Milvus
             try:
                 from pymilvus import Collection, utility, MilvusException
                 from core.clients.milvus_client import get_milvus_client
@@ -456,49 +576,68 @@ class DocumentDeleter:
                     coll = Collection(collection_name)
                     try:
                         coll.load()
-                        # Ideally we would delete by expression here, but Milvus delete by expression is expensive/complex 
-                        # without scalar index on metadata. 
-                        # For now, just logging that we are skipping complex delete to avoid errors if index missing.
-                        # If we really want to delete, we need to know the IDs or have a scalar index.
-                        # Given the error, let's just suppress the load error and move on.
-                        # The original code didn't actually execute a delete command, just a comment!
-                        # So simply loading caused the error.
+                        expr = f"metadata['document_id'] == '{self.document_id}'"
+                        coll.delete(expr)
+                        self.logger.info("Deleted embeddings from Milvus")
                     except MilvusException as e:
-                        if e.code == 700 or "index not found" in e.message:
-                             self.logger.warning(f"Skipping Milvus deletion: Index not found (Collection might be empty or new).")
+                        if e.code == 700 or "index not found" in str(e.message):
+                            self.logger.warning("Skipping Milvus deletion: Index not found")
                         else:
-                             raise e
+                            raise e
                     
                     self._emit("Removed embeddings from Milvus", 90)
             except Exception as e:
                 self.logger.warning(f"Could not delete from Milvus: {e}")
             
             self._emit("Deletion completed", 100)
+            self.logger.info(f"Deletion completed for {self.document_id}")
             return True
             
         except Exception as e:
-            self.logger.error(f"Error during deletion: {e}")
+            self.logger.error(f"Error during deletion: {e}", exc_info=True)
             self._emit("Error during deletion", 100, error=str(e))
             return False
     
-    def _emit(self, status: str, progress: int, error: str = None):
+    def _emit(self, status: str, progress: int, error: str = None) -> None:
         """Emit deletion status."""
-        data = {"document_id": self.document_id, "status": status, "progress": progress}
+        self.logger.debug(f"Deletion progress: {progress}% - {status}")
+        
+        data = {
+            "document_id": self.document_id,
+            "status": status,
+            "progress": progress
+        }
         if error:
             data["error"] = error
         socketio.emit("deletion_update", data)
 
 
 # Celery task wrappers
-@celery_app.task
-def background_process_document(document_id):
+@celery_app.task(bind=True, max_retries=3)
+def background_process_document(self, document_id: str) -> bool:
     """Celery task for document processing."""
-    processor = DocumentProcessor(document_id)
-    return processor.process()
+    logger.info(f"Celery task started: process document {document_id}")
+    
+    try:
+        processor = DocumentProcessor(document_id)
+        result = processor.process()
+        logger.info(f"Celery task completed: document {document_id}, success={result}")
+        return result
+    except Exception as e:
+        logger.error(f"Celery task failed: {e}", exc_info=True)
+        raise
 
 
-@celery_app.task
-def background_delete_document_task(document_id, username=None):
+@celery_app.task(bind=True)
+def background_delete_document_task(self, document_id: str, username: str = None) -> bool:
     """Celery task for document deletion."""
-    deleter = DocumentDeleter(document_id, username)
-    return deleter.delete()
+    logger.info(f"Celery task started: delete document {document_id}")
+    
+    try:
+        deleter = DocumentDeleter(document_id, username)
+        result = deleter.delete()
+        logger.info(f"Celery task completed: delete {document_id}, success={result}")
+        return result
+    except Exception as e:
+        logger.error(f"Celery deletion task failed: {e}", exc_info=True)
+        raise

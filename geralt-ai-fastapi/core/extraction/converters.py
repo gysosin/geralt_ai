@@ -2,6 +2,7 @@
 Document Format Converters
 
 Converts various document formats to PDF for unified processing.
+Uses LibreOffice headless mode for conversion.
 """
 import io
 import os
@@ -12,6 +13,9 @@ from pathlib import Path
 from typing import Union, Optional
 
 logger = logging.getLogger(__name__)
+
+# Check LibreOffice availability at module load
+_LIBREOFFICE_AVAILABLE = None
 
 
 class DocumentConverter:

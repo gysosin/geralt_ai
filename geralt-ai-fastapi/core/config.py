@@ -67,10 +67,13 @@ class Settings(BaseSettings):
     MINIO_SECURE: bool = False
     
     # ==========================================================================
-    # Milvus (Vector DB) - Legacy, now using ES
+    # Milvus (Vector DB)
     # ==========================================================================
     MILVUS_HOST: str = "127.0.0.1"
     MILVUS_PORT: int = 19530
+    MILVUS_USER: str = ""
+    MILVUS_PASSWORD: str = ""
+    MILVUS_TOKEN: str = ""
     
     # ==========================================================================
     # AI Providers

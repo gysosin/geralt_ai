@@ -34,6 +34,9 @@ class MilvusClient:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.host = Config.MILVUS_HOST
         self.port = Config.MILVUS_PORT
+        self.user = Config.MILVUS_USER
+        self.password = Config.MILVUS_PASSWORD
+        self.token = Config.MILVUS_TOKEN
         self.embedding_dim = Config.EMBEDDING_DIM
         self._connected = False
         self._embedding_collection = None
@@ -49,7 +52,17 @@ class MilvusClient:
     def connect(self) -> bool:
         """Establish connection to Milvus."""
         if not self._connected:
-            connections.connect(host=self.host, port=self.port)
+            connect_args = {
+                "host": self.host, 
+                "port": self.port
+            }
+            if self.user and self.password:
+                connect_args["user"] = self.user
+                connect_args["password"] = self.password
+            if self.token:
+                connect_args["token"] = self.token
+                
+            connections.connect(**connect_args)
             self._connected = True
             self.logger.info(f"Milvus connected to {self.host}:{self.port}")
         return self._connected
@@ -81,16 +94,37 @@ class MilvusClient:
         if utility.has_collection(name):
             return Collection(name)
         
+        # Schema Definition (Milvus 2.6+ Optimized)
         schema = CollectionSchema(
             fields=[
                 FieldSchema(name="id", dtype=DataType.INT64, is_primary=True),
                 FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=self.embedding_dim),
-                FieldSchema(name="metadata", dtype=DataType.VARCHAR, max_length=2048),
+                # Optimization: Use JSON type for rich metadata filtering
+                FieldSchema(name="metadata", dtype=DataType.JSON, nullable=True),
             ],
             description=description,
+            enable_dynamic_field=True # Optimization: Enable dynamic schema
         )
+        
         collection = Collection(name, schema=schema)
-        self.logger.info(f"Created Milvus collection: {name}")
+        
+        # Create Index for Vector Field
+        index_params = {
+            "metric_type": "COSINE",
+            "index_type": "HNSW",
+            "params": {"M": 16, "efConstruction": 200}
+        }
+        collection.create_index(field_name="embedding", index_params=index_params)
+        
+        # Optimization: Create Scalar Index for JSON metadata (Generic Inverted Index)
+        # Note: Milvus 2.6 automatically indexes JSON paths if configured, 
+        # but a general index on the field helps.
+        try:
+             collection.create_index(field_name="metadata", index_name="metadata_index")
+        except:
+             pass # Might fail if empty or specific index type needed, usually auto-handled
+             
+        self.logger.info(f"Created Milvus collection: {name} (JSON+Dynamic Enabled)")
         return collection
     
     def insert(self, collection_name: str, data: List) -> dict:
@@ -102,7 +136,19 @@ class MilvusClient:
         """Search vectors in collection."""
         collection = self._get_or_create_collection(collection_name, "")
         collection.load()
-        return collection.search(vectors, **kwargs)
+        
+        search_params = {
+            "metric_type": "COSINE", 
+            "params": {"nprobe": 10}
+        }
+        
+        return collection.search(
+            data=vectors, 
+            anns_field="embedding", 
+            param=search_params, 
+            limit=limit, 
+            **kwargs
+        )
     
     def query(self, collection_name: str, expr: str = None, output_fields: List[str] = None):
         """Query collection."""

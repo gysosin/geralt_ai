@@ -149,7 +149,8 @@ class ConversationService(BaseService):
             )
             
             # Filter results by relevance score
-            RELEVANCE_THRESHOLD = 0.35
+            # RRF scores are typically 0.01-0.03, so threshold must be much lower than BM25 scores
+            RELEVANCE_THRESHOLD = 0.005  # Lowered from 0.35 for RRF scoring
             valid_results = [r for r in retrieval_results if getattr(r, 'score', 0) > RELEVANCE_THRESHOLD]
             
             # If no relevant documents found, fallback to direct chat

@@ -204,14 +204,18 @@ async def test_hybrid_retriever(collection_id=None):
         from core.ai.factory import AIProviderFactory
         from core.rag.retriever import HybridRetriever
         from clients import es_client
+        from core.clients.milvus_client import get_milvus_client
         
         embedder = AIProviderFactory.get_embedding_provider()
-        retriever = HybridRetriever(es_client, embedder)
+        milvus_client = get_milvus_client()
+        # Ensure connected for test
+        milvus_client.connect()
+        
+        retriever = HybridRetriever(es_client, embedder, milvus_client=milvus_client)
         
         print(f"✓ HybridRetriever initialized")
         print(f"  - Index: {retriever.index}")
-        print(f"  - Vector weight: {retriever.vector_weight}")
-        print(f"  - Keyword weight: {retriever.keyword_weight}")
+        # Weights removed in Hierarchical RRF version
         
         # Test query
         test_query = "What information is available in the documents?"
