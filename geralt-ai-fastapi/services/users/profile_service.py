@@ -33,6 +33,13 @@ class ProfileService(BaseService):
     """
     
     ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg"}
+    ALLOWED_IMAGE_CONTENT_TYPES = {"image/png", "image/jpeg"}
+    IMAGE_CONTENT_TYPES_BY_EXTENSION = {
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+    }
+    MAX_PROFILE_PICTURE_SIZE = 5 * 1024 * 1024
     
     def __init__(self):
         super().__init__()
@@ -174,6 +181,12 @@ class ProfileService(BaseService):
     def _upload_profile_picture(self, username: str, file) -> ServiceResult:
         """Upload profile picture to MinIO."""
         filename = get_utility_service().secure_filename(file.filename)
+        if "." not in filename:
+            return ServiceResult.fail(
+                "Invalid image format. Allowed: png, jpg, jpeg",
+                400
+            )
+
         ext = filename.rsplit(".", 1)[-1].lower()
         
         if ext not in self.ALLOWED_IMAGE_EXTENSIONS:
@@ -181,22 +194,53 @@ class ProfileService(BaseService):
                 "Invalid image format. Allowed: png, jpg, jpeg",
                 400
             )
+
+        content_type = (getattr(file, "content_type", "") or "").split(";")[0].strip().lower()
+        if content_type and content_type not in self.ALLOWED_IMAGE_CONTENT_TYPES:
+            return ServiceResult.fail(
+                "Invalid image content type. Allowed: image/png, image/jpeg",
+                400
+            )
+        if content_type and content_type != self.IMAGE_CONTENT_TYPES_BY_EXTENSION[ext]:
+            return ServiceResult.fail(
+                f"Invalid image content type for .{ext} file",
+                400
+            )
         
         new_filename = f"{uuid4()}.{ext}"
         file_path = f"{username}/profile_pictures/{new_filename}"
+        stream = getattr(file, "file", file)
         
-        file.seek(0, os.SEEK_END)
-        file_size = file.tell()
-        file.seek(0)
+        stream.seek(0, os.SEEK_END)
+        file_size = stream.tell()
+        stream.seek(0)
+
+        if file_size <= 0:
+            return ServiceResult.fail("Profile picture cannot be empty", 400)
+        if file_size > self.MAX_PROFILE_PICTURE_SIZE:
+            return ServiceResult.fail("Profile picture is too large", 413)
+
+        header = stream.read(16)
+        stream.seek(0)
+        if not self._matches_image_signature(ext, header):
+            return ServiceResult.fail("Invalid image content", 400)
         
         self.storage.put_object(
             Config.BUCKET_NAME,
             file_path,
-            file,
+            stream,
             length=file_size
         )
         
         return ServiceResult.ok(file_path)
+
+    def _matches_image_signature(self, extension: str, header: bytes) -> bool:
+        """Validate the uploaded image header against the requested extension."""
+        if extension == "png":
+            return header.startswith(b"\x89PNG\r\n\x1a\n")
+        if extension in {"jpg", "jpeg"}:
+            return header.startswith(b"\xff\xd8\xff")
+        return False
 
 
 # Singleton instance
