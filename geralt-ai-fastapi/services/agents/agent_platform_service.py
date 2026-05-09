@@ -174,9 +174,15 @@ class AgentPlatformService(BaseService):
         now = datetime.utcnow().isoformat()
         run_id = str(uuid4())
         planned_steps = [
-            self._plan_run_step(step, inputs, dry_run=dry_run)
+            self._prepare_run_step(step, inputs)
             for step in workflow_result.data.get("steps", [])
         ]
+        validation_error = self._validate_run_steps(planned_steps)
+        if validation_error:
+            return validation_error
+
+        if not dry_run:
+            planned_steps = [self._execute_run_step(step) for step in planned_steps]
 
         if dry_run:
             status = "planned"
@@ -222,14 +228,13 @@ class AgentPlatformService(BaseService):
         public.pop("_id", None)
         return public
 
-    def _plan_run_step(
+    def _prepare_run_step(
         self,
         step: Dict[str, Any],
         inputs: Dict[str, Any],
-        dry_run: bool,
     ) -> Dict[str, Any]:
         arguments = self._resolve_arguments(step.get("arguments") or {}, inputs)
-        planned = {
+        return {
             "step_id": step["step_id"],
             "name": step["name"],
             "tool_name": step["tool_name"],
@@ -240,11 +245,13 @@ class AgentPlatformService(BaseService):
             "output": None,
             "message": "",
         }
-        if dry_run:
-            return planned
 
+    def _execute_run_step(self, planned: Dict[str, Any]) -> Dict[str, Any]:
         try:
-            planned["output"] = self.tool_executor.execute(step["tool_name"], arguments)
+            planned["output"] = self.tool_executor.execute(
+                planned["tool_name"],
+                planned["arguments"],
+            )
             planned["status"] = "completed"
             return planned
         except NotImplementedError as e:
@@ -256,6 +263,43 @@ class AgentPlatformService(BaseService):
             planned["status"] = "failed"
             planned["message"] = str(e)
         return planned
+
+    def _validate_run_steps(self, planned_steps: List[Dict[str, Any]]) -> Optional[ServiceResult]:
+        for step in planned_steps:
+            tool = self.registry.get_tool(step["tool_name"])
+            if not tool:
+                return ServiceResult.fail(f"Unknown agent tool(s): {step['tool_name']}", 400)
+
+            schema = tool.input_schema()
+            properties = schema.get("properties", {})
+            arguments = step.get("arguments") or {}
+            for required_name in schema.get("required", []):
+                value = arguments.get(required_name)
+                if value is None or value == "" or value == []:
+                    return ServiceResult.fail(
+                        f"Step {step['step_id']} is missing required argument: {required_name}",
+                        400,
+                    )
+
+            for name, value in arguments.items():
+                expected_type = properties.get(name, {}).get("type")
+                if expected_type == "array" and not isinstance(value, list):
+                    return ServiceResult.fail(
+                        f"Step {step['step_id']} argument {name} must be an array",
+                        400,
+                    )
+                if expected_type == "string" and not isinstance(value, str):
+                    return ServiceResult.fail(
+                        f"Step {step['step_id']} argument {name} must be a string",
+                        400,
+                    )
+                if expected_type == "integer" and not isinstance(value, int):
+                    return ServiceResult.fail(
+                        f"Step {step['step_id']} argument {name} must be an integer",
+                        400,
+                    )
+
+        return None
 
     def _resolve_arguments(self, value: Any, inputs: Dict[str, Any]) -> Any:
         if isinstance(value, dict):

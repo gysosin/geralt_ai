@@ -258,3 +258,86 @@ def test_start_workflow_run_executes_aggregation_step():
     assert inserted["status"] == "completed"
     assert inserted["steps"][0]["status"] == "completed"
     assert inserted["steps"][0]["output"]["data"][0]["total"] == 200
+
+
+def test_start_workflow_run_rejects_missing_required_tool_argument():
+    workflow_db = MagicMock()
+    run_db = MagicMock()
+    workflow_db.find_one.return_value = {
+        "workflow_id": "workflow-1",
+        "created_by": "mehul",
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Aggregate",
+                "tool_name": "rag.aggregate",
+                "arguments": {
+                    "query": "{{input.query}}",
+                    "collection_ids": "{{input.collection_ids}}",
+                },
+                "depends_on": [],
+                "approval_required": False,
+            }
+        ],
+        "deleted": False,
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=workflow_db,
+        run_db=run_db,
+        tool_executor=FakeToolExecutor(),
+    )
+
+    result = service.start_workflow_run(
+        owner="mehul",
+        workflow_id="workflow-1",
+        inputs={"query": "total amount by vendor"},
+        dry_run=False,
+    )
+
+    assert result.success is False
+    assert result.status_code == 400
+    assert "collection_ids" in result.error
+    run_db.insert_one.assert_not_called()
+
+
+def test_start_workflow_run_rejects_wrong_argument_type():
+    workflow_db = MagicMock()
+    run_db = MagicMock()
+    workflow_db.find_one.return_value = {
+        "workflow_id": "workflow-1",
+        "created_by": "mehul",
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Aggregate",
+                "tool_name": "rag.aggregate",
+                "arguments": {
+                    "query": "{{input.query}}",
+                    "collection_ids": "collection-1",
+                },
+                "depends_on": [],
+                "approval_required": False,
+            }
+        ],
+        "deleted": False,
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=workflow_db,
+        run_db=run_db,
+        tool_executor=FakeToolExecutor(),
+    )
+
+    result = service.start_workflow_run(
+        owner="mehul",
+        workflow_id="workflow-1",
+        inputs={"query": "total amount by vendor"},
+        dry_run=False,
+    )
+
+    assert result.success is False
+    assert result.status_code == 400
+    assert "collection_ids" in result.error
+    assert "array" in result.error
+    run_db.insert_one.assert_not_called()
