@@ -144,6 +144,37 @@ export interface ToolInvocationResult {
     message: string
 }
 
+export interface AdkToolset {
+    server_id?: string
+    name?: string
+    transport?: string
+    tool_filter?: string[]
+    connection_params?: {
+        type?: string
+        url?: string
+        server_params?: {
+            command?: string
+            args?: string[]
+        }
+    }
+}
+
+export interface AdkManifest {
+    name: string
+    version: string
+    adk_version_hint?: string
+    mcp?: {
+        toolset_name?: string
+        transport?: string
+        manifest_path?: string
+        tools?: Array<Record<string, unknown>>
+    }
+    agents: Array<Record<string, unknown>>
+    external_mcp_servers: Array<Record<string, unknown>>
+    adk_toolsets: AdkToolset[]
+    workflows: Array<Record<string, unknown>>
+}
+
 export interface PlatformExport {
     schema_version: string
     exported_at: string
@@ -190,7 +221,7 @@ export const agentPlatformService = {
         return response.data
     },
 
-    async getAdkManifest(): Promise<Record<string, unknown>> {
+    async getAdkManifest(): Promise<AdkManifest> {
         const response = await api.get(`${BASE_PATH}/adk/manifest`)
         return response.data
     },
