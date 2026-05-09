@@ -19,6 +19,7 @@ import {
   type AuditEvent,
   type AgentDefinition,
   type AgentTool,
+  type PlatformStats,
   type ToolInvocationResult,
   type WorkflowDefinition,
   type WorkflowRun,
@@ -46,6 +47,7 @@ const AgentPlatform: React.FC = () => {
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [toolResult, setToolResult] = useState<ToolInvocationResult | null>(null);
+  const [platformStats, setPlatformStats] = useState<PlatformStats | null>(null);
   const [exportSummary, setExportSummary] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -73,13 +75,14 @@ const AgentPlatform: React.FC = () => {
     setIsLoading(true);
     setError('');
     try {
-      const [toolResult, agentResult, workflowResult, templateResult, runResult, auditResult] = await Promise.allSettled([
+      const [toolResult, agentResult, workflowResult, templateResult, runResult, auditResult, statsResult] = await Promise.allSettled([
         agentPlatformService.getTools(),
         agentPlatformService.listAgents(),
         agentPlatformService.listWorkflows(),
         agentPlatformService.listWorkflowTemplates(),
         agentPlatformService.listWorkflowRuns(),
         agentPlatformService.listAuditEvents(),
+        agentPlatformService.getStats(),
       ]);
       setTools(toolResult.status === 'fulfilled' ? toolResult.value.tools || [] : []);
       const loadedAgents = agentResult.status === 'fulfilled' ? agentResult.value || [] : [];
@@ -93,13 +96,14 @@ const AgentPlatform: React.FC = () => {
       }
       setRuns(runResult.status === 'fulfilled' ? runResult.value || [] : []);
       setAuditEvents(auditResult.status === 'fulfilled' ? auditResult.value || [] : []);
+      setPlatformStats(statsResult.status === 'fulfilled' ? statsResult.value : null);
       if (!runWorkflowId && loadedWorkflows?.[0]?.workflow_id) {
         setRunWorkflowId(loadedWorkflows[0].workflow_id);
       }
       if (!runAgentId && loadedAgents?.[0]?.agent_id) {
         setRunAgentId(loadedAgents[0].agent_id);
       }
-      if ([toolResult, agentResult, workflowResult, templateResult, runResult, auditResult].some((result) => result.status === 'rejected')) {
+      if ([toolResult, agentResult, workflowResult, templateResult, runResult, auditResult, statsResult].some((result) => result.status === 'rejected')) {
         setError('Some platform records are unavailable. Tool registry is still loaded when the API is reachable.');
       }
     } catch (loadError) {
@@ -468,9 +472,11 @@ const AgentPlatform: React.FC = () => {
         <section className="xl:col-span-2 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {[
-              { label: 'Registered Tools', value: tools.length, icon: Settings2 },
-              { label: 'Agents', value: agents.length, icon: Bot },
-              { label: 'Workflows', value: workflows.length, icon: Route },
+              { label: 'Registered Tools', value: platformStats?.tools ?? tools.length, icon: Settings2 },
+              { label: 'Agents', value: platformStats?.agents ?? agents.length, icon: Bot },
+              { label: 'Workflows', value: platformStats?.workflows ?? workflows.length, icon: Route },
+              { label: 'Runs', value: platformStats?.runs ?? runs.length, icon: Play },
+              { label: 'Active Runs', value: platformStats?.active_runs ?? runs.filter((run) => ['planned', 'pending'].includes(run.status)).length, icon: CircleDashed },
             ].map((item) => (
               <div key={item.label} className="border border-white/5 bg-surface/30 rounded-2xl p-5">
                 <div className="flex items-center justify-between">

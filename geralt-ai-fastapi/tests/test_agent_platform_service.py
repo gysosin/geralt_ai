@@ -96,6 +96,37 @@ def test_adk_manifest_exports_agents_workflows_and_mcp_pointer():
     assert result.data["workflows"][0]["triggers"] == ["document.uploaded"]
 
 
+def test_platform_stats_counts_definitions_and_run_statuses():
+    agent_db = MagicMock()
+    workflow_db = MagicMock()
+    run_db = MagicMock()
+    agent_db.count_documents.return_value = 2
+    workflow_db.count_documents.return_value = 3
+    run_db.find.return_value = [
+        {"run_id": "run-1", "status": "completed"},
+        {"run_id": "run-2", "status": "pending"},
+        {"run_id": "run-3", "status": "pending"},
+        {"run_id": "run-4", "status": "canceled"},
+    ]
+    service = AgentPlatformService(
+        agent_db=agent_db,
+        workflow_db=workflow_db,
+        run_db=run_db,
+    )
+
+    result = service.get_platform_stats(owner="mehul")
+
+    assert result.success is True
+    assert result.data["agents"] == 2
+    assert result.data["workflows"] == 3
+    assert result.data["runs"] == 4
+    assert result.data["run_statuses"] == {
+        "completed": 1,
+        "pending": 2,
+        "canceled": 1,
+    }
+
+
 def test_import_platform_creates_fresh_agents_and_workflows():
     agent_db = MagicMock()
     workflow_db = MagicMock()

@@ -658,6 +658,42 @@ def test_mcp_manifest_endpoint_returns_tool_declarations():
     assert any(tool["name"] == "rag.aggregate" for tool in data["tools"])
 
 
+def test_platform_stats_endpoint_returns_counts():
+    agent_db = MagicMock()
+    workflow_db = MagicMock()
+    run_db = MagicMock()
+    agent_db.count_documents.return_value = 2
+    workflow_db.count_documents.return_value = 1
+    run_db.find.return_value = [
+        {"run_id": "run-1", "status": "completed"},
+        {"run_id": "run-2", "status": "pending"},
+    ]
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=agent_db,
+                    workflow_db=workflow_db,
+                    run_db=run_db,
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.get("/api/v1/agent-platform/stats")
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["agents"] == 2
+    assert data["workflows"] == 1
+    assert data["run_statuses"]["pending"] == 1
+
+
 def test_adk_manifest_endpoint_returns_agents_and_toolset_pointer():
     agent_db = MagicMock()
     workflow_db = MagicMock()
