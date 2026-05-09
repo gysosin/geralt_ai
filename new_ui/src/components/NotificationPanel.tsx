@@ -3,7 +3,7 @@
  * 
  * Dropdown panel for viewing notification history.
  */
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Bell,
@@ -22,6 +22,11 @@ import {
 import { useNotificationStore } from '../store';
 import type { Notification, NotificationType } from '../types/notification.types';
 import { formatDistanceToNow } from 'date-fns';
+import {
+    filterNotifications,
+    getNotificationCenterCounts,
+    type NotificationCenterFilter,
+} from '../utils/notification-center';
 
 const getIcon = (type: NotificationType) => {
     const iconClass = "w-4 h-4";
@@ -122,15 +127,23 @@ interface NotificationPanelProps {
 }
 
 export const NotificationPanel: React.FC<NotificationPanelProps> = ({ isOpen, onClose }) => {
+    const [activeFilter, setActiveFilter] = useState<NotificationCenterFilter>('all');
     const {
         notifications,
         unreadCount,
         isLoading,
+        error,
         fetchNotifications: fetchNotificationsAction,
         markAsRead: markAsReadAction,
         markAllAsRead: markAllAsReadAction,
         deleteNotification: deleteNotificationAction
     } = useNotificationStore();
+
+    const counts = useMemo(() => getNotificationCenterCounts(notifications), [notifications]);
+    const visibleNotifications = useMemo(
+        () => filterNotifications(notifications, activeFilter),
+        [notifications, activeFilter],
+    );
 
     useEffect(() => {
         if (isOpen) {
@@ -195,13 +208,55 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({ isOpen, on
                             </div>
                         </div>
 
+                        {/* Filters */}
+                        <div className="border-b border-white/10 px-4 py-3">
+                            <div className="grid grid-cols-3 gap-2">
+                                {([
+                                    { id: 'all', label: 'All', count: counts.all },
+                                    { id: 'unread', label: 'Unread', count: counts.unread },
+                                    { id: 'urgent', label: 'Urgent', count: counts.urgent },
+                                ] as const).map((filter) => {
+                                    const isActive = activeFilter === filter.id;
+                                    return (
+                                        <button
+                                            key={filter.id}
+                                            type="button"
+                                            onClick={() => setActiveFilter(filter.id)}
+                                            className={`rounded-xl border px-3 py-2 text-left transition-colors ${isActive
+                                                ? 'border-violet-400/30 bg-violet-400/10 text-white'
+                                                : 'border-white/10 bg-white/[0.03] text-gray-400 hover:text-white'
+                                                }`}
+                                            aria-pressed={isActive}
+                                            aria-label={`Show ${filter.label.toLowerCase()} notifications`}
+                                        >
+                                            <span className="block text-xs font-semibold">{filter.label}</span>
+                                            <span className="mt-0.5 block text-[10px] text-gray-500">{filter.count}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
                         {/* Content */}
                         <div className="max-h-[400px] overflow-y-auto">
                             {isLoading ? (
                                 <div className="flex items-center justify-center py-12">
                                     <Loader2 className="w-6 h-6 text-gray-500 animate-spin" />
                                 </div>
-                            ) : notifications.length === 0 ? (
+                            ) : error ? (
+                                <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
+                                    <Bell className="w-10 h-10 text-amber-400/70 mb-3" />
+                                    <p className="text-gray-300 text-sm">Unable to load notifications</p>
+                                    <p className="text-gray-600 text-xs mt-1">{error}</p>
+                                    <button
+                                        type="button"
+                                        onClick={fetchNotificationsAction}
+                                        className="mt-4 rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:bg-white/5 hover:text-white"
+                                    >
+                                        Retry
+                                    </button>
+                                </div>
+                            ) : notifications.length === 0 && activeFilter === 'all' ? (
                                 <div className="flex flex-col items-center justify-center py-12 text-center">
                                     <Bell className="w-10 h-10 text-gray-600 mb-3" />
                                     <p className="text-gray-500 text-sm">No notifications yet</p>
@@ -209,9 +264,21 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({ isOpen, on
                                         You'll see updates about your documents here
                                     </p>
                                 </div>
+                            ) : visibleNotifications.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-12 text-center">
+                                    <Bell className="w-10 h-10 text-gray-600 mb-3" />
+                                    <p className="text-gray-500 text-sm">No {activeFilter} notifications</p>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveFilter('all')}
+                                        className="mt-4 rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:bg-white/5 hover:text-white"
+                                    >
+                                        Show all
+                                    </button>
+                                </div>
                             ) : (
                                 <AnimatePresence>
-                                    {notifications.map((notification) => (
+                                    {visibleNotifications.map((notification) => (
                                         <NotificationItem
                                             key={notification.id}
                                             notification={notification}
