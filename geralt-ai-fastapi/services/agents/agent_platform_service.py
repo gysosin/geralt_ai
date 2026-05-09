@@ -310,6 +310,52 @@ class AgentPlatformService(BaseService):
             return ServiceResult.fail("Workflow run not found", 404)
         return ServiceResult.ok(self._public_document(doc))
 
+    def approve_workflow_step(self, owner: str, run_id: str, step_id: str) -> ServiceResult:
+        """Approve and execute one pending approval step in a workflow run."""
+        run_result = self.get_workflow_run(owner, run_id)
+        if not run_result.success:
+            return run_result
+
+        run_doc = run_result.data
+        steps = list(run_doc.get("steps") or [])
+        target_index = next(
+            (index for index, step in enumerate(steps) if step.get("step_id") == step_id),
+            None,
+        )
+        if target_index is None:
+            return ServiceResult.fail("Workflow step not found", 404)
+
+        target_step = dict(steps[target_index])
+        if target_step.get("status") != "pending_approval":
+            return ServiceResult.fail("Workflow step is not pending approval", 400)
+
+        target_step["approval_required"] = False
+        target_step["message"] = ""
+        steps[target_index] = self._execute_run_step(target_step)
+        now = datetime.utcnow().isoformat()
+        status = "completed" if all(step.get("status") == "completed" for step in steps) else "pending"
+        update = {
+            "steps": steps,
+            "status": status,
+            "updated_at": now,
+        }
+        self.run_db.update_one(
+            {"created_by": self.extract_username(owner), "run_id": run_id},
+            {"$set": update},
+        )
+        updated_doc = {
+            **run_doc,
+            **update,
+        }
+        self._record_audit(
+            "workflow.step_approved",
+            owner,
+            "workflow_run",
+            run_id,
+            {"step_id": step_id, "status": steps[target_index].get("status")},
+        )
+        return ServiceResult.ok(self._public_document(updated_doc))
+
     def list_audit_events(self, owner: str, limit: int = 50) -> ServiceResult:
         """List recent agent platform audit events."""
         if self.audit_db is None:
