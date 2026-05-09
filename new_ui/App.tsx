@@ -12,6 +12,7 @@ const BotDetail = lazy(() => import('./components/BotDetail'));
 const Bots = lazy(() => import('./components/Bots'));
 const ChatInterface = lazy(() => import('./components/ChatInterface'));
 const CollectionDetail = lazy(() => import('./components/CollectionDetail'));
+const CollectionHealthDashboard = lazy(() => import('./src/pages/CollectionHealthDashboard'));
 const Collections = lazy(() => import('./components/Collections'));
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const DocumentReviewQueue = lazy(() => import('./src/pages/DocumentReviewQueue'));
@@ -85,6 +86,7 @@ const App: React.FC = () => {
                         <Route path="bots/:id" element={<BotDetail />} />
                         <Route path="agent-platform" element={<AgentPlatform />} />
 
+                        <Route path="collections/health" element={<CollectionHealthDashboard />} />
                         <Route path="collections" element={<Collections />} />
                         <Route path="collections/:id" element={<CollectionDetail />} />
                         <Route path="documents/review" element={<DocumentReviewQueue />} />
