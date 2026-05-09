@@ -639,8 +639,15 @@ const AgentPlatform: React.FC = () => {
               { label: 'Registered Tools', value: platformStats?.tools ?? tools.length, icon: Settings2 },
               { label: 'Agents', value: platformStats?.agents ?? agents.length, icon: Bot },
               { label: 'Workflows', value: platformStats?.workflows ?? workflows.length, icon: Route },
+              { label: 'MCP Servers', value: platformStats?.mcp_servers ?? mcpServers.length, icon: Settings2 },
+              {
+                label: 'Reachable MCP',
+                value: platformStats ? `${platformStats.reachable_mcp_servers}/${platformStats.mcp_servers}` : externalMcpTools.filter((tool) => tool.health_status === 'reachable').length,
+                icon: CheckCircle2,
+              },
               { label: 'Runs', value: platformStats?.runs ?? runs.length, icon: Play },
               { label: 'Active Runs', value: platformStats?.active_runs ?? runs.filter((run) => ['planned', 'pending'].includes(run.status)).length, icon: CircleDashed },
+              { label: 'Approvals', value: platformStats?.pending_approvals ?? pendingApprovals.length, icon: CheckCircle2 },
             ].map((item) => (
               <div key={item.label} className="border border-white/5 bg-surface/30 rounded-2xl p-5">
                 <div className="flex items-center justify-between">

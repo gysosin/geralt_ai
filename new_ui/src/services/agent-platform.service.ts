@@ -168,9 +168,12 @@ export interface PlatformImportSummary {
 export interface PlatformStats {
     agents: number
     workflows: number
+    mcp_servers: number
+    reachable_mcp_servers: number
     tools: number
     runs: number
     active_runs: number
+    pending_approvals: number
     run_statuses: Record<string, number>
 }
 
