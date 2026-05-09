@@ -4,7 +4,6 @@ Bot Token Service
 Handles all bot token CRUD operations with proper OOP patterns.
 Extracted from bot_management_service.py for single responsibility.
 """
-import os
 import io
 import json
 import uuid
@@ -14,7 +13,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import quote_plus, unquote
 import requests
 
-from helpers.utils import get_utility_service
+from helpers.upload_validation import validate_image_upload
 from config import Config
 from clients import minio_client, redis_client
 from models.database import (
@@ -44,13 +43,6 @@ class BotTokenService(BaseService, CRUDMixin):
     """
     
     ALLOWED_ICON_EXTENSIONS = {"png", "jpg", "jpeg", "gif"}
-    ALLOWED_ICON_CONTENT_TYPES = {"image/png", "image/jpeg", "image/gif"}
-    ICON_CONTENT_TYPES_BY_EXTENSION = {
-        "png": "image/png",
-        "jpg": "image/jpeg",
-        "jpeg": "image/jpeg",
-        "gif": "image/gif",
-    }
     MAX_ICON_SIZE = 5 * 1024 * 1024
     VALID_ACTION_TYPES = {"open_url", "open_in_iframe", "send_message"}
     
@@ -576,65 +568,30 @@ class BotTokenService(BaseService, CRUDMixin):
         if not icon_file or icon_file.filename == "":
             return ServiceResult.ok(None)
         
-        filename = get_utility_service().secure_filename(icon_file.filename)
-        if "." not in filename:
-            return ServiceResult.fail("Invalid image format.", 400)
+        validation = validate_image_upload(
+            icon_file,
+            allowed_extensions=self.ALLOWED_ICON_EXTENSIONS,
+            max_size_bytes=self.MAX_ICON_SIZE,
+            resource_label="Icon image",
+            missing_extension_message="Invalid image format.",
+            invalid_extension_message=(
+                f"Invalid image format. Allowed: {', '.join(self.ALLOWED_ICON_EXTENSIONS)}"
+            ),
+        )
+        if not validation.success:
+            return ServiceResult.fail(validation.error or "Invalid image", validation.status_code)
         
-        extension = filename.rsplit(".", 1)[1].lower()
-        if extension not in self.ALLOWED_ICON_EXTENSIONS:
-            return ServiceResult.fail(
-                f"Invalid image format. Allowed: {', '.join(self.ALLOWED_ICON_EXTENSIONS)}",
-                400
-            )
-
-        content_type = (getattr(icon_file, "content_type", "") or "").split(";")[0].strip().lower()
-        if content_type and content_type not in self.ALLOWED_ICON_CONTENT_TYPES:
-            return ServiceResult.fail(
-                "Invalid image content type. Allowed: image/png, image/jpeg, image/gif",
-                400
-            )
-        if content_type and content_type != self.ICON_CONTENT_TYPES_BY_EXTENSION[extension]:
-            return ServiceResult.fail(
-                f"Invalid image content type for .{extension} file",
-                400
-            )
-        
-        icon_filename = f"{uuid.uuid4()}.{extension}"
+        icon_filename = f"{uuid.uuid4()}.{validation.extension}"
         file_path = f"{username}/bot_icons/{icon_filename}"
-        stream = getattr(icon_file, "file", icon_file)
-        
-        stream.seek(0, os.SEEK_END)
-        file_size = stream.tell()
-        stream.seek(0)
-
-        if file_size <= 0:
-            return ServiceResult.fail("Icon image cannot be empty", 400)
-        if file_size > self.MAX_ICON_SIZE:
-            return ServiceResult.fail("Icon image is too large", 413)
-
-        header = stream.read(16)
-        stream.seek(0)
-        if not self._matches_icon_signature(extension, header):
-            return ServiceResult.fail("Invalid image content", 400)
         
         self.storage.put_object(
             Config.BUCKET_NAME,
             file_path,
-            stream,
-            length=file_size
+            validation.stream,
+            length=validation.file_size
         )
         
         return ServiceResult.ok({"file_path": file_path})
-
-    def _matches_icon_signature(self, extension: str, header: bytes) -> bool:
-        """Validate icon content against the declared extension."""
-        if extension == "png":
-            return header.startswith(b"\x89PNG\r\n\x1a\n")
-        if extension in {"jpg", "jpeg"}:
-            return header.startswith(b"\xff\xd8\xff")
-        if extension == "gif":
-            return header.startswith((b"GIF87a", b"GIF89a"))
-        return False
     
     def _get_icon_url(self, icon_file_path: str) -> str:
         """Generate a proxied icon URL."""
