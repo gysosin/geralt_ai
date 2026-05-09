@@ -225,6 +225,28 @@ def test_create_mcp_server_rejects_unsafe_streamable_http_urls():
     mcp_server_db.insert_one.assert_not_called()
 
 
+def test_create_mcp_server_rejects_stdio_shell_fragments():
+    mcp_server_db = MagicMock()
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=MagicMock(),
+        mcp_server_db=mcp_server_db,
+    )
+
+    result = service.create_mcp_server(
+        owner="mehul",
+        name="Unsafe Local MCP",
+        transport="stdio",
+        command="npx -y @modelcontextprotocol/server-filesystem",
+    )
+
+    assert result.success is False
+    assert result.status_code == 400
+    assert "single executable" in result.error
+    mcp_server_db.insert_one.assert_not_called()
+
+
 def test_update_mcp_server_persists_changed_transport_fields():
     mcp_server_db = MagicMock()
     mcp_server_db.find_one.return_value = {
@@ -297,6 +319,35 @@ def test_update_mcp_server_rejects_unsafe_streamable_http_url():
     assert result.success is False
     assert result.status_code == 400
     mcp_server_db.update_one.assert_not_called()
+
+
+def test_import_platform_rejects_stdio_shell_fragments():
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=MagicMock(),
+        mcp_server_db=MagicMock(),
+    )
+
+    result = service.import_platform(
+        owner="mehul",
+        payload={
+            "mcp_servers": [
+                {
+                    "server_id": "mcp-1",
+                    "name": "Unsafe Local MCP",
+                    "transport": "stdio",
+                    "command": "npx --yes server",
+                    "args": [],
+                    "tool_names": ["read_file"],
+                }
+            ],
+        },
+    )
+
+    assert result.success is False
+    assert result.status_code == 400
+    assert "single executable" in result.error
 
 
 def test_check_mcp_server_records_reachable_streamable_http_status():
