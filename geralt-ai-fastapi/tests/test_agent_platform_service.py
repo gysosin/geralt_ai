@@ -88,6 +88,28 @@ def test_create_workflow_definition_validates_step_tools():
     assert inserted["steps"][0]["step_id"]
 
 
+def test_create_workflow_rejects_unknown_dependency():
+    service = AgentPlatformService(agent_db=MagicMock(), workflow_db=MagicMock())
+
+    result = service.create_workflow(
+        owner="mehul",
+        name="Bad Dependency Flow",
+        steps=[
+            {
+                "step_id": "step-1",
+                "name": "Plan",
+                "tool_name": "query.plan",
+                "depends_on": ["missing-step"],
+                "arguments": {"query": "{{input.query}}"},
+            }
+        ],
+    )
+
+    assert result.success is False
+    assert result.status_code == 400
+    assert "missing-step" in result.error
+
+
 def test_create_workflow_from_template_uses_template_steps():
     workflow_db = MagicMock()
     service = AgentPlatformService(agent_db=MagicMock(), workflow_db=workflow_db)
@@ -206,6 +228,44 @@ def test_start_workflow_run_executes_query_plan_step():
     assert inserted["status"] == "completed"
     assert inserted["steps"][0]["status"] == "completed"
     assert inserted["steps"][0]["output"]["query_type"] == "summary"
+
+
+def test_start_workflow_run_stops_at_approval_gate():
+    workflow_db = MagicMock()
+    run_db = MagicMock()
+    workflow_db.find_one.return_value = {
+        "workflow_id": "workflow-1",
+        "created_by": "mehul",
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Plan",
+                "tool_name": "query.plan",
+                "arguments": {"query": "{{input.query}}"},
+                "depends_on": [],
+                "approval_required": True,
+            }
+        ],
+        "deleted": False,
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=workflow_db,
+        run_db=run_db,
+    )
+
+    result = service.start_workflow_run(
+        owner="mehul",
+        workflow_id="workflow-1",
+        inputs={"query": "summarize these documents"},
+        dry_run=False,
+    )
+
+    assert result.success is True
+    inserted = run_db.insert_one.call_args.args[0]
+    assert inserted["status"] == "pending"
+    assert inserted["steps"][0]["status"] == "pending_approval"
+    assert inserted["steps"][0]["output"] is None
 
 
 def test_start_workflow_run_keeps_unsafe_tool_pending():
