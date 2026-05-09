@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Menu, Bell, Search, LogOut, ChevronLeft, Plus, Command, MessageSquare, Bot, Files, PieChart, History, Settings, Workflow, BarChart3, Sparkles } from 'lucide-react';
+import { Menu, Bell, Search, LogOut, ChevronLeft, Plus, Command, MessageSquare, Bot, Files, PieChart, History, Settings, Workflow, BarChart3, Sparkles, GitCompareArrows } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MENU_ITEMS, APP_NAME } from '../constants';
 import CommandPalette, { type CommandPaletteItem } from '../src/components/CommandPalette';
@@ -56,6 +56,15 @@ const Layout: React.FC<LayoutProps> = ({ children, onLogout }) => {
       path: '/bots',
       icon: <Bot size={18} />,
       keywords: ['bots', 'assistants', 'deploy'],
+    },
+    {
+      id: 'agent-comparison',
+      label: 'Open agent comparison',
+      description: 'Compare readiness, knowledge, chats, and ratings across agents.',
+      group: 'Agents',
+      path: '/agents/compare',
+      icon: <GitCompareArrows size={18} />,
+      keywords: ['compare', 'catalog', 'readiness', 'agents', 'bots'],
     },
     {
       id: 'agent-platform',
