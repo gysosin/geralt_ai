@@ -18,6 +18,7 @@ import {
   type AuditEvent,
   type AgentDefinition,
   type AgentTool,
+  type ToolInvocationResult,
   type WorkflowDefinition,
   type WorkflowRun,
   type WorkflowTemplate,
@@ -40,6 +41,7 @@ const AgentPlatform: React.FC = () => {
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [toolResult, setToolResult] = useState<ToolInvocationResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -56,6 +58,8 @@ const AgentPlatform: React.FC = () => {
   const [runQuery, setRunQuery] = useState('total amount by vendor');
   const [runCollections, setRunCollections] = useState('');
   const [dryRun, setDryRun] = useState(true);
+  const [invokeToolName, setInvokeToolName] = useState('query.plan');
+  const [invokeQuery, setInvokeQuery] = useState('list all vendors');
 
   const loadData = async () => {
     setIsLoading(true);
@@ -190,6 +194,26 @@ const AgentPlatform: React.FC = () => {
       setRuns((current) => [created, ...current]);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to start workflow run');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const invokeTool = async () => {
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const result = await agentPlatformService.invokeTool({
+        tool_name: invokeToolName,
+        arguments: invokeToolName === 'query.plan'
+          ? { query: invokeQuery }
+          : invokeToolName === 'collection.summarize'
+            ? { collection_id: splitIds(runCollections)[0] || '' }
+            : { query: invokeQuery, collection_ids: splitIds(runCollections) },
+      });
+      setToolResult(result);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to invoke tool');
     } finally {
       setIsSubmitting(false);
     }
@@ -478,6 +502,37 @@ const AgentPlatform: React.FC = () => {
               {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Play size={18} />}
               Start Run
             </button>
+          </section>
+
+          <section className="border border-white/5 bg-surface/30 rounded-2xl p-5 space-y-4">
+            <h2 className="text-lg font-semibold text-white">Tool Console</h2>
+            <select
+              value={invokeToolName}
+              onChange={(event) => setInvokeToolName(event.target.value)}
+              className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500/60"
+            >
+              {tools.map((tool) => (
+                <option key={tool.name} value={tool.name}>{tool.name}</option>
+              ))}
+            </select>
+            <input
+              value={invokeQuery}
+              onChange={(event) => setInvokeQuery(event.target.value)}
+              className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500/60"
+            />
+            <button
+              onClick={invokeTool}
+              disabled={isSubmitting}
+              className="w-full h-11 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-medium flex items-center justify-center gap-2"
+            >
+              {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Play size={18} />}
+              Invoke Tool
+            </button>
+            {toolResult && (
+              <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-white/5 bg-black/20 p-3 text-[11px] leading-relaxed text-gray-500 font-mono">
+                {JSON.stringify(toolResult, null, 2)}
+              </pre>
+            )}
           </section>
 
           <section className="border border-white/5 bg-surface/30 rounded-2xl p-5">

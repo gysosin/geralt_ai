@@ -149,6 +149,36 @@ class AuditEventResponse(BaseModel):
     created_at: str
 
 
+class ToolInvocationRequest(BaseModel):
+    """Request to invoke one registered tool."""
+
+    tool_name: str = Field(min_length=1)
+    arguments: Dict[str, Any] = Field(default_factory=dict)
+    dry_run: bool = False
+
+
+class ToolInvocationResponse(BaseModel):
+    """Result from a direct tool invocation."""
+
+    step_id: str
+    name: str
+    tool_name: str
+    arguments: Dict[str, Any]
+    depends_on: List[str] = Field(default_factory=list)
+    approval_required: bool = False
+    status: str
+    output: Any = None
+    message: str = ""
+
+
+class McpManifestResponse(BaseModel):
+    """MCP-style tool manifest."""
+
+    name: str
+    version: str
+    tools: List[Dict[str, Any]]
+
+
 def _owner(current_user: str | None) -> str:
     return current_user or "anonymous"
 
@@ -169,6 +199,30 @@ async def list_agent_tools(
         tools=registry.list_public_tools(),
         mcp_tools=registry.list_mcp_tools(),
     )
+
+
+@router.get("/mcp/manifest", response_model=McpManifestResponse)
+async def get_mcp_manifest(
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Return a manifest for external agent runtimes."""
+    return _result_or_error(service.get_mcp_manifest())
+
+
+@router.post("/tool-invocations", response_model=ToolInvocationResponse)
+async def invoke_tool(
+    request: ToolInvocationRequest,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Invoke one registered tool directly."""
+    return _result_or_error(service.invoke_tool(
+        owner=_owner(current_user),
+        tool_name=request.tool_name,
+        arguments=request.arguments,
+        dry_run=request.dry_run,
+    ))
 
 
 @router.post("/query-plan", response_model=QueryPlanResponse)
