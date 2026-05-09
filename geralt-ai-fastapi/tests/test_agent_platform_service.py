@@ -87,3 +87,121 @@ def test_create_workflow_definition_rejects_unknown_step_tool():
     assert result.success is False
     assert result.status_code == 400
     assert "missing.tool" in result.error
+
+
+def test_start_workflow_run_dry_run_records_planned_steps():
+    workflow_db = MagicMock()
+    run_db = MagicMock()
+    workflow_db.find_one.return_value = {
+        "workflow_id": "workflow-1",
+        "created_by": "mehul",
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Plan",
+                "tool_name": "query.plan",
+                "arguments": {"query": "{{input.query}}"},
+                "depends_on": [],
+                "approval_required": False,
+            }
+        ],
+        "deleted": False,
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=workflow_db,
+        run_db=run_db,
+    )
+
+    result = service.start_workflow_run(
+        owner="mehul",
+        workflow_id="workflow-1",
+        inputs={"query": "list all vendors"},
+        dry_run=True,
+    )
+
+    assert result.success is True
+    inserted = run_db.insert_one.call_args.args[0]
+    assert inserted["status"] == "planned"
+    assert inserted["dry_run"] is True
+    assert inserted["steps"][0]["status"] == "planned"
+    assert inserted["steps"][0]["arguments"] == {"query": "list all vendors"}
+
+
+def test_start_workflow_run_executes_query_plan_step():
+    workflow_db = MagicMock()
+    run_db = MagicMock()
+    workflow_db.find_one.return_value = {
+        "workflow_id": "workflow-1",
+        "created_by": "mehul",
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Plan",
+                "tool_name": "query.plan",
+                "arguments": {"query": "{{input.query}}"},
+                "depends_on": [],
+                "approval_required": False,
+            }
+        ],
+        "deleted": False,
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=workflow_db,
+        run_db=run_db,
+    )
+
+    result = service.start_workflow_run(
+        owner="mehul",
+        workflow_id="workflow-1",
+        inputs={"query": "summarize these documents"},
+        dry_run=False,
+    )
+
+    assert result.success is True
+    inserted = run_db.insert_one.call_args.args[0]
+    assert inserted["status"] == "completed"
+    assert inserted["steps"][0]["status"] == "completed"
+    assert inserted["steps"][0]["output"]["query_type"] == "summary"
+
+
+def test_start_workflow_run_keeps_unsafe_tool_pending():
+    workflow_db = MagicMock()
+    run_db = MagicMock()
+    workflow_db.find_one.return_value = {
+        "workflow_id": "workflow-1",
+        "created_by": "mehul",
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Search",
+                "tool_name": "rag.search",
+                "arguments": {
+                    "query": "{{input.query}}",
+                    "collection_ids": "{{input.collection_ids}}",
+                },
+                "depends_on": [],
+                "approval_required": False,
+            }
+        ],
+        "deleted": False,
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=workflow_db,
+        run_db=run_db,
+    )
+
+    result = service.start_workflow_run(
+        owner="mehul",
+        workflow_id="workflow-1",
+        inputs={"query": "find warranty", "collection_ids": ["collection-1"]},
+        dry_run=False,
+    )
+
+    assert result.success is True
+    inserted = run_db.insert_one.call_args.args[0]
+    assert inserted["status"] == "pending"
+    assert inserted["steps"][0]["status"] == "pending"
+    assert "not implemented" in inserted["steps"][0]["message"]

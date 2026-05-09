@@ -117,3 +117,93 @@ def test_create_workflow_definition_endpoint_validates_step_tools():
     assert data["workflow_id"]
     assert data["steps"][0]["step_id"] == "step-1"
     assert data["steps"][1]["tool_name"] == "rag.search"
+
+
+def test_start_workflow_run_endpoint_returns_dry_run_plan():
+    workflow_db = MagicMock()
+    workflow_db.find_one.return_value = {
+        "workflow_id": "workflow-1",
+        "created_by": "anonymous",
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Plan",
+                "tool_name": "query.plan",
+                "arguments": {"query": "{{input.query}}"},
+                "depends_on": [],
+                "approval_required": False,
+            }
+        ],
+        "deleted": False,
+    }
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=MagicMock(),
+                    workflow_db=workflow_db,
+                    run_db=MagicMock(),
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.post(
+                    "/api/v1/agent-platform/workflows/workflow-1/runs",
+                    json={"inputs": {"query": "list all vendors"}, "dry_run": True},
+                )
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["status"] == "planned"
+    assert data["steps"][0]["arguments"] == {"query": "list all vendors"}
+
+
+def test_start_workflow_run_endpoint_executes_query_plan_step():
+    workflow_db = MagicMock()
+    workflow_db.find_one.return_value = {
+        "workflow_id": "workflow-1",
+        "created_by": "anonymous",
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Plan",
+                "tool_name": "query.plan",
+                "arguments": {"query": "{{input.query}}"},
+                "depends_on": [],
+                "approval_required": False,
+            }
+        ],
+        "deleted": False,
+    }
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=MagicMock(),
+                    workflow_db=workflow_db,
+                    run_db=MagicMock(),
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.post(
+                    "/api/v1/agent-platform/workflows/workflow-1/runs",
+                    json={"inputs": {"query": "summarize documents"}, "dry_run": False},
+                )
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["status"] == "completed"
+    assert data["steps"][0]["output"]["query_type"] == "summary"
