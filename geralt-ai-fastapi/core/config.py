@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     # ==========================================================================
     MONGO_URI: str = Field(default="mongodb://127.0.0.1:27018")
     MONGO_DATABASE: str = "geraltai"
+    MONGO_SERVER_SELECTION_TIMEOUT_MS: int = Field(default=3000, ge=500, le=30000)
 
     # ==========================================================================
     # Elasticsearch

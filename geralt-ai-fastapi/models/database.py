@@ -28,7 +28,10 @@ class DatabaseManager:
     def __init__(self):
         """Initialize the database manager."""
         self.logger = logging.getLogger(self.__class__.__name__)
-        self._client: MongoClient = MongoClient(Config.MONGO_URI)
+        self._client: MongoClient = MongoClient(
+            Config.MONGO_URI,
+            serverSelectionTimeoutMS=Config.MONGO_SERVER_SELECTION_TIMEOUT_MS,
+        )
         self.logger.info(f"MongoDB connected to {Config.MONGO_URI}")
 
     @classmethod
@@ -268,7 +271,10 @@ def get_bot_database() -> BotDatabase:
 # =============================================================================
 
 # Initialize client and database
-mongo_client = MongoClient(Config.MONGO_URI)
+mongo_client = MongoClient(
+    Config.MONGO_URI,
+    serverSelectionTimeoutMS=Config.MONGO_SERVER_SELECTION_TIMEOUT_MS,
+)
 db = mongo_client.document_db
 
 # Document-related collections

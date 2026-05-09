@@ -32,6 +32,19 @@ class TestDatabaseManager:
     def test_client_property(self, db_manager, mock_mongo_client):
         """Test that client property returns the MongoDB client."""
         assert db_manager.client is mock_mongo_client
+
+    def test_client_uses_configured_server_selection_timeout(self, mock_mongo_client):
+        """Test MongoDB client fails fast when the server is unavailable."""
+        with patch('models.database.MongoClient', return_value=mock_mongo_client) as mongo_client:
+            from config import Config
+            from models.database import DatabaseManager
+
+            DatabaseManager._instance = None
+            DatabaseManager()
+
+            assert mongo_client.call_args.kwargs["serverSelectionTimeoutMS"] == (
+                Config.MONGO_SERVER_SELECTION_TIMEOUT_MS
+            )
     
     def test_get_database(self, db_manager, mock_mongo_client):
         """Test getting a database by name."""

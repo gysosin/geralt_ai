@@ -53,6 +53,7 @@ class TestConfigModule:
         
         # Check that Config class has expected attributes
         assert hasattr(Config, 'MONGO_URI')
+        assert hasattr(Config, 'MONGO_SERVER_SELECTION_TIMEOUT_MS')
         assert hasattr(Config, 'REDIS_HOST')
         assert hasattr(Config, 'REDIS_PORT')
         assert hasattr(Config, 'SECRET_KEY')
