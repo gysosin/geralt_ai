@@ -6,6 +6,7 @@ reference against the central registry.
 """
 import ipaddress
 import shutil
+import socket
 from copy import deepcopy
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -506,7 +507,7 @@ class AgentPlatformService(BaseService):
         url = str(server.get("url") or "").strip()
         if not url:
             return "unreachable", "MCP server URL is missing"
-        validation_error = self._validate_streamable_http_url(url)
+        validation_error = self._validate_streamable_http_url(url, resolve_host=True)
         if validation_error:
             return "unreachable", validation_error
 
@@ -533,12 +534,16 @@ class AgentPlatformService(BaseService):
             return "unreachable", f"HTTP {status_code} response received from MCP endpoint"
         return "reachable", "MCP endpoint responded"
 
-    def _validate_streamable_http_url(self, url: str) -> Optional[str]:
+    def _validate_streamable_http_url(self, url: str, resolve_host: bool = False) -> Optional[str]:
         parsed = urlparse(url.strip())
         if parsed.scheme not in {"http", "https"}:
             return "MCP server URL must use http or https"
         if not parsed.hostname:
             return "MCP server URL requires a hostname"
+        try:
+            port = parsed.port
+        except ValueError:
+            return "MCP server URL has an invalid port"
 
         hostname = parsed.hostname.strip().lower().rstrip(".")
         if hostname in {"localhost", "localhost.localdomain"} or hostname.endswith(".localhost"):
@@ -547,18 +552,44 @@ class AgentPlatformService(BaseService):
         try:
             address = ipaddress.ip_address(hostname)
         except ValueError:
+            if resolve_host:
+                return self._validate_resolved_streamable_http_host(
+                    hostname,
+                    port or (443 if parsed.scheme == "https" else 80),
+                )
             return None
 
-        if (
+        if self._is_unsafe_streamable_http_address(address):
+            return "MCP server URL cannot target local or private network addresses"
+        return None
+
+    def _validate_resolved_streamable_http_host(self, hostname: str, port: int) -> Optional[str]:
+        try:
+            addresses = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+        except OSError as error:
+            return f"MCP server hostname could not be resolved: {error}"
+
+        for address_info in addresses:
+            sockaddr = address_info[4]
+            if not sockaddr:
+                continue
+            try:
+                address = ipaddress.ip_address(sockaddr[0])
+            except ValueError:
+                return "MCP server hostname resolved to an invalid address"
+            if self._is_unsafe_streamable_http_address(address):
+                return "MCP server URL cannot target local or private network addresses"
+        return None
+
+    def _is_unsafe_streamable_http_address(self, address: Any) -> bool:
+        return (
             address.is_private
             or address.is_loopback
             or address.is_link_local
             or address.is_reserved
             or address.is_unspecified
             or address.is_multicast
-        ):
-            return "MCP server URL cannot target local or private network addresses"
-        return None
+        )
 
     def _probe_stdio_mcp(self, server: Dict[str, Any]) -> tuple[str, str]:
         command = str(server.get("command") or "").strip()

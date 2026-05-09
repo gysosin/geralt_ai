@@ -379,7 +379,12 @@ def test_check_mcp_server_endpoint_records_health_status():
     with patch("models.database.MongoClient"):
         with patch("core.clients.redis_client.redis.StrictRedis"):
             with patch("core.clients.minio_client.Minio"):
-                with patch("services.agents.agent_platform_service.urlopen", return_value=health_response):
+                with (
+                    patch("services.agents.agent_platform_service.socket.getaddrinfo", return_value=[
+                        (None, None, None, "", ("93.184.216.34", 443)),
+                    ]),
+                    patch("services.agents.agent_platform_service.urlopen", return_value=health_response),
+                ):
                     from fastapi.testclient import TestClient
                     from main import app
                     from services.agents import AgentPlatformService, get_agent_platform_service

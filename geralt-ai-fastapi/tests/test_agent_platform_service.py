@@ -326,7 +326,12 @@ def test_check_mcp_server_records_reachable_streamable_http_status():
         mcp_server_db=mcp_server_db,
     )
 
-    with patch("services.agents.agent_platform_service.urlopen", return_value=response):
+    with (
+        patch("services.agents.agent_platform_service.socket.getaddrinfo", return_value=[
+            (None, None, None, "", ("93.184.216.34", 443)),
+        ]),
+        patch("services.agents.agent_platform_service.urlopen", return_value=response),
+    ):
         result = service.check_mcp_server(owner="mehul", server_id="mcp-1")
 
     assert result.success is True
@@ -362,6 +367,44 @@ def test_check_mcp_server_does_not_probe_unsafe_streamable_http_url():
     )
 
     with patch("services.agents.agent_platform_service.urlopen") as urlopen_mock:
+        result = service.check_mcp_server(owner="mehul", server_id="mcp-1")
+
+    assert result.success is True
+    assert result.data["last_health_status"] == "unreachable"
+    assert "local or private" in result.data["last_health_message"]
+    urlopen_mock.assert_not_called()
+
+
+def test_check_mcp_server_rejects_hostname_that_resolves_private():
+    mcp_server_db = MagicMock()
+    mcp_server_db.find_one.return_value = {
+        "server_id": "mcp-1",
+        "name": "Rebound MCP",
+        "description": "",
+        "transport": "streamable_http",
+        "url": "https://mcp.example.com/tools",
+        "command": "",
+        "args": [],
+        "tool_names": ["search_docs"],
+        "metadata": {},
+        "created_by": "mehul",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+        "deleted": False,
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=MagicMock(),
+        mcp_server_db=mcp_server_db,
+    )
+
+    with (
+        patch("services.agents.agent_platform_service.socket.getaddrinfo", return_value=[
+            (None, None, None, "", ("10.0.0.10", 443)),
+        ]),
+        patch("services.agents.agent_platform_service.urlopen") as urlopen_mock,
+    ):
         result = service.check_mcp_server(owner="mehul", server_id="mcp-1")
 
     assert result.success is True
