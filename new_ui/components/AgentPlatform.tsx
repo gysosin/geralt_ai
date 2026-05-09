@@ -447,6 +447,21 @@ const AgentPlatform: React.FC = () => {
     }
   };
 
+  const checkMcpServer = async (serverId: string) => {
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const updated = await agentPlatformService.checkMcpServer(serverId);
+      setMcpServers((current) => current.map((server) => (
+        server.server_id === updated.server_id ? updated : server
+      )));
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to check MCP server');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const exportPlatform = async () => {
     setIsSubmitting(true);
     setError('');
@@ -810,8 +825,21 @@ const AgentPlatform: React.FC = () => {
                   <div className="min-w-0">
                     <p className="text-sm text-white truncate">{server.name}</p>
                     <p className="text-xs text-gray-500 font-mono truncate">{server.url || server.command}</p>
+                    {server.last_health_status && (
+                      <p className={`mt-1 text-[11px] truncate ${
+                        server.last_health_status === 'reachable' ? 'text-emerald-300' : 'text-red-300'
+                      }`}>
+                        {server.last_health_status}: {server.last_health_message}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => checkMcpServer(server.server_id)}
+                      className="p-2 rounded-lg text-gray-500 hover:text-sky-300 hover:bg-sky-500/10"
+                    >
+                      <RefreshCw size={16} />
+                    </button>
                     <button
                       onClick={() => editMcpServer(server)}
                       className="p-2 rounded-lg text-gray-500 hover:text-emerald-300 hover:bg-emerald-500/10"

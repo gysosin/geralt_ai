@@ -4,8 +4,11 @@ Agent platform service.
 Persists reusable agent and workflow definitions while validating every tool
 reference against the central registry.
 """
+import shutil
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 from uuid import uuid4
 
 from core.agents.tool_executor import get_agent_tool_executor
@@ -310,6 +313,89 @@ class AgentPlatformService(BaseService):
         }
         self._record_audit("mcp_server.updated", owner, "mcp_server", server_id)
         return ServiceResult.ok(self._public_document(updated_doc))
+
+    def check_mcp_server(self, owner: str, server_id: str) -> ServiceResult:
+        """Check whether a registered MCP server target is reachable."""
+        current = self.mcp_server_db.find_one(
+            {
+                "server_id": server_id,
+                "created_by": self.extract_username(owner),
+                "deleted": {"$ne": True},
+            },
+            {"_id": 0},
+        )
+        if not current:
+            return ServiceResult.fail("MCP server not found", 404)
+
+        status, message = self._probe_mcp_server(current)
+        now = datetime.utcnow().isoformat()
+        updates = {
+            "last_health_status": status,
+            "last_health_message": message,
+            "last_health_checked_at": now,
+            "updated_at": now,
+        }
+        self.mcp_server_db.update_one(
+            {
+                "server_id": server_id,
+                "created_by": self.extract_username(owner),
+                "deleted": {"$ne": True},
+            },
+            {"$set": updates},
+        )
+        self._record_audit(
+            "mcp_server.health_checked",
+            owner,
+            "mcp_server",
+            server_id,
+            {"status": status},
+        )
+        return ServiceResult.ok(self._public_document({**current, **updates}))
+
+    def _probe_mcp_server(self, server: Dict[str, Any]) -> tuple[str, str]:
+        transport = server.get("transport")
+        if transport == "streamable_http":
+            return self._probe_streamable_http_mcp(server)
+        if transport == "stdio":
+            return self._probe_stdio_mcp(server)
+        return "unreachable", "Unsupported MCP transport"
+
+    def _probe_streamable_http_mcp(self, server: Dict[str, Any]) -> tuple[str, str]:
+        url = str(server.get("url") or "").strip()
+        if not url:
+            return "unreachable", "MCP server URL is missing"
+
+        request = Request(
+            url,
+            method="GET",
+            headers={"Accept": "application/json, text/event-stream"},
+        )
+        try:
+            with urlopen(request, timeout=5) as response:
+                status_code = getattr(response, "status", None)
+                if status_code is None and hasattr(response, "getcode"):
+                    status_code = response.getcode()
+                return self._http_health_status(status_code)
+        except HTTPError as error:
+            return self._http_health_status(error.code)
+        except (TimeoutError, URLError, OSError) as error:
+            return "unreachable", f"MCP endpoint is unreachable: {error}"
+
+    def _http_health_status(self, status_code: Optional[int]) -> tuple[str, str]:
+        if status_code is not None and int(status_code) < 500:
+            return "reachable", f"HTTP {status_code} response received from MCP endpoint"
+        if status_code is not None:
+            return "unreachable", f"HTTP {status_code} response received from MCP endpoint"
+        return "reachable", "MCP endpoint responded"
+
+    def _probe_stdio_mcp(self, server: Dict[str, Any]) -> tuple[str, str]:
+        command = str(server.get("command") or "").strip()
+        if not command:
+            return "unreachable", "MCP server command is missing"
+        executable = shutil.which(command)
+        if not executable:
+            return "unreachable", f"Command {command} not found on server PATH"
+        return "reachable", f"Command available at {executable}"
 
     def delete_mcp_server(self, owner: str, server_id: str) -> ServiceResult:
         """Soft-delete an external MCP server registration."""

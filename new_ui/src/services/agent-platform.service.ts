@@ -35,6 +35,9 @@ export interface McpServer {
     args: string[]
     tool_names: string[]
     metadata: Record<string, unknown>
+    last_health_status?: string
+    last_health_message?: string
+    last_health_checked_at?: string
     created_by: string
     created_at: string
     updated_at: string
@@ -234,6 +237,11 @@ export const agentPlatformService = {
 
     async deleteMcpServer(serverId: string): Promise<void> {
         await api.delete(`${BASE_PATH}/mcp-servers/${serverId}`)
+    },
+
+    async checkMcpServer(serverId: string): Promise<McpServer> {
+        const response = await api.post(`${BASE_PATH}/mcp-servers/${serverId}/health-check`)
+        return response.data
     },
 
     async startAgentRun(

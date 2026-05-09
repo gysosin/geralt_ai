@@ -1,7 +1,7 @@
 """
 Tests for agent and workflow definition services.
 """
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from services.agents.agent_platform_service import AgentPlatformService
 
@@ -172,6 +172,76 @@ def test_update_mcp_server_persists_changed_transport_fields():
     assert result.data["url"] == "https://new.example.com/mcp"
     update = mcp_server_db.update_one.call_args.args[1]["$set"]
     assert update["tool_names"] == ["search_docs"]
+
+
+def test_check_mcp_server_records_reachable_streamable_http_status():
+    mcp_server_db = MagicMock()
+    mcp_server_db.find_one.return_value = {
+        "server_id": "mcp-1",
+        "name": "Docs MCP",
+        "description": "",
+        "transport": "streamable_http",
+        "url": "https://docs.example.com/mcp",
+        "command": "",
+        "args": [],
+        "tool_names": ["search_docs"],
+        "metadata": {},
+        "created_by": "mehul",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+        "deleted": False,
+    }
+    response = MagicMock()
+    response.status = 405
+    response.__enter__.return_value = response
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=MagicMock(),
+        mcp_server_db=mcp_server_db,
+    )
+
+    with patch("services.agents.agent_platform_service.urlopen", return_value=response):
+        result = service.check_mcp_server(owner="mehul", server_id="mcp-1")
+
+    assert result.success is True
+    assert result.data["last_health_status"] == "reachable"
+    assert "405" in result.data["last_health_message"]
+    update = mcp_server_db.update_one.call_args.args[1]["$set"]
+    assert update["last_health_status"] == "reachable"
+    assert update["last_health_checked_at"]
+
+
+def test_check_mcp_server_records_missing_stdio_command():
+    mcp_server_db = MagicMock()
+    mcp_server_db.find_one.return_value = {
+        "server_id": "mcp-1",
+        "name": "Local MCP",
+        "description": "",
+        "transport": "stdio",
+        "url": "",
+        "command": "missing-geralt-mcp",
+        "args": [],
+        "tool_names": [],
+        "metadata": {},
+        "created_by": "mehul",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+        "deleted": False,
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=MagicMock(),
+        mcp_server_db=mcp_server_db,
+    )
+
+    with patch("services.agents.agent_platform_service.shutil.which", return_value=None):
+        result = service.check_mcp_server(owner="mehul", server_id="mcp-1")
+
+    assert result.success is True
+    assert result.data["last_health_status"] == "unreachable"
+    assert "not found" in result.data["last_health_message"]
 
 
 def test_adk_manifest_exports_agents_workflows_and_mcp_pointer():
