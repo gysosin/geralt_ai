@@ -14,6 +14,7 @@ import { useAuthStore } from '@/src/store/auth.store';
 import { useDashboardStore } from '@/src/store/dashboard.store';
 import { healthService, type WorkspaceHealthSnapshot } from '@/src/services';
 import { WorkspaceHealthSummary } from '@/src/components/WorkspaceHealthSummary';
+import { UsageAnalyticsCards } from '@/src/components/UsageAnalyticsCards';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -238,6 +239,11 @@ const Dashboard: React.FC = () => {
         isLoading={isWorkspaceHealthLoading}
         error={workspaceHealthError}
         onRefresh={fetchWorkspaceHealth}
+      />
+
+      <UsageAnalyticsCards
+        analytics={analytics}
+        isLoading={isAnalyticsLoading}
       />
 
       {/* KPI Grid */}
