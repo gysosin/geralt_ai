@@ -3,8 +3,9 @@ Authentication Router
 
 Handles user authentication, registration, and Microsoft OAuth.
 """
+import ipaddress
 import logging
-from typing import Optional
+from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
@@ -23,6 +24,28 @@ from services.users.microsoft_auth_service import MicrosoftAuthService, get_micr
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _normalize_callback_redirect_uri(redirect_uri: str) -> str:
+    """Use HTTPS for non-loopback Microsoft OAuth callback URLs."""
+    parsed = urlsplit(redirect_uri)
+    if parsed.scheme != "http":
+        return redirect_uri
+
+    hostname = (parsed.hostname or "").lower().rstrip(".")
+    if _is_loopback_host(hostname):
+        return redirect_uri
+
+    return urlunsplit(parsed._replace(scheme="https"))
+
+
+def _is_loopback_host(hostname: str) -> bool:
+    if hostname == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
 
 
 @router.post("/register", response_model=AuthResponse)
@@ -96,11 +119,7 @@ async def microsoft_login(
     Redirect to Microsoft OAuth login.
     """
     # Construct callback URL dynamically or from settings
-    redirect_uri = str(request.url_for("microsoft_callback"))
-    
-    # Ensure scheme is https in production if behind proxy
-    if "localhost" not in redirect_uri and redirect_uri.startswith("http:"):
-        redirect_uri = redirect_uri.replace("http:", "https:")
+    redirect_uri = _normalize_callback_redirect_uri(str(request.url_for("microsoft_callback")))
 
     result = ms_service.get_auth_url(redirect_uri=redirect_uri)
     
@@ -122,10 +141,7 @@ async def microsoft_callback(
     """
     Handle Microsoft OAuth callback.
     """
-    redirect_uri = str(request.url_for("microsoft_callback"))
-    
-    if "localhost" not in redirect_uri and redirect_uri.startswith("http:"):
-        redirect_uri = redirect_uri.replace("http:", "https:")
+    redirect_uri = _normalize_callback_redirect_uri(str(request.url_for("microsoft_callback")))
         
     result = ms_service.acquire_token(code=code, redirect_uri=redirect_uri)
     
