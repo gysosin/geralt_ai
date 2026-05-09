@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileText, ExternalLink, ChevronDown, ChevronUp, Layers, Eye, X, Clipboard, Check, Pin } from 'lucide-react';
+import { FileText, ExternalLink, ChevronDown, ChevronUp, Layers, Eye, X, Clipboard, Check, Pin, MessageSquare } from 'lucide-react';
 import type { Source } from '@/types';
 import { HighlightedSnapshot } from './highlighted-snapshot';
 import {
@@ -17,6 +17,7 @@ import {
 } from '@/src/utils/source-sort';
 import { buildSourceExportSummary } from '@/src/utils/source-export';
 import { getPinnedSources, getSourcePinId, togglePinnedSourceId } from '@/src/utils/source-pins';
+import { getSourceNoteCount, upsertSourceNote, type SourceNotes } from '@/src/utils/source-notes';
 
 interface SourcesListProps {
     sources: Source[];
@@ -30,6 +31,8 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
     const [sourceSort, setSourceSort] = useState<SourceSortId>('relevance');
     const [copySummaryState, setCopySummaryState] = useState<'idle' | 'copied' | 'error'>('idle');
     const [pinnedSourceIds, setPinnedSourceIds] = useState<string[]>([]);
+    const [activeNoteSourceId, setActiveNoteSourceId] = useState<string | null>(null);
+    const [sourceNotes, setSourceNotes] = useState<SourceNotes>({});
     const [mediaPreview, setMediaPreview] = useState<{ type: 'pdf' | 'image'; url: string; title: string; pages?: number[]; bbox?: number[]; bboxes?: number[][]; imageDimensions?: { width: number; height: number } } | null>(null);
 
     if (!sources || sources.length === 0) {
@@ -51,6 +54,10 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
     const pinnedSources = useMemo(
         () => getPinnedSources(sources, pinnedSourceIds),
         [pinnedSourceIds, sources],
+    );
+    const sourceNoteCount = useMemo(
+        () => getSourceNoteCount(sourceNotes),
+        [sourceNotes],
     );
     const displayedSources = isListExpanded ? sortedSources : sources.slice(0, 3);
     const hasMore = filteredSources.length > 3;
@@ -99,6 +106,22 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
     const handleTogglePinnedSource = (sourceId: string, e: React.MouseEvent) => {
         e.stopPropagation();
         setPinnedSourceIds((currentPinnedSourceIds) => togglePinnedSourceId(currentPinnedSourceIds, sourceId));
+    };
+
+    const handleToggleSourceNote = (sourceId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setActiveNoteSourceId((currentSourceId) => (currentSourceId === sourceId ? null : sourceId));
+    };
+
+    const handleSourceNoteChange = (sourceId: string, value: string) => {
+        setSourceNotes((currentSourceNotes) => ({
+            ...currentSourceNotes,
+            [sourceId]: value,
+        }));
+    };
+
+    const handleSourceNoteBlur = (sourceId: string, value: string) => {
+        setSourceNotes((currentSourceNotes) => upsertSourceNote(currentSourceNotes, sourceId, value));
     };
 
     const copySummaryButton = (
@@ -158,7 +181,14 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                                 </span>
                                 <ChevronUp className="h-4 w-4" />
                             </button>
-                            {copySummaryButton}
+                            <div className="flex flex-wrap items-center gap-2">
+                                {sourceNoteCount > 0 && (
+                                    <span className="rounded-md border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-xs font-semibold text-gray-300">
+                                        {sourceNoteCount} note{sourceNoteCount > 1 ? 's' : ''}
+                                    </span>
+                                )}
+                                {copySummaryButton}
+                            </div>
                         </div>
 
                         <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -304,6 +334,8 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                                 const pagesDisplay = formatPageNumbers(pageNumbers);
                                 const isPdf = fileType === 'pdf' || source.title?.toLowerCase().endsWith('.pdf');
                                 const isPinned = pinnedSourceIds.includes(sourceKey);
+                                const hasSourceNote = Boolean(sourceNotes[sourceKey]?.trim());
+                                const isNoteEditorOpen = activeNoteSourceId === sourceKey || hasSourceNote;
 
                                 return (
                                     <motion.div
@@ -351,6 +383,20 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                                             </div>
 
                                             <div className="flex items-center gap-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => handleToggleSourceNote(sourceKey, e)}
+                                                    className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors ${hasSourceNote
+                                                        ? 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200'
+                                                        : 'border-white/10 bg-white/[0.03] text-gray-500 hover:text-white'
+                                                        }`}
+                                                    aria-pressed={isNoteEditorOpen}
+                                                >
+                                                    <span className="flex items-center gap-1">
+                                                        <MessageSquare className="h-3 w-3" />
+                                                        {hasSourceNote ? 'Noted' : 'Note'}
+                                                    </span>
+                                                </button>
                                                 <button
                                                     type="button"
                                                     onClick={(e) => handleTogglePinnedSource(sourceKey, e)}
@@ -425,6 +471,26 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                                                 )}
                                             </div>
                                         </div>
+
+                                        {isNoteEditorOpen && (
+                                            <div
+                                                className="border-t border-white/5 bg-cyan-400/[0.03] p-2"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <label className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-200">
+                                                    <MessageSquare className="h-3 w-3" />
+                                                    Source note
+                                                </label>
+                                                <textarea
+                                                    value={sourceNotes[sourceKey] || ''}
+                                                    onChange={(e) => handleSourceNoteChange(sourceKey, e.target.value)}
+                                                    onBlur={(e) => handleSourceNoteBlur(sourceKey, e.target.value)}
+                                                    rows={2}
+                                                    placeholder="Add a reviewer note for this citation..."
+                                                    className="w-full resize-none rounded-md border border-white/10 bg-black/20 px-2 py-1.5 text-xs text-gray-200 outline-none transition-colors placeholder:text-gray-600 focus:border-cyan-400/40"
+                                                />
+                                            </div>
+                                        )}
 
                                         {/* Expanded content with chunks */}
                                         <AnimatePresence>
