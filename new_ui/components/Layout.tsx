@@ -324,6 +324,8 @@ const Layout: React.FC<LayoutProps> = ({ children, onLogout }) => {
             <button
               onClick={() => setNotificationPanelOpen(!notificationPanelOpen)}
               className="relative p-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-white/5 transition-colors border border-transparent hover:border-white/5"
+              aria-label="Open notifications"
+              aria-expanded={notificationPanelOpen}
             >
               <Bell size={20} />
               {unreadCount > 0 && (
