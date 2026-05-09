@@ -926,6 +926,53 @@ def test_start_workflow_run_stops_at_approval_gate():
     assert inserted["steps"][0]["output"] is None
 
 
+def test_list_pending_approvals_flattens_waiting_steps():
+    run_db = MagicMock()
+    run_db.find.return_value = [
+        {
+            "run_id": "run-1",
+            "workflow_id": "workflow-1",
+            "created_by": "mehul",
+            "created_at": "2026-05-09T00:00:00",
+            "steps": [
+                {
+                    "step_id": "step-1",
+                    "name": "Human review",
+                    "tool_name": "rag.aggregate",
+                    "status": "pending_approval",
+                    "message": "Approval required before execution",
+                },
+                {
+                    "step_id": "step-2",
+                    "name": "Done",
+                    "tool_name": "query.plan",
+                    "status": "completed",
+                },
+            ],
+        }
+    ]
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.list_pending_approvals(owner="mehul")
+
+    assert result.success is True
+    assert result.data == [
+        {
+            "run_id": "run-1",
+            "workflow_id": "workflow-1",
+            "step_id": "step-1",
+            "step_name": "Human review",
+            "tool_name": "rag.aggregate",
+            "message": "Approval required before execution",
+            "created_at": "2026-05-09T00:00:00",
+        }
+    ]
+
+
 def test_start_workflow_run_blocks_steps_until_dependencies_complete():
     workflow_db = MagicMock()
     run_db = MagicMock()

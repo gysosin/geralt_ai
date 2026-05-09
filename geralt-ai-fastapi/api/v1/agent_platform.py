@@ -774,6 +774,15 @@ async def list_workflow_runs(
     return _result_or_error(service.list_workflow_runs(_owner(current_user), workflow_id))
 
 
+@router.get("/workflow-runs/pending-approvals", response_model=List[Dict[str, Any]])
+async def list_pending_approvals(
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> List[Dict[str, Any]]:
+    """List workflow steps waiting on human approval."""
+    return _result_or_error(service.list_pending_approvals(_owner(current_user)))
+
+
 @router.get("/workflow-runs/{run_id}", response_model=WorkflowRunResponse)
 async def get_workflow_run(
     run_id: str,

@@ -21,6 +21,7 @@ import {
   type AgentTemplate,
   type AgentTool,
   type McpServer,
+  type PendingApproval,
   type PlatformStats,
   type ToolInvocationResult,
   type WorkflowDefinition,
@@ -49,6 +50,7 @@ const AgentPlatform: React.FC = () => {
   const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([]);
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
+  const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [toolResult, setToolResult] = useState<ToolInvocationResult | null>(null);
   const [platformStats, setPlatformStats] = useState<PlatformStats | null>(null);
@@ -86,7 +88,7 @@ const AgentPlatform: React.FC = () => {
     setIsLoading(true);
     setError('');
     try {
-      const [toolResult, agentTemplateResult, agentResult, mcpServerResult, workflowResult, templateResult, runResult, auditResult, statsResult] = await Promise.allSettled([
+      const [toolResult, agentTemplateResult, agentResult, mcpServerResult, workflowResult, templateResult, runResult, approvalResult, auditResult, statsResult] = await Promise.allSettled([
         agentPlatformService.getTools(),
         agentPlatformService.listAgentTemplates(),
         agentPlatformService.listAgents(),
@@ -94,6 +96,7 @@ const AgentPlatform: React.FC = () => {
         agentPlatformService.listWorkflows(),
         agentPlatformService.listWorkflowTemplates(),
         agentPlatformService.listWorkflowRuns(),
+        agentPlatformService.listPendingApprovals(),
         agentPlatformService.listAuditEvents(),
         agentPlatformService.getStats(),
       ]);
@@ -110,6 +113,7 @@ const AgentPlatform: React.FC = () => {
         setSelectedTemplateId(loadedTemplates[0].template_id);
       }
       setRuns(runResult.status === 'fulfilled' ? runResult.value || [] : []);
+      setPendingApprovals(approvalResult.status === 'fulfilled' ? approvalResult.value || [] : []);
       setAuditEvents(auditResult.status === 'fulfilled' ? auditResult.value || [] : []);
       setPlatformStats(statsResult.status === 'fulfilled' ? statsResult.value : null);
       if (!runWorkflowId && loadedWorkflows?.[0]?.workflow_id) {
@@ -118,7 +122,7 @@ const AgentPlatform: React.FC = () => {
       if (!runAgentId && loadedAgents?.[0]?.agent_id) {
         setRunAgentId(loadedAgents[0].agent_id);
       }
-      if ([toolResult, agentTemplateResult, agentResult, mcpServerResult, workflowResult, templateResult, runResult, auditResult, statsResult].some((result) => result.status === 'rejected')) {
+      if ([toolResult, agentTemplateResult, agentResult, mcpServerResult, workflowResult, templateResult, runResult, approvalResult, auditResult, statsResult].some((result) => result.status === 'rejected')) {
         setError('Some platform records are unavailable. Tool registry is still loaded when the API is reachable.');
       }
     } catch (loadError) {
@@ -366,6 +370,7 @@ const AgentPlatform: React.FC = () => {
     try {
       const updated = await agentPlatformService.approveWorkflowStep(runId, stepId);
       setRuns((current) => current.map((run) => (run.run_id === updated.run_id ? updated : run)));
+      setPendingApprovals(await agentPlatformService.listPendingApprovals());
       setAuditEvents(await agentPlatformService.listAuditEvents());
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to approve workflow step');
@@ -1008,6 +1013,38 @@ const AgentPlatform: React.FC = () => {
                 {JSON.stringify(toolResult, null, 2)}
               </pre>
             )}
+          </section>
+
+          <section className="border border-white/5 bg-surface/30 rounded-2xl p-5">
+            <h2 className="text-lg font-semibold text-white mb-4">Approval Queue</h2>
+            <div className="space-y-3">
+              {pendingApprovals.slice(0, 6).map((approval) => (
+                <div key={`${approval.run_id}-${approval.step_id}`} className="rounded-xl border border-amber-500/10 bg-amber-500/5 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm text-white truncate">{approval.step_name}</p>
+                      <p className="text-xs text-gray-500 font-mono truncate">{approval.tool_name} / {approval.run_id.slice(0, 8)}</p>
+                    </div>
+                    <button
+                      onClick={() => approveWorkflowStep(approval.run_id, approval.step_id)}
+                      disabled={isSubmitting}
+                      className="h-8 px-3 rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-100 hover:bg-amber-500/15 disabled:opacity-60 flex items-center gap-1"
+                    >
+                      <CheckCircle2 size={14} />
+                      Approve
+                    </button>
+                  </div>
+                  {approval.message && (
+                    <p className="mt-2 text-[11px] leading-relaxed text-amber-300">{approval.message}</p>
+                  )}
+                </div>
+              ))}
+              {pendingApprovals.length === 0 && (
+                <div className="rounded-xl border border-white/5 bg-black/20 p-6 text-center text-sm text-gray-500">
+                  No pending approvals
+                </div>
+              )}
+            </div>
           </section>
 
           <section className="border border-white/5 bg-surface/30 rounded-2xl p-5">

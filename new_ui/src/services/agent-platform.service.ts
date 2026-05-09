@@ -87,6 +87,16 @@ export interface WorkflowRun {
     updated_at: string
 }
 
+export interface PendingApproval {
+    run_id: string
+    workflow_id: string
+    step_id: string
+    step_name: string
+    tool_name: string
+    message: string
+    created_at: string
+}
+
 export interface AuditEvent {
     event: string
     subject_type: string
@@ -352,6 +362,11 @@ export const agentPlatformService = {
     async listWorkflowRuns(workflowId?: string): Promise<WorkflowRun[]> {
         const params = workflowId ? `?workflow_id=${encodeURIComponent(workflowId)}` : ''
         const response = await api.get(`${BASE_PATH}/workflow-runs${params}`)
+        return response.data
+    },
+
+    async listPendingApprovals(): Promise<PendingApproval[]> {
+        const response = await api.get(`${BASE_PATH}/workflow-runs/pending-approvals`)
         return response.data
     },
 
