@@ -4,10 +4,12 @@ UtilityService
 OOP-based utility functions for document processing and file handling.
 """
 import datetime
+import ipaddress
 import re
 import logging
+import socket
 from typing import Optional, List, Dict, Any
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse, parse_qs
 from pathlib import Path
 
 import numpy as np
@@ -300,22 +302,61 @@ class UtilityService:
     # =========================================================================
 
     def is_valid_url(self, url: str) -> bool:
-        """Check if a string is a valid URL."""
-        regex = re.compile(
-            r"^(?:http|https)://"
-            r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|"
-            r"localhost|"
-            r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
-            r"\[?[A-F0-9]*:[A-F0-9:]+\]?)"
-            r"(?::\d+)?"
-            r"(?:/?|[/?]\S+)$",
-            re.IGNORECASE,
+        """Check if a string is a valid public HTTP/S URL."""
+        parsed_url = urlparse((url or "").strip())
+        if parsed_url.scheme not in {"http", "https"} or not parsed_url.hostname:
+            return False
+        try:
+            port = parsed_url.port
+        except ValueError:
+            return False
+
+        hostname = parsed_url.hostname.strip().lower().rstrip(".")
+        if hostname in {"localhost", "localhost.localdomain"} or hostname.endswith(".localhost"):
+            return False
+
+        default_port = 443 if parsed_url.scheme == "https" else 80
+        return self._hostname_resolves_publicly(hostname, port or default_port)
+
+    def _hostname_resolves_publicly(self, hostname: str, port: int) -> bool:
+        """Return True when a hostname only resolves to public IP addresses."""
+        try:
+            return not self._is_unsafe_url_address(ipaddress.ip_address(hostname))
+        except ValueError:
+            pass
+
+        try:
+            addresses = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+        except OSError:
+            return False
+
+        resolved_any = False
+        for address_info in addresses:
+            sockaddr = address_info[4]
+            if not sockaddr:
+                continue
+            try:
+                address = ipaddress.ip_address(sockaddr[0])
+            except ValueError:
+                return False
+            if self._is_unsafe_url_address(address):
+                return False
+            resolved_any = True
+        return resolved_any
+
+    def _is_unsafe_url_address(self, address: Any) -> bool:
+        return (
+            not address.is_global
+            or address.is_private
+            or address.is_loopback
+            or address.is_link_local
+            or address.is_reserved
+            or address.is_unspecified
+            or address.is_multicast
         )
-        return re.match(regex, url) is not None
 
     def normalize_url(self, url: str) -> str:
         """Normalize a URL."""
-        from urllib.parse import urlparse, parse_qs
         parsed_url = urlparse(url)
 
         if "youtube.com" in parsed_url.netloc or "youtu.be" in parsed_url.netloc:
@@ -327,7 +368,6 @@ class UtilityService:
         return normalized
 
     def _extract_youtube_video_id(self, url: str) -> Optional[str]:
-        from urllib.parse import urlparse, parse_qs
         parsed = urlparse(url)
         if parsed.hostname == "youtu.be":
             return parsed.path[1:]
