@@ -439,3 +439,42 @@ def test_tool_invocation_endpoint_executes_tool():
     data = response.json()
     assert data["status"] == "completed"
     assert data["output"]["data"][0]["total"] == 200
+
+
+def test_platform_export_endpoint_returns_structured_payload():
+    agent_db = MagicMock()
+    workflow_db = MagicMock()
+    run_db = MagicMock()
+    audit_db = MagicMock()
+    agent_db.find.return_value = [{"agent_id": "agent-1", "created_by": "anonymous"}]
+    workflow_db.find.return_value = [{"workflow_id": "workflow-1", "created_by": "anonymous"}]
+    run_db.find.return_value = [{"run_id": "run-1", "created_by": "anonymous"}]
+    audit_cursor = MagicMock()
+    audit_cursor.sort.return_value = audit_cursor
+    audit_cursor.limit.return_value = [{"event": "workflow.created", "created_by": "anonymous"}]
+    audit_db.find.return_value = audit_cursor
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=agent_db,
+                    workflow_db=workflow_db,
+                    run_db=run_db,
+                    audit_db=audit_db,
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.get("/api/v1/agent-platform/export")
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["schema_version"] == "1.0"
+    assert data["agents"][0]["agent_id"] == "agent-1"
+    assert data["mcp_manifest"]["name"] == "GeraltAI Agent Platform"

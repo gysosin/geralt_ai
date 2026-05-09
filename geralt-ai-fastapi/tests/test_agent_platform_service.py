@@ -543,3 +543,32 @@ def test_mcp_manifest_uses_registered_tool_declarations():
     assert result.success is True
     assert result.data["name"] == "GeraltAI Agent Platform"
     assert any(tool["name"] == "rag.aggregate" for tool in result.data["tools"])
+
+
+def test_export_platform_returns_tools_definitions_runs_and_audit():
+    agent_db = MagicMock()
+    workflow_db = MagicMock()
+    run_db = MagicMock()
+    audit_db = MagicMock()
+    agent_db.find.return_value = [{"agent_id": "agent-1", "created_by": "mehul"}]
+    workflow_db.find.return_value = [{"workflow_id": "workflow-1", "created_by": "mehul"}]
+    run_db.find.return_value = [{"run_id": "run-1", "created_by": "mehul"}]
+    audit_cursor = MagicMock()
+    audit_cursor.sort.return_value = audit_cursor
+    audit_cursor.limit.return_value = [{"event": "workflow.created", "created_by": "mehul"}]
+    audit_db.find.return_value = audit_cursor
+    service = AgentPlatformService(
+        agent_db=agent_db,
+        workflow_db=workflow_db,
+        run_db=run_db,
+        audit_db=audit_db,
+    )
+
+    result = service.export_platform(owner="mehul")
+
+    assert result.success is True
+    assert result.data["agents"][0]["agent_id"] == "agent-1"
+    assert result.data["workflows"][0]["workflow_id"] == "workflow-1"
+    assert result.data["runs"][0]["run_id"] == "run-1"
+    assert result.data["audit_events"][0]["event"] == "workflow.created"
+    assert any(tool["name"] == "rag.aggregate" for tool in result.data["mcp_manifest"]["tools"])
