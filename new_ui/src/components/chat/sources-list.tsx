@@ -94,7 +94,7 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
 
     const handleCopySourceSummary = async () => {
         try {
-            await navigator.clipboard.writeText(buildSourceExportSummary(sortedSources));
+            await navigator.clipboard.writeText(buildSourceExportSummary(sortedSources, sourceNotes));
             setCopySummaryState('copied');
             window.setTimeout(() => setCopySummaryState('idle'), 1800);
         } catch {
@@ -145,7 +145,9 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                 ? 'Copied'
                 : copySummaryState === 'error'
                     ? 'Copy failed'
-                    : 'Copy summary'}
+                    : sourceNoteCount > 0
+                        ? 'Copy with notes'
+                        : 'Copy summary'}
         </button>
     );
 
