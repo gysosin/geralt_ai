@@ -200,6 +200,22 @@ class PlatformExportResponse(BaseModel):
     audit_events: List[Dict[str, Any]]
 
 
+class PlatformImportRequest(BaseModel):
+    """Agent platform import payload."""
+
+    agents: List[Dict[str, Any]] = Field(default_factory=list)
+    workflows: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class PlatformImportResponse(BaseModel):
+    """Agent platform import summary."""
+
+    agents_imported: int
+    workflows_imported: int
+    agent_id_map: Dict[str, str]
+    workflow_id_map: Dict[str, str]
+
+
 def _owner(current_user: str | None) -> str:
     return current_user or "anonymous"
 
@@ -247,6 +263,16 @@ async def export_agent_platform(
 ) -> Dict[str, Any]:
     """Export agent platform definitions and recent activity."""
     return _result_or_error(service.export_platform(_owner(current_user)))
+
+
+@router.post("/import", response_model=PlatformImportResponse, status_code=201)
+async def import_agent_platform(
+    request: PlatformImportRequest,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Import agent platform definitions from an exported JSON payload."""
+    return _result_or_error(service.import_platform(_owner(current_user), request.model_dump()))
 
 
 @router.post("/tool-invocations", response_model=ToolInvocationResponse)

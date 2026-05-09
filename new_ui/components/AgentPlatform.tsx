@@ -370,6 +370,27 @@ const AgentPlatform: React.FC = () => {
     }
   };
 
+  const importPlatformFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const payload = JSON.parse(await file.text());
+      const result = await agentPlatformService.importPlatform({
+        agents: Array.isArray(payload.agents) ? payload.agents : [],
+        workflows: Array.isArray(payload.workflows) ? payload.workflows : [],
+      });
+      setExportSummary(`${result.agents_imported} agents, ${result.workflows_imported} workflows imported`);
+      await loadData();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to import platform data');
+    } finally {
+      setIsSubmitting(false);
+      event.target.value = '';
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -406,6 +427,16 @@ const AgentPlatform: React.FC = () => {
           <Route size={16} />
           ADK
         </button>
+        <label className="h-10 px-4 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-sm text-white flex items-center gap-2 cursor-pointer">
+          <Workflow size={16} />
+          Import
+          <input
+            type="file"
+            accept="application/json,.json"
+            onChange={importPlatformFile}
+            className="hidden"
+          />
+        </label>
       </div>
 
       {error && (

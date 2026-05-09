@@ -717,3 +717,41 @@ def test_platform_export_endpoint_returns_structured_payload():
     assert data["schema_version"] == "1.0"
     assert data["agents"][0]["agent_id"] == "agent-1"
     assert data["mcp_manifest"]["name"] == "GeraltAI Agent Platform"
+
+
+def test_platform_import_endpoint_returns_id_maps():
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=MagicMock(),
+                    workflow_db=MagicMock(),
+                    run_db=MagicMock(),
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.post(
+                    "/api/v1/agent-platform/import",
+                    json={
+                        "agents": [
+                            {
+                                "agent_id": "old-agent",
+                                "name": "Imported Planner",
+                                "instruction": "Plan document work.",
+                                "tool_names": ["query.plan"],
+                            }
+                        ],
+                        "workflows": [],
+                    },
+                )
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["agents_imported"] == 1
+    assert data["agent_id_map"]["old-agent"]
