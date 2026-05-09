@@ -3,6 +3,9 @@ import {
   Bot,
   CheckCircle2,
   CircleDashed,
+  Copy,
+  Download,
+  FileCode2,
   Loader2,
   Play,
   RefreshCw,
@@ -16,6 +19,7 @@ import {
 import { motion } from 'framer-motion';
 import {
   agentPlatformService,
+  type AdkManifest,
   type AuditEvent,
   type AgentDefinition,
   type AgentTemplate,
@@ -31,6 +35,7 @@ import {
   type WorkflowTemplate,
   type WorkflowTrigger,
 } from '../src/services/agent-platform.service';
+import { getAdkManifestSummary, getAdkToolsetTarget } from '../src/utils/agent-platform-adk';
 import { buildMcpServerPayload, isMcpServerFormReady, type McpTransport } from '../src/utils/agent-platform-mcp';
 import { getAgentPlatformStats } from '../src/utils/agent-platform-stats';
 
@@ -62,10 +67,12 @@ const AgentPlatform: React.FC = () => {
   const [toolResult, setToolResult] = useState<ToolInvocationResult | null>(null);
   const [runTrace, setRunTrace] = useState<WorkflowRunTrace | null>(null);
   const [platformStats, setPlatformStats] = useState<PlatformStats | null>(null);
+  const [adkManifest, setAdkManifest] = useState<AdkManifest | null>(null);
   const [exportSummary, setExportSummary] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [adkCopied, setAdkCopied] = useState(false);
 
   const [agentName, setAgentName] = useState('Document Operations Agent');
   const [agentInstruction, setAgentInstruction] = useState('Plan the user request, search or aggregate selected document collections, and return grounded results.');
@@ -168,6 +175,10 @@ const AgentPlatform: React.FC = () => {
     pendingApprovals,
     platformStats,
   }), [tools, agents, workflows, mcpServers, runs, pendingApprovals, platformStats]);
+  const adkSummary = useMemo(() => getAdkManifestSummary(adkManifest), [adkManifest]);
+  const adkManifestJson = useMemo(() => (
+    adkManifest ? JSON.stringify(adkManifest, null, 2) : ''
+  ), [adkManifest]);
 
   const handleToolToggle = (toolName: string) => {
     setSelectedTools((current) =>
@@ -569,11 +580,25 @@ const AgentPlatform: React.FC = () => {
     }
   };
 
-  const exportAdkManifest = async () => {
+  const loadAdkManifestPreview = async () => {
     setIsSubmitting(true);
     setError('');
     try {
       const manifest = await agentPlatformService.getAdkManifest();
+      setAdkManifest(manifest);
+      setExportSummary(`ADK manifest loaded: ${manifest.adk_toolsets.length} toolsets`);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to load ADK manifest');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const exportAdkManifest = async () => {
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const manifest = adkManifest || await agentPlatformService.getAdkManifest();
       const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -587,6 +612,13 @@ const AgentPlatform: React.FC = () => {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const copyAdkManifest = async () => {
+    if (!adkManifestJson) return;
+    await navigator.clipboard.writeText(adkManifestJson);
+    setAdkCopied(true);
+    window.setTimeout(() => setAdkCopied(false), 1800);
   };
 
   const importPlatformFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -641,11 +673,11 @@ const AgentPlatform: React.FC = () => {
           Export
         </button>
         <button
-          onClick={exportAdkManifest}
+          onClick={loadAdkManifestPreview}
           className="h-10 px-4 rounded-xl border border-sky-500/20 bg-sky-500/10 hover:bg-sky-500/15 text-sm text-sky-100 flex items-center gap-2"
         >
-          <Route size={16} />
-          ADK
+          <FileCode2 size={16} />
+          ADK Preview
         </button>
         <label className="h-10 px-4 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-sm text-white flex items-center gap-2 cursor-pointer">
           <Workflow size={16} />
@@ -668,6 +700,74 @@ const AgentPlatform: React.FC = () => {
         <div className="border border-emerald-500/20 bg-emerald-500/10 text-emerald-100 rounded-xl px-4 py-3 text-sm">
           Export ready: {exportSummary}
         </div>
+      )}
+
+      {adkManifest && (
+        <section className="border border-sky-500/10 bg-surface/30 rounded-2xl p-5 space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div>
+              <p className="text-xs text-sky-300 uppercase tracking-[0.18em]">ADK Manifest</p>
+              <h2 className="text-xl font-semibold text-white mt-1">{adkManifest.name}</h2>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={copyAdkManifest}
+                className="h-9 px-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-xs text-white flex items-center gap-2"
+              >
+                {adkCopied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+                {adkCopied ? 'Copied' : 'Copy JSON'}
+              </button>
+              <button
+                onClick={exportAdkManifest}
+                disabled={isSubmitting}
+                className="h-9 px-3 rounded-xl border border-sky-500/20 bg-sky-500/10 hover:bg-sky-500/15 disabled:opacity-60 text-xs text-sky-100 flex items-center gap-2"
+              >
+                {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                Download JSON
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+            {[
+              { label: 'Tools', value: adkSummary.tools },
+              { label: 'Agents', value: adkSummary.agents },
+              { label: 'Workflows', value: adkSummary.workflows },
+              { label: 'MCP Servers', value: adkSummary.externalMcpServers },
+              { label: 'Toolsets', value: adkSummary.toolsets },
+              { label: 'HTTP', value: adkSummary.httpToolsets },
+              { label: 'Stdio', value: adkSummary.stdioToolsets },
+            ].map((item) => (
+              <div key={item.label} className="rounded-xl border border-white/5 bg-black/20 px-4 py-3">
+                <p className="text-[11px] text-gray-500 uppercase tracking-wider">{item.label}</p>
+                <p className="text-2xl font-semibold text-white mt-1">{item.value}</p>
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {adkManifest.adk_toolsets.map((toolset) => (
+              <div key={toolset.server_id || toolset.name} className="rounded-xl border border-white/5 bg-black/20 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm text-white truncate">{toolset.name || toolset.server_id}</p>
+                  <span className="rounded-lg border border-sky-500/20 bg-sky-500/10 px-2 py-1 text-[11px] text-sky-200">
+                    {toolset.connection_params?.type || toolset.transport}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-gray-500 font-mono truncate">{getAdkToolsetTarget(toolset)}</p>
+                <p className="mt-2 text-[11px] text-gray-400">
+                  {(toolset.tool_filter || []).length || 'All'} tool{(toolset.tool_filter || []).length === 1 ? '' : 's'}
+                </p>
+              </div>
+            ))}
+            {adkManifest.adk_toolsets.length === 0 && (
+              <div className="rounded-xl border border-white/5 bg-black/20 p-4 text-sm text-gray-500">
+                No external ADK toolsets
+              </div>
+            )}
+          </div>
+          <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-white/5 bg-black/30 p-4 text-[11px] leading-relaxed text-gray-400 font-mono">
+            {adkManifestJson}
+          </pre>
+        </section>
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
