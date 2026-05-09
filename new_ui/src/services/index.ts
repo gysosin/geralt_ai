@@ -6,4 +6,4 @@ export { botService, collectionService } from './bot.service'
 export { configurationService } from './configuration.service'
 export { documentService } from './document.service'
 export { socketService } from './socket.service'
-
+export { agentPlatformService } from './agent-platform.service'

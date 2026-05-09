@@ -9,7 +9,8 @@ import {
   History,
   BrainCircuit,
   ShieldCheck,
-  Zap
+  Zap,
+  Workflow
 } from 'lucide-react';
 import React from 'react';
 
@@ -19,6 +20,7 @@ export const MENU_ITEMS = [
   { label: 'Dashboard', icon: <BarChart3 size={20} />, path: '/' },
   { label: 'Chat', icon: <MessageSquare size={20} />, path: '/chat' },
   { label: 'Agents', icon: <BotIcon size={20} />, path: '/bots' },
+  { label: 'Agent Platform', icon: <Workflow size={20} />, path: '/agent-platform' },
   { label: 'Knowledge', icon: <Files size={20} />, path: '/collections' },
   { label: 'Analytics', icon: <PieChart size={20} />, path: '/analytics' },
   { label: 'History', icon: <History size={20} />, path: '/history' },
