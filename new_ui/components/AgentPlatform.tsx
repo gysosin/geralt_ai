@@ -15,6 +15,7 @@ import {
 import { motion } from 'framer-motion';
 import {
   agentPlatformService,
+  type AuditEvent,
   type AgentDefinition,
   type AgentTool,
   type WorkflowDefinition,
@@ -38,6 +39,7 @@ const AgentPlatform: React.FC = () => {
   const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([]);
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -59,12 +61,13 @@ const AgentPlatform: React.FC = () => {
     setIsLoading(true);
     setError('');
     try {
-      const [toolResult, agentResult, workflowResult, templateResult, runResult] = await Promise.allSettled([
+      const [toolResult, agentResult, workflowResult, templateResult, runResult, auditResult] = await Promise.allSettled([
         agentPlatformService.getTools(),
         agentPlatformService.listAgents(),
         agentPlatformService.listWorkflows(),
         agentPlatformService.listWorkflowTemplates(),
         agentPlatformService.listWorkflowRuns(),
+        agentPlatformService.listAuditEvents(),
       ]);
       setTools(toolResult.status === 'fulfilled' ? toolResult.value.tools || [] : []);
       setAgents(agentResult.status === 'fulfilled' ? agentResult.value || [] : []);
@@ -76,10 +79,11 @@ const AgentPlatform: React.FC = () => {
         setSelectedTemplateId(loadedTemplates[0].template_id);
       }
       setRuns(runResult.status === 'fulfilled' ? runResult.value || [] : []);
+      setAuditEvents(auditResult.status === 'fulfilled' ? auditResult.value || [] : []);
       if (!runWorkflowId && loadedWorkflows?.[0]?.workflow_id) {
         setRunWorkflowId(loadedWorkflows[0].workflow_id);
       }
-      if ([toolResult, agentResult, workflowResult, templateResult, runResult].some((result) => result.status === 'rejected')) {
+      if ([toolResult, agentResult, workflowResult, templateResult, runResult, auditResult].some((result) => result.status === 'rejected')) {
         setError('Some platform records are unavailable. Tool registry is still loaded when the API is reachable.');
       }
     } catch (loadError) {
@@ -510,6 +514,26 @@ const AgentPlatform: React.FC = () => {
               {runs.length === 0 && (
                 <div className="rounded-xl border border-white/5 bg-black/20 p-6 text-center text-sm text-gray-500">
                   No runs yet
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="border border-white/5 bg-surface/30 rounded-2xl p-5">
+            <h2 className="text-lg font-semibold text-white mb-4">Audit</h2>
+            <div className="space-y-3">
+              {auditEvents.slice(0, 8).map((event) => (
+                <div key={`${event.event}-${event.subject_id}-${event.created_at}`} className="rounded-xl border border-white/5 bg-black/20 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm text-white truncate">{event.event}</span>
+                    <span className="text-[11px] text-gray-500">{event.subject_type}</span>
+                  </div>
+                  <p className="text-xs text-gray-500 font-mono mt-1 truncate">{event.subject_id}</p>
+                </div>
+              ))}
+              {auditEvents.length === 0 && (
+                <div className="rounded-xl border border-white/5 bg-black/20 p-6 text-center text-sm text-gray-500">
+                  No audit events
                 </div>
               )}
             </div>

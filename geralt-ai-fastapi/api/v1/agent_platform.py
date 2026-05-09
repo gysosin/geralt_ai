@@ -138,6 +138,17 @@ class WorkflowRunResponse(BaseModel):
     updated_at: str
 
 
+class AuditEventResponse(BaseModel):
+    """Agent platform lifecycle event."""
+
+    event: str
+    subject_type: str
+    subject_id: str
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_by: str
+    created_at: str
+
+
 def _owner(current_user: str | None) -> str:
     return current_user or "anonymous"
 
@@ -345,3 +356,13 @@ async def get_workflow_run(
 ) -> Dict[str, Any]:
     """Get one workflow run record."""
     return _result_or_error(service.get_workflow_run(_owner(current_user), run_id))
+
+
+@router.get("/audit-events", response_model=List[AuditEventResponse])
+async def list_audit_events(
+    limit: int = 50,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> List[Dict[str, Any]]:
+    """List recent agent platform lifecycle events."""
+    return _result_or_error(service.list_audit_events(_owner(current_user), limit=limit))
