@@ -66,6 +66,12 @@ class AgentDefinitionUpdate(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
 
 
+class AgentCloneCreate(BaseModel):
+    """Request to clone a reusable agent."""
+
+    name: Optional[str] = None
+
+
 class AgentTemplateCreate(BaseModel):
     """Request to create a reusable agent from a template."""
 
@@ -636,6 +642,27 @@ async def update_agent_definition(
         metadata=request.metadata,
     )
     return _result_or_error(result)
+
+
+@router.post(
+    "/agents/{agent_id}/clone",
+    response_model=AgentDefinitionResponse,
+    status_code=201,
+)
+async def clone_agent_definition(
+    agent_id: str,
+    request: AgentCloneCreate,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Clone an owned reusable agent definition."""
+    return _result_or_error(
+        service.clone_agent(
+            owner=_owner(current_user),
+            agent_id=agent_id,
+            name=request.name,
+        )
+    )
 
 
 @router.delete("/agents/{agent_id}")

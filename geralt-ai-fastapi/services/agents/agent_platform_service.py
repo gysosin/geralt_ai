@@ -180,6 +180,40 @@ class AgentPlatformService(BaseService):
         self._record_audit("agent.updated", owner, "agent", agent_id)
         return ServiceResult.ok(self._public_document(updated_doc))
 
+    def clone_agent(
+        self,
+        owner: str,
+        agent_id: str,
+        name: Optional[str] = None,
+    ) -> ServiceResult:
+        """Create a new reusable agent from an existing owned agent."""
+        current_result = self.get_agent(owner, agent_id)
+        if not current_result.success:
+            return current_result
+
+        current = current_result.data
+        metadata = deepcopy(current.get("metadata") or {})
+        metadata["cloned_from"] = agent_id
+        result = self.create_agent(
+            owner=owner,
+            name=name or f"{current.get('name') or 'Agent'} Copy",
+            description=current.get("description"),
+            instruction=current.get("instruction") or "",
+            tool_names=list(current.get("tool_names") or []),
+            model=current.get("model"),
+            collection_ids=list(current.get("collection_ids") or []),
+            metadata=metadata,
+        )
+        if result.success:
+            self._record_audit(
+                "agent.cloned",
+                owner,
+                "agent",
+                result.data["agent_id"],
+                {"cloned_from": agent_id},
+            )
+        return result
+
     def list_agent_templates(self) -> ServiceResult:
         """List built-in agent templates."""
         return ServiceResult.ok(self.agent_template_registry.list_templates())

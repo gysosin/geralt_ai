@@ -309,6 +309,28 @@ const AgentPlatform: React.FC = () => {
     setSelectedTemplateId('');
   };
 
+  const cloneAgent = async (agent: AgentDefinition) => {
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const created = await agentPlatformService.cloneAgent(agent.agent_id, {
+        name: `${agent.name} Copy`,
+      });
+      setAgents((current) => [created, ...current]);
+      setRunAgentId(created.agent_id);
+      const [auditResult, statsResult] = await Promise.all([
+        agentPlatformService.listAuditEvents(),
+        agentPlatformService.getStats(),
+      ]);
+      setAuditEvents(auditResult);
+      setPlatformStats(statsResult);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to clone agent');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const cloneWorkflow = async (workflow: WorkflowDefinition) => {
     setIsSubmitting(true);
     setError('');
@@ -1158,12 +1180,25 @@ const AgentPlatform: React.FC = () => {
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => editAgent(agent)}
+                        aria-label={`Edit ${agent.name}`}
+                        title={`Edit ${agent.name}`}
                         className="p-2 rounded-lg text-gray-500 hover:text-emerald-300 hover:bg-emerald-500/10"
                       >
                         <Settings2 size={16} />
                       </button>
                       <button
+                        onClick={() => cloneAgent(agent)}
+                        disabled={isSubmitting}
+                        aria-label={`Clone ${agent.name}`}
+                        title={`Clone ${agent.name}`}
+                        className="p-2 rounded-lg text-gray-500 hover:text-violet-300 hover:bg-violet-500/10 disabled:opacity-60"
+                      >
+                        <Copy size={16} />
+                      </button>
+                      <button
                         onClick={() => deleteAgent(agent.agent_id)}
+                        aria-label={`Delete ${agent.name}`}
+                        title={`Delete ${agent.name}`}
                         className="p-2 rounded-lg text-gray-500 hover:text-red-300 hover:bg-red-500/10"
                       >
                         <Trash2 size={16} />
