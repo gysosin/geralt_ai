@@ -351,6 +351,12 @@ def _owner(current_user: str | None) -> str:
     raise HTTPException(status_code=401, detail="Authentication required")
 
 
+def _require_agent_platform_access(current_user: str | None) -> None:
+    if current_user or settings.ALLOW_ANONYMOUS_AGENT_PLATFORM:
+        return
+    raise HTTPException(status_code=401, detail="Authentication required")
+
+
 def _result_or_error(result):
     if not result.success:
         raise HTTPException(status_code=result.status_code, detail=result.error)
@@ -362,6 +368,7 @@ async def list_agent_tools(
     current_user: str | None = Depends(get_optional_user),
 ) -> ToolListResponse:
     """List available agent tools and MCP-compatible declarations."""
+    _require_agent_platform_access(current_user)
     registry = get_agent_tool_registry()
     return ToolListResponse(
         tools=registry.list_public_tools(),
@@ -375,6 +382,7 @@ async def get_mcp_manifest(
     service: AgentPlatformService = Depends(get_agent_platform_service),
 ) -> Dict[str, Any]:
     """Return a manifest for external agent runtimes."""
+    _require_agent_platform_access(current_user)
     return _result_or_error(service.get_mcp_manifest())
 
 
@@ -436,6 +444,7 @@ async def plan_query(
     current_user: str | None = Depends(get_optional_user),
 ) -> QueryPlanResponse:
     """Classify a query before deciding which tool or workflow to run."""
+    _require_agent_platform_access(current_user)
     plan = get_query_classifier().plan(request.query)
     return QueryPlanResponse(
         query_type=plan.query_type.value,
@@ -482,6 +491,7 @@ async def list_agent_templates(
     service: AgentPlatformService = Depends(get_agent_platform_service),
 ) -> List[Dict[str, Any]]:
     """List built-in agent templates."""
+    _require_agent_platform_access(current_user)
     return _result_or_error(service.list_agent_templates())
 
 
@@ -711,6 +721,7 @@ async def list_workflow_templates(
     service: AgentPlatformService = Depends(get_agent_platform_service),
 ) -> List[Dict[str, Any]]:
     """List built-in workflow templates."""
+    _require_agent_platform_access(current_user)
     return _result_or_error(service.list_workflow_templates())
 
 

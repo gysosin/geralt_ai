@@ -53,6 +53,17 @@ def test_agent_platform_owner_rejects_anonymous_when_disabled(monkeypatch):
     assert exc_info.value.status_code == 401
 
 
+def test_agent_platform_metadata_gate_rejects_anonymous_when_disabled(monkeypatch):
+    from api.v1 import agent_platform
+
+    monkeypatch.setattr(agent_platform.settings, "ALLOW_ANONYMOUS_AGENT_PLATFORM", False)
+
+    with pytest.raises(HTTPException) as exc_info:
+        agent_platform._require_agent_platform_access(None)
+
+    assert exc_info.value.status_code == 401
+
+
 def test_agent_query_plan_endpoint_returns_deterministic_route():
     with patch("models.database.MongoClient"):
         with patch("core.clients.redis_client.redis.StrictRedis"):
