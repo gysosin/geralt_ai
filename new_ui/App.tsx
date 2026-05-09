@@ -16,6 +16,7 @@ const Collections = lazy(() => import('./components/Collections'));
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const History = lazy(() => import('./components/History'));
 const HistoryDetail = lazy(() => import('./components/HistoryDetail'));
+const GlobalSearch = lazy(() => import('./src/pages/GlobalSearch'));
 const NotificationProvider = lazy(() => import('./src/components/NotificationProvider'));
 const Settings = lazy(() => import('./components/Settings'));
 
@@ -87,6 +88,7 @@ const App: React.FC = () => {
                         <Route path="collections/:id" element={<CollectionDetail />} />
 
                         <Route path="analytics" element={<Analytics />} />
+                        <Route path="search" element={<GlobalSearch />} />
 
                         <Route path="history" element={<History />} />
                         <Route path="history/:id" element={<HistoryDetail />} />
