@@ -396,6 +396,7 @@ const AgentPlatform: React.FC = () => {
         collection_ids: collectionIds.length > 0 ? collectionIds : undefined,
       });
       setRuns((current) => [created, ...current]);
+      setPendingApprovals(await agentPlatformService.listPendingApprovals());
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to start agent run');
     } finally {
@@ -416,6 +417,7 @@ const AgentPlatform: React.FC = () => {
         },
       });
       setRuns((current) => [created, ...current]);
+      setPendingApprovals(await agentPlatformService.listPendingApprovals());
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to start workflow run');
     } finally {
@@ -438,6 +440,7 @@ const AgentPlatform: React.FC = () => {
         },
       });
       setRuns((current) => [...created, ...current]);
+      setPendingApprovals(await agentPlatformService.listPendingApprovals());
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to start trigger runs');
     } finally {
@@ -455,6 +458,31 @@ const AgentPlatform: React.FC = () => {
       setAuditEvents(await agentPlatformService.listAuditEvents());
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to approve workflow step');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const approveAllPendingWorkflowSteps = async () => {
+    if (pendingApprovals.length === 0) return;
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const result = await agentPlatformService.approveAllPendingWorkflowSteps();
+      setRuns((current) => {
+        const approvedById = new Map(result.runs.map((run) => [run.run_id, run]));
+        const merged = current.map((run) => approvedById.get(run.run_id) || run);
+        const currentIds = new Set(current.map((run) => run.run_id));
+        return [
+          ...result.runs.filter((run) => !currentIds.has(run.run_id)),
+          ...merged,
+        ];
+      });
+      setPendingApprovals(await agentPlatformService.listPendingApprovals());
+      setAuditEvents(await agentPlatformService.listAuditEvents());
+      setExportSummary(`${result.approved_count} approval${result.approved_count === 1 ? '' : 's'} cleared`);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to approve pending workflow steps');
     } finally {
       setIsSubmitting(false);
     }
@@ -1378,7 +1406,17 @@ const AgentPlatform: React.FC = () => {
           </section>
 
           <section className="border border-white/5 bg-surface/30 rounded-2xl p-5">
-            <h2 className="text-lg font-semibold text-white mb-4">Approval Queue</h2>
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <h2 className="text-lg font-semibold text-white">Approval Queue</h2>
+              <button
+                onClick={approveAllPendingWorkflowSteps}
+                disabled={isSubmitting || pendingApprovals.length === 0}
+                className="h-8 px-3 rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-100 hover:bg-amber-500/15 disabled:opacity-60 flex items-center gap-1"
+              >
+                {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                Approve All
+              </button>
+            </div>
             <div className="space-y-3">
               {pendingApprovals.slice(0, 6).map((approval) => (
                 <div key={`${approval.run_id}-${approval.step_id}`} className="rounded-xl border border-amber-500/10 bg-amber-500/5 p-4">

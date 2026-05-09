@@ -1027,6 +1027,33 @@ class AgentPlatformService(BaseService):
         )
         return ServiceResult.ok(self._public_document(updated_doc))
 
+    def approve_pending_workflow_steps(self, owner: str) -> ServiceResult:
+        """Approve every currently pending workflow step for the owner."""
+        pending_result = self.list_pending_approvals(owner)
+        if not pending_result.success:
+            return pending_result
+
+        approved_runs = []
+        errors = []
+        for approval in pending_result.data or []:
+            run_id = approval.get("run_id")
+            step_id = approval.get("step_id")
+            result = self.approve_workflow_step(owner, run_id, step_id)
+            if result.success:
+                approved_runs.append(result.data)
+            else:
+                errors.append({
+                    "run_id": run_id,
+                    "step_id": step_id,
+                    "error": result.error,
+                })
+
+        return ServiceResult.ok({
+            "approved_count": len(approved_runs),
+            "runs": approved_runs,
+            "errors": errors,
+        })
+
     def cancel_workflow_run(self, owner: str, run_id: str) -> ServiceResult:
         """Cancel a non-terminal workflow run."""
         run_result = self.get_workflow_run(owner, run_id)
