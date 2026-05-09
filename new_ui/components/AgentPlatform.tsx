@@ -45,6 +45,7 @@ import {
   canCancelWorkflowRun,
   canRunWorkflowAgain,
   defaultWorkflowStepDrafts,
+  filterWorkflowRunsByStatus,
   mcpToolToWorkflowStepDraft,
   normalizeApprovalRejectionReason,
   workflowStepsToDrafts,
@@ -75,6 +76,7 @@ const AgentPlatform: React.FC = () => {
   const [automationTriggers, setAutomationTriggers] = useState<WorkflowTrigger[]>([]);
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [showArchivedRuns, setShowArchivedRuns] = useState(false);
+  const [runStatusFilter, setRunStatusFilter] = useState('all');
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
   const [approvalRejectionReasons, setApprovalRejectionReasons] = useState<Record<string, string>>({});
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
@@ -190,6 +192,10 @@ const AgentPlatform: React.FC = () => {
     pendingApprovals,
     platformStats,
   }), [tools, agents, workflows, mcpServers, runs, pendingApprovals, platformStats]);
+  const visibleRuns = useMemo(
+    () => filterWorkflowRunsByStatus(runs, runStatusFilter),
+    [runs, runStatusFilter]
+  );
   const adkSummary = useMemo(() => getAdkManifestSummary(adkManifest), [adkManifest]);
   const adkManifestJson = useMemo(() => (
     adkManifest ? JSON.stringify(adkManifest, null, 2) : ''
@@ -1623,6 +1629,19 @@ const AgentPlatform: React.FC = () => {
             <div className="flex items-center justify-between gap-3 mb-4">
               <h2 className="text-lg font-semibold text-white">Runs</h2>
               <div className="flex items-center gap-2">
+                <select
+                  value={runStatusFilter}
+                  onChange={(event) => setRunStatusFilter(event.target.value)}
+                  className="h-8 rounded-lg border border-white/10 bg-white/5 px-3 text-xs text-gray-200 outline-none focus:border-sky-500/50"
+                >
+                  <option value="all">All statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="failed">Failed</option>
+                  <option value="planned">Planned</option>
+                  <option value="completed">Completed</option>
+                  <option value="canceled">Canceled</option>
+                </select>
                 <label className="h-8 px-3 rounded-lg border border-white/10 bg-white/5 text-gray-200 flex items-center gap-2 text-xs">
                   <input
                     type="checkbox"
@@ -1643,7 +1662,7 @@ const AgentPlatform: React.FC = () => {
               </div>
             </div>
             <div className="space-y-3">
-              {runs.slice(0, 8).map((run) => (
+              {visibleRuns.slice(0, 8).map((run) => (
                 <div key={run.run_id} className="rounded-xl border border-white/5 bg-black/20 p-4">
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-sm text-white font-mono truncate">{run.run_id.slice(0, 8)}</span>
@@ -1727,9 +1746,9 @@ const AgentPlatform: React.FC = () => {
                   </div>
                 </div>
               ))}
-              {runs.length === 0 && (
+              {visibleRuns.length === 0 && (
                 <div className="rounded-xl border border-white/5 bg-black/20 p-6 text-center text-sm text-gray-500">
-                  No runs yet
+                  No runs match this view
                 </div>
               )}
             </div>

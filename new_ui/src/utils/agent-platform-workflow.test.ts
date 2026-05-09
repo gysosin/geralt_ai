@@ -3,6 +3,7 @@ import {
   buildWorkflowSteps,
   canCancelWorkflowRun,
   canRunWorkflowAgain,
+  filterWorkflowRunsByStatus,
   mcpToolToWorkflowStepDraft,
   normalizeApprovalRejectionReason,
 } from './agent-platform-workflow';
@@ -116,5 +117,19 @@ describe('agent platform workflow helpers', () => {
   it('normalizes approval rejection reasons for audit history', () => {
     expect(normalizeApprovalRejectionReason('  Missing invoice evidence  ')).toBe('Missing invoice evidence');
     expect(normalizeApprovalRejectionReason('   ')).toBe('Rejected from approval queue');
+  });
+
+  it('filters workflow runs by selected status', () => {
+    const runs = [
+      { run_id: 'run-1', status: 'pending' },
+      { run_id: 'run-2', status: 'blocked' },
+      { run_id: 'run-3', status: 'completed' },
+    ];
+
+    expect(filterWorkflowRunsByStatus(runs, 'all')).toEqual(runs);
+    expect(filterWorkflowRunsByStatus(runs, 'blocked')).toEqual([
+      { run_id: 'run-2', status: 'blocked' },
+    ]);
+    expect(filterWorkflowRunsByStatus(runs, 'failed')).toEqual([]);
   });
 });

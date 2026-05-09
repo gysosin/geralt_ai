@@ -74,6 +74,14 @@ export const normalizeApprovalRejectionReason = (reason: string) => {
   return trimmedReason || 'Rejected from approval queue';
 };
 
+export const filterWorkflowRunsByStatus = <TRun extends { status: string }>(
+  runs: TRun[],
+  status: string
+) => {
+  if (status === 'all') return runs;
+  return runs.filter((run) => run.status === status);
+};
+
 export const buildWorkflowSteps = (drafts: WorkflowStepDraft[]) => {
   const errors: string[] = [];
   const steps: WorkflowStepPayload[] = [];
