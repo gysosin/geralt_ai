@@ -112,8 +112,9 @@ brew install --cask libreoffice
 
     For production deployments, set `ENVIRONMENT=production`, replace
     `SECRET_KEY` with a high-entropy value of at least 32 characters, and use
-    explicit `CORS_ORIGINS` instead of `*`. Startup validation rejects unsafe
-    production defaults.
+    explicit `CORS_ORIGINS` instead of `*`. Also replace the default MinIO
+    credentials and provide API keys for the selected AI model/reranker. Startup
+    validation rejects unsafe production defaults.
 
 ## 🏃 Running the Application
 
