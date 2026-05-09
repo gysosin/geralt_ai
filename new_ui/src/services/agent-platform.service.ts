@@ -398,6 +398,11 @@ export const agentPlatformService = {
         return response.data
     },
 
+    async cloneWorkflow(workflowId: string, data: { name?: string }): Promise<WorkflowDefinition> {
+        const response = await api.post(`${BASE_PATH}/workflows/${workflowId}/clone`, data)
+        return response.data
+    },
+
     async listWorkflowTemplates(): Promise<WorkflowTemplate[]> {
         const response = await api.get(`${BASE_PATH}/workflow-templates`)
         return response.data

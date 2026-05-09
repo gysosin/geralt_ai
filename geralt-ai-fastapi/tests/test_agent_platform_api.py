@@ -552,6 +552,60 @@ def test_update_workflow_definition_endpoint_returns_updated_workflow():
     assert data["triggers"] == ["document.uploaded"]
 
 
+def test_clone_workflow_definition_endpoint_returns_cloned_workflow():
+    workflow_db = MagicMock()
+    workflow_db.find_one.return_value = {
+        "workflow_id": "workflow-1",
+        "name": "Old Workflow",
+        "description": "Original description",
+        "agent_id": None,
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Plan",
+                "tool_name": "query.plan",
+                "arguments": {"query": "{{input.query}}"},
+                "depends_on": [],
+                "approval_required": False,
+            }
+        ],
+        "triggers": ["document.uploaded"],
+        "metadata": {},
+        "created_by": "anonymous",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+        "deleted": False,
+    }
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=MagicMock(),
+                    workflow_db=workflow_db,
+                    run_db=MagicMock(),
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.post(
+                    "/api/v1/agent-platform/workflows/workflow-1/clone",
+                    json={"name": "Cloned Workflow"},
+                )
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["workflow_id"] != "workflow-1"
+    assert data["name"] == "Cloned Workflow"
+    assert data["metadata"]["cloned_from"] == "workflow-1"
+    assert data["triggers"] == ["document.uploaded"]
+
+
 def test_workflow_templates_endpoint_returns_built_ins():
     with patch("models.database.MongoClient"):
         with patch("core.clients.redis_client.redis.StrictRedis"):
