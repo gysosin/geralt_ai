@@ -8,6 +8,7 @@ interface CreateBotDialogProps {
     onClose: () => void;
     onSubmit: (data: CreateBotCommand, iconFile?: File) => Promise<void>;
     bot?: Bot;
+    initialDraft?: CreateBotCommand | null;
     collections: Collection[];
 }
 
@@ -16,6 +17,7 @@ const CreateBotDialog: React.FC<CreateBotDialogProps> = ({
     onClose,
     onSubmit,
     bot,
+    initialDraft,
     collections
 }) => {
     const [name, setName] = useState('');
@@ -35,6 +37,12 @@ const CreateBotDialog: React.FC<CreateBotDialogProps> = ({
                 setSelectedCollections(bot.collectionIds || bot.collection_ids || []);
                 setWelcomeButtons(bot.welcome_buttons?.map(b => ({ label: b.label, action: b.action })) || []);
                 setIconPreview(bot.icon || '');
+            } else if (initialDraft) {
+                setName(initialDraft.bot_name || '');
+                setDescription(initialDraft.welcome_message || initialDraft.prompt || initialDraft.description || '');
+                setSelectedCollections(initialDraft.collection_ids || []);
+                setWelcomeButtons(initialDraft.welcome_buttons?.map(b => ({ label: b.label, action: b.action })) || []);
+                setIconPreview(initialDraft.icon_url || '');
             } else {
                 setName('');
                 setDescription('');
@@ -45,7 +53,7 @@ const CreateBotDialog: React.FC<CreateBotDialogProps> = ({
             setIconFile(undefined);
             setError(null);
         }
-    }, [isOpen, bot]);
+    }, [isOpen, bot, initialDraft]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {

@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, MessageSquare, Share2, MoreVertical, Zap, Trash2, Code } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useBotStore } from '../src/store';
 import { Bot, CreateBotCommand, ShareBotCommand } from '../types';
 import CreateBotDialog from './bots/CreateBotDialog';
 import ShareBotDialog from './bots/ShareBotDialog';
 import EmbedCodeDialog from './bots/EmbedCodeDialog';
+import { clearAgentTemplateDraft, readAgentTemplateDraft } from '../src/utils/agent-templates';
 
 const BotCard = ({
   bot,
@@ -95,6 +96,8 @@ const BotCard = ({
 };
 
 const Bots: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const templateId = searchParams.get('template');
   const {
     bots,
     isLoading,
@@ -112,6 +115,7 @@ const Bots: React.FC = () => {
   const [shareOpen, setShareOpen] = useState(false);
   const [embedOpen, setEmbedOpen] = useState(false);
   const [selectedBot, setSelectedBot] = useState<Bot | undefined>();
+  const [templateDraft, setTemplateDraft] = useState<CreateBotCommand | null>(null);
   const [embedCode, setEmbedCode] = useState('');
 
   useEffect(() => {
@@ -119,9 +123,29 @@ const Bots: React.FC = () => {
     fetchCollections();
   }, []);
 
+  useEffect(() => {
+    if (!templateId) return;
+
+    const draft = readAgentTemplateDraft();
+    if (draft) {
+      setSelectedBot(undefined);
+      setTemplateDraft(draft);
+      const openTimer = window.setTimeout(() => setCreateOpen(true), 0);
+      return () => window.clearTimeout(openTimer);
+    }
+  }, [templateId]);
+
   const handleCreate = () => {
     setSelectedBot(undefined);
+    setTemplateDraft(null);
+    clearAgentTemplateDraft();
     setCreateOpen(true);
+  };
+
+  const handleCloseCreate = () => {
+    setCreateOpen(false);
+    setTemplateDraft(null);
+    clearAgentTemplateDraft();
   };
 
   const handleEdit = (bot: Bot) => {
@@ -163,14 +187,6 @@ const Bots: React.FC = () => {
     await shareBot(data);
   };
 
-  if (isLoading && bots.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-full text-gray-500">
-        Loading agents...
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-8">
@@ -188,6 +204,12 @@ const Bots: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {isLoading && bots.length === 0 && (
+          <div className="border border-white/5 rounded-2xl p-6 flex items-center justify-center min-h-[300px] text-sm text-gray-500 bg-white/[0.02]">
+            Loading agents...
+          </div>
+        )}
+
         {bots.map((bot) => (
           <BotCard
             key={bot.id}
@@ -213,9 +235,10 @@ const Bots: React.FC = () => {
 
       <CreateBotDialog
         isOpen={createOpen}
-        onClose={() => setCreateOpen(false)}
+        onClose={handleCloseCreate}
         onSubmit={handleSubmitBot}
         bot={selectedBot}
+        initialDraft={templateDraft}
         collections={collections}
       />
 
