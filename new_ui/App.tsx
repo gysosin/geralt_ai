@@ -14,6 +14,7 @@ const ChatInterface = lazy(() => import('./components/ChatInterface'));
 const CollectionDetail = lazy(() => import('./components/CollectionDetail'));
 const Collections = lazy(() => import('./components/Collections'));
 const Dashboard = lazy(() => import('./components/Dashboard'));
+const DocumentReviewQueue = lazy(() => import('./src/pages/DocumentReviewQueue'));
 const History = lazy(() => import('./components/History'));
 const HistoryDetail = lazy(() => import('./components/HistoryDetail'));
 const GlobalSearch = lazy(() => import('./src/pages/GlobalSearch'));
@@ -86,6 +87,7 @@ const App: React.FC = () => {
 
                         <Route path="collections" element={<Collections />} />
                         <Route path="collections/:id" element={<CollectionDetail />} />
+                        <Route path="documents/review" element={<DocumentReviewQueue />} />
 
                         <Route path="analytics" element={<Analytics />} />
                         <Route path="search" element={<GlobalSearch />} />

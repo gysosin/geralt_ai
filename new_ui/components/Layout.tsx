@@ -76,6 +76,15 @@ const Layout: React.FC<LayoutProps> = ({ children, onLogout }) => {
       keywords: ['documents', 'files', 'knowledge', 'upload'],
     },
     {
+      id: 'document-review',
+      label: 'Open document review queue',
+      description: 'Review pending, failed, processing, and ready documents.',
+      group: 'Documents',
+      path: '/documents/review',
+      icon: <Files size={18} />,
+      keywords: ['review', 'documents', 'processing', 'queue'],
+    },
+    {
       id: 'analytics',
       label: 'Open analytics',
       description: 'Inspect usage, cost, and workspace trends.',
