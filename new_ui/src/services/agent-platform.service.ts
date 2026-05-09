@@ -1,4 +1,5 @@
 import api from './api'
+import { buildWorkflowRunListQuery } from '../utils/agent-platform-workflow'
 
 export interface AgentTool {
     name: string
@@ -457,12 +458,20 @@ export const agentPlatformService = {
         return response.data
     },
 
-    async listWorkflowRuns(workflowId?: string, includeArchived = false, status = 'all'): Promise<WorkflowRun[]> {
-        const params = new URLSearchParams()
-        if (workflowId) params.set('workflow_id', workflowId)
-        if (includeArchived) params.set('include_archived', 'true')
-        if (status !== 'all') params.set('status', status)
-        const query = params.toString() ? `?${params.toString()}` : ''
+    async listWorkflowRuns(
+        workflowId?: string,
+        includeArchived = false,
+        status = 'all',
+        limit = 50,
+        offset = 0
+    ): Promise<WorkflowRun[]> {
+        const query = buildWorkflowRunListQuery({
+            workflowId,
+            includeArchived,
+            status,
+            limit,
+            offset,
+        })
         const response = await api.get(`${BASE_PATH}/workflow-runs${query}`)
         return response.data
     },
