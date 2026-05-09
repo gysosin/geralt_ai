@@ -1546,6 +1546,20 @@ const AgentPlatform: React.FC = () => {
                   {approval.message && (
                     <p className="mt-2 text-[11px] leading-relaxed text-amber-300">{approval.message}</p>
                   )}
+                  <div className="mt-3 grid grid-cols-1 gap-2 text-[11px]">
+                    <div className="rounded-lg border border-white/5 bg-black/20 p-2">
+                      <p className="mb-1 text-gray-500 uppercase tracking-widest">Arguments</p>
+                      <pre className="max-h-24 overflow-auto whitespace-pre-wrap break-words font-mono text-gray-400">
+                        {JSON.stringify(approval.arguments || {}, null, 2)}
+                      </pre>
+                    </div>
+                    <div className="rounded-lg border border-white/5 bg-black/20 p-2">
+                      <p className="mb-1 text-gray-500 uppercase tracking-widest">Run Inputs</p>
+                      <pre className="max-h-24 overflow-auto whitespace-pre-wrap break-words font-mono text-gray-400">
+                        {JSON.stringify(approval.run_inputs || {}, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
                 </div>
               ))}
               {pendingApprovals.length === 0 && (
