@@ -9,6 +9,7 @@ import {
     sourceConfidenceFilters,
     type SourceConfidenceFilter,
 } from '@/src/utils/source-confidence';
+import { buildSourceCoverageSummary } from '@/src/utils/source-coverage';
 
 interface SourcesListProps {
     sources: Source[];
@@ -28,6 +29,10 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
     const filteredSources = useMemo(
         () => filterSourcesByConfidence(sources, confidenceFilter),
         [confidenceFilter, sources],
+    );
+    const coverageSummary = useMemo(
+        () => buildSourceCoverageSummary(sources),
+        [sources],
     );
     const displayedSources = isListExpanded ? filteredSources : sources.slice(0, 3);
     const hasMore = filteredSources.length > 3;
@@ -90,6 +95,27 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                             </span>
                             <ChevronUp className="h-4 w-4" />
                         </button>
+
+                        <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                            <div className="rounded-lg border border-white/5 bg-white/[0.03] px-2.5 py-2">
+                                <p className="text-[10px] font-semibold uppercase text-gray-600">Sources</p>
+                                <p className="mt-1 text-sm font-semibold text-gray-200">{coverageSummary.totalSources}</p>
+                            </div>
+                            <div className="rounded-lg border border-white/5 bg-white/[0.03] px-2.5 py-2">
+                                <p className="text-[10px] font-semibold uppercase text-gray-600">Avg conf.</p>
+                                <p className="mt-1 text-sm font-semibold text-gray-200">{coverageSummary.averageConfidence}%</p>
+                            </div>
+                            <div className="rounded-lg border border-white/5 bg-white/[0.03] px-2.5 py-2">
+                                <p className="text-[10px] font-semibold uppercase text-gray-600">High</p>
+                                <p className="mt-1 text-sm font-semibold text-emerald-200">{coverageSummary.highConfidenceSources}</p>
+                            </div>
+                            <div className="rounded-lg border border-white/5 bg-white/[0.03] px-2.5 py-2">
+                                <p className="text-[10px] font-semibold uppercase text-gray-600">Evidence</p>
+                                <p className="mt-1 text-sm font-semibold text-violet-200">
+                                    {coverageSummary.evidenceBackedSources}
+                                </p>
+                            </div>
+                        </div>
 
                         <div className="mb-2 rounded-lg border border-white/5 bg-black/20 p-2">
                             <div className="flex flex-wrap items-center justify-between gap-2">
