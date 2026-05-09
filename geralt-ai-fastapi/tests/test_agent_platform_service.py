@@ -745,6 +745,67 @@ def test_update_workflow_definition_persists_changed_steps_and_triggers():
     assert update["steps"][1]["depends_on"] == ["step-1"]
 
 
+def test_clone_workflow_copies_steps_triggers_and_metadata():
+    workflow_db = MagicMock()
+    audit_db = MagicMock()
+    workflow_db.find_one.return_value = {
+        "workflow_id": "workflow-1",
+        "name": "Vendor Review",
+        "description": "Review vendor evidence",
+        "agent_id": "agent-1",
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Plan",
+                "tool_name": "query.plan",
+                "arguments": {"query": "{{input.query}}"},
+                "depends_on": [],
+                "approval_required": False,
+            },
+            {
+                "step_id": "step-2",
+                "name": "Search",
+                "tool_name": "rag.search",
+                "arguments": {
+                    "query": "{{input.query}}",
+                    "collection_ids": "{{input.collection_ids}}",
+                },
+                "depends_on": ["step-1"],
+                "approval_required": True,
+            },
+        ],
+        "triggers": ["document.uploaded"],
+        "metadata": {"purpose": "audit"},
+        "created_by": "mehul",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+        "deleted": False,
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=workflow_db,
+        audit_db=audit_db,
+    )
+
+    result = service.clone_workflow(
+        owner="mehul",
+        workflow_id="workflow-1",
+        name="Vendor Review v2",
+    )
+
+    assert result.success is True
+    assert result.status_code == 201
+    inserted = workflow_db.insert_one.call_args.args[0]
+    assert inserted["workflow_id"] != "workflow-1"
+    assert inserted["name"] == "Vendor Review v2"
+    assert inserted["description"] == "Review vendor evidence"
+    assert inserted["agent_id"] == "agent-1"
+    assert inserted["triggers"] == ["document.uploaded"]
+    assert inserted["metadata"] == {"purpose": "audit", "cloned_from": "workflow-1"}
+    assert inserted["steps"][1]["approval_required"] is True
+    assert audit_db.insert_one.call_args_list[-1].args[0]["event"] == "workflow.cloned"
+
+
 def test_create_workflow_rejects_unknown_dependency():
     service = AgentPlatformService(agent_db=MagicMock(), workflow_db=MagicMock())
 

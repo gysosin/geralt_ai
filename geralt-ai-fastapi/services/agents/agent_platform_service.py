@@ -5,6 +5,7 @@ Persists reusable agent and workflow definitions while validating every tool
 reference against the central registry.
 """
 import shutil
+from copy import deepcopy
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.error import HTTPError, URLError
@@ -751,6 +752,39 @@ class AgentPlatformService(BaseService):
         }
         self._record_audit("workflow.updated", owner, "workflow", workflow_id)
         return ServiceResult.ok(self._public_document(updated_doc))
+
+    def clone_workflow(
+        self,
+        owner: str,
+        workflow_id: str,
+        name: Optional[str] = None,
+    ) -> ServiceResult:
+        """Create a new workflow definition from an existing owned workflow."""
+        current_result = self.get_workflow(owner, workflow_id)
+        if not current_result.success:
+            return current_result
+
+        current = current_result.data
+        metadata = deepcopy(current.get("metadata") or {})
+        metadata["cloned_from"] = workflow_id
+        result = self.create_workflow(
+            owner=owner,
+            name=name or f"{current.get('name') or 'Workflow'} Copy",
+            description=current.get("description"),
+            agent_id=current.get("agent_id"),
+            triggers=list(current.get("triggers") or []),
+            metadata=metadata,
+            steps=deepcopy(current.get("steps") or []),
+        )
+        if result.success:
+            self._record_audit(
+                "workflow.cloned",
+                owner,
+                "workflow",
+                result.data["workflow_id"],
+                {"cloned_from": workflow_id},
+            )
+        return result
 
     def delete_workflow(self, owner: str, workflow_id: str) -> ServiceResult:
         """Soft-delete an owned workflow definition."""

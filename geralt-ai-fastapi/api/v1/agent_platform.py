@@ -181,6 +181,12 @@ class WorkflowDefinitionUpdate(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
 
 
+class WorkflowCloneCreate(BaseModel):
+    """Request to clone a reusable workflow."""
+
+    name: Optional[str] = None
+
+
 class WorkflowTemplateCreate(BaseModel):
     """Request to create a workflow from a built-in template."""
 
@@ -761,6 +767,27 @@ async def update_workflow_definition(
         metadata=request.metadata,
     )
     return _result_or_error(result)
+
+
+@router.post(
+    "/workflows/{workflow_id}/clone",
+    response_model=WorkflowDefinitionResponse,
+    status_code=201,
+)
+async def clone_workflow_definition(
+    workflow_id: str,
+    request: WorkflowCloneCreate,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Clone an owned reusable workflow definition."""
+    return _result_or_error(
+        service.clone_workflow(
+            owner=_owner(current_user),
+            workflow_id=workflow_id,
+            name=request.name,
+        )
+    )
 
 
 @router.delete("/workflows/{workflow_id}")

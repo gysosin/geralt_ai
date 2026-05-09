@@ -309,6 +309,28 @@ const AgentPlatform: React.FC = () => {
     setSelectedTemplateId('');
   };
 
+  const cloneWorkflow = async (workflow: WorkflowDefinition) => {
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const created = await agentPlatformService.cloneWorkflow(workflow.workflow_id, {
+        name: `${workflow.name} Copy`,
+      });
+      setWorkflows((current) => [created, ...current]);
+      setRunWorkflowId(created.workflow_id);
+      const [auditResult, statsResult] = await Promise.all([
+        agentPlatformService.listAuditEvents(),
+        agentPlatformService.getStats(),
+      ]);
+      setAuditEvents(auditResult);
+      setPlatformStats(statsResult);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to clone workflow');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const updateWorkflowStepDraft = (index: number, updates: Partial<WorkflowStepDraft>) => {
     setWorkflowStepDrafts((current) => current.map((draft, draftIndex) => (
       draftIndex === index ? { ...draft, ...updates } : draft
@@ -1167,12 +1189,25 @@ const AgentPlatform: React.FC = () => {
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => editWorkflow(workflow)}
+                        aria-label={`Edit ${workflow.name}`}
+                        title={`Edit ${workflow.name}`}
                         className="p-2 rounded-lg text-gray-500 hover:text-sky-300 hover:bg-sky-500/10"
                       >
                         <Settings2 size={16} />
                       </button>
                       <button
+                        onClick={() => cloneWorkflow(workflow)}
+                        disabled={isSubmitting}
+                        aria-label={`Clone ${workflow.name}`}
+                        title={`Clone ${workflow.name}`}
+                        className="p-2 rounded-lg text-gray-500 hover:text-violet-300 hover:bg-violet-500/10 disabled:opacity-60"
+                      >
+                        <Copy size={16} />
+                      </button>
+                      <button
                         onClick={() => deleteWorkflow(workflow.workflow_id)}
+                        aria-label={`Delete ${workflow.name}`}
+                        title={`Delete ${workflow.name}`}
                         className="p-2 rounded-lg text-gray-500 hover:text-red-300 hover:bg-red-500/10"
                       >
                         <Trash2 size={16} />
