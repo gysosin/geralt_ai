@@ -18,6 +18,7 @@ import { UsageAnalyticsCards } from '@/src/components/UsageAnalyticsCards';
 import { buildRecentActivityItems } from '@/src/utils/activity-feed';
 import { OnboardingChecklist } from '@/src/components/OnboardingChecklist';
 import { DashboardLayoutControls } from '@/src/components/DashboardLayoutControls';
+import { DashboardGoalTracker } from '@/src/components/DashboardGoalTracker';
 import {
   DASHBOARD_LAYOUT_STORAGE_KEY,
   createDefaultDashboardLayoutPreferences,
@@ -307,6 +308,14 @@ const Dashboard: React.FC = () => {
       )}
 
       {visibleSections.onboarding && <OnboardingChecklist onNavigate={navigate} />}
+
+      {visibleSections.goals && (
+        <DashboardGoalTracker
+          stats={stats}
+          isLoading={isStatsLoading}
+          onNavigate={navigate}
+        />
+      )}
 
       {/* KPI Grid */}
       {visibleSections.kpis && (

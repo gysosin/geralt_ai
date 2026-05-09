@@ -4,6 +4,7 @@ export const dashboardSectionDefinitions = [
     { id: 'health', label: 'Workspace health' },
     { id: 'analytics', label: 'Usage analytics' },
     { id: 'onboarding', label: 'Quick start' },
+    { id: 'goals', label: 'Goals' },
     { id: 'kpis', label: 'KPI cards' },
     { id: 'usageChart', label: 'Token chart' },
     { id: 'activity', label: 'Activity feed' },
