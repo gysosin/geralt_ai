@@ -637,24 +637,35 @@ const AgentPlatform: React.FC = () => {
                 <div key={category}>
                   <p className="text-xs text-gray-500 uppercase tracking-widest mb-3">{category}</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {categoryTools.map((tool) => (
-                      <label
-                        key={tool.name}
-                        className="flex gap-3 p-4 rounded-xl border border-white/5 bg-black/20 hover:border-white/10 transition-colors cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedTools.includes(tool.name)}
-                          onChange={() => handleToolToggle(tool.name)}
-                          className="mt-1 accent-emerald-500"
-                        />
-                        <span>
-                          <span className="block text-white font-medium">{tool.title}</span>
-                          <span className="block text-xs text-gray-500 font-mono mt-1">{tool.name}</span>
-                          <span className="block text-sm text-gray-400 mt-2">{tool.description}</span>
-                        </span>
-                      </label>
-                    ))}
+                    {categoryTools.map((tool) => {
+                      const isWorkflowOnlyTool = tool.name === 'agent.run';
+                      return (
+                        <label
+                          key={tool.name}
+                          className={`flex gap-3 p-4 rounded-xl border border-white/5 bg-black/20 hover:border-white/10 transition-colors ${
+                            isWorkflowOnlyTool ? 'cursor-default opacity-75' : 'cursor-pointer'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!isWorkflowOnlyTool && selectedTools.includes(tool.name)}
+                            onChange={() => !isWorkflowOnlyTool && handleToolToggle(tool.name)}
+                            disabled={isWorkflowOnlyTool}
+                            className="mt-1 accent-emerald-500 disabled:opacity-40"
+                          />
+                          <span>
+                            <span className="block text-white font-medium">{tool.title}</span>
+                            <span className="block text-xs text-gray-500 font-mono mt-1">{tool.name}</span>
+                            <span className="block text-sm text-gray-400 mt-2">{tool.description}</span>
+                            {isWorkflowOnlyTool && (
+                              <span className="inline-flex mt-3 rounded-lg border border-sky-500/20 bg-sky-500/10 px-2 py-1 text-[11px] text-sky-200">
+                                Workflow step only
+                              </span>
+                            )}
+                          </span>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
               ))}

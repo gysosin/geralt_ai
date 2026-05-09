@@ -14,6 +14,7 @@ def test_registry_exposes_core_rag_platform_tools():
     assert "rag.aggregate" in tool_names
     assert "collection.summarize" in tool_names
     assert "query.plan" in tool_names
+    assert "agent.run" in tool_names
 
 
 def test_mcp_tool_specs_are_secret_safe_and_schema_backed():
@@ -41,3 +42,14 @@ def test_rag_search_tool_requires_query_and_collections():
     assert schema["required"] == ["query", "collection_ids"]
     assert schema["properties"]["collection_ids"]["type"] == "array"
     assert schema["properties"]["query"]["type"] == "string"
+
+
+def test_agent_run_tool_requires_agent_id_and_query():
+    registry = get_agent_tool_registry()
+    agent_run = registry.get_tool("agent.run")
+
+    assert agent_run is not None
+    schema = agent_run.input_schema()
+    assert schema["required"] == ["agent_id", "query"]
+    assert schema["properties"]["agent_id"]["type"] == "string"
+    assert schema["properties"]["collection_ids"]["type"] == "array"

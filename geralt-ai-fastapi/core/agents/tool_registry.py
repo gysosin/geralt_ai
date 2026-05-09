@@ -88,6 +88,39 @@ class AgentToolRegistry:
     def _default_tools(self) -> List[AgentToolSpec]:
         return [
             AgentToolSpec(
+                name="agent.run",
+                title="Run Agent",
+                description="Invoke a saved agent inside a deterministic workflow step.",
+                category="agents",
+                required=["agent_id", "query"],
+                parameters={
+                    "agent_id": {
+                        "type": "string",
+                        "description": "Saved agent definition ID to invoke.",
+                        "minLength": 1,
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Task or question to pass to the agent.",
+                        "minLength": 1,
+                    },
+                    "collection_ids": {
+                        "type": "array",
+                        "description": "Collection IDs available to the agent run.",
+                        "items": {"type": "string"},
+                    },
+                },
+                output_schema={
+                    "type": "object",
+                    "properties": {
+                        "agent_id": {"type": "string"},
+                        "agent_name": {"type": "string"},
+                        "status": {"type": "string"},
+                        "steps": {"type": "array"},
+                    },
+                },
+            ),
+            AgentToolSpec(
                 name="rag.search",
                 title="Search Documents",
                 description="Answer a question using hybrid RAG over selected collections.",

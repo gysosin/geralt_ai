@@ -73,6 +73,8 @@ class AgentPlatformService(BaseService):
         validation_error = self._validate_tools(tool_names)
         if validation_error:
             return validation_error
+        if "agent.run" in tool_names:
+            return ServiceResult.fail("agent.run can only be used as a workflow step", 400)
 
         if not name.strip():
             return ServiceResult.fail("Agent name is required", 400)
@@ -146,6 +148,8 @@ class AgentPlatformService(BaseService):
             validation_error = self._validate_tools(tool_names)
             if validation_error:
                 return validation_error
+            if "agent.run" in tool_names:
+                return ServiceResult.fail("agent.run can only be used as a workflow step", 400)
             updates["tool_names"] = tool_names
         if description is not None:
             updates["description"] = description
@@ -490,7 +494,7 @@ class AgentPlatformService(BaseService):
         if dry_run:
             status = "planned"
         else:
-            planned_steps = self._execute_ready_steps(planned_steps)
+            planned_steps = self._execute_ready_steps(planned_steps, owner)
             status = self._workflow_run_status(planned_steps)
 
         document = {
@@ -784,7 +788,7 @@ class AgentPlatformService(BaseService):
             return validation_error
 
         if not dry_run:
-            planned_steps = self._execute_ready_steps(planned_steps)
+            planned_steps = self._execute_ready_steps(planned_steps, owner)
 
         if dry_run:
             status = "planned"
@@ -857,8 +861,8 @@ class AgentPlatformService(BaseService):
 
         target_step["approval_required"] = False
         target_step["message"] = ""
-        steps[target_index] = self._execute_run_step(target_step)
-        steps = self._execute_ready_steps(steps)
+        steps[target_index] = self._execute_run_step(target_step, owner)
+        steps = self._execute_ready_steps(steps, owner)
         now = datetime.utcnow().isoformat()
         status = self._workflow_run_status(steps)
         update = {
@@ -959,7 +963,7 @@ class AgentPlatformService(BaseService):
         if next_dry_run:
             status = "planned"
         else:
-            planned_steps = self._execute_ready_steps(planned_steps)
+            planned_steps = self._execute_ready_steps(planned_steps, owner)
             status = self._workflow_run_status(planned_steps)
 
         now = datetime.utcnow().isoformat()
@@ -1020,7 +1024,7 @@ class AgentPlatformService(BaseService):
         if validation_error:
             return validation_error
 
-        result = planned if dry_run else self._execute_run_step(planned)
+        result = planned if dry_run else self._execute_run_step(planned, owner)
         self._record_audit(
             "tool.invoked",
             owner,
@@ -1369,17 +1373,24 @@ class AgentPlatformService(BaseService):
                 arguments["collection_id"] = collection_ids[0] if collection_ids else ""
         return arguments
 
-    def _execute_run_step(self, planned: Dict[str, Any]) -> Dict[str, Any]:
+    def _execute_run_step(self, planned: Dict[str, Any], owner: str) -> Dict[str, Any]:
         if planned.get("approval_required"):
             planned["status"] = "pending_approval"
             planned["message"] = "Approval required before execution"
             return planned
 
         try:
-            planned["output"] = self.tool_executor.execute(
-                planned["tool_name"],
-                planned["arguments"],
-            )
+            if planned["tool_name"] == "agent.run":
+                planned["output"] = self._execute_agent_run_tool(owner, planned["arguments"])
+                planned["status"] = planned["output"].get("status", "completed")
+                if planned["status"] != "completed":
+                    planned["message"] = f"Agent run {planned['status']}"
+                return planned
+            else:
+                planned["output"] = self.tool_executor.execute(
+                    planned["tool_name"],
+                    planned["arguments"],
+                )
             planned["status"] = "completed"
             return planned
         except NotImplementedError as e:
@@ -1392,7 +1403,47 @@ class AgentPlatformService(BaseService):
             planned["message"] = str(e)
         return planned
 
-    def _execute_ready_steps(self, steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _execute_agent_run_tool(self, owner: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        agent_id = str(arguments.get("agent_id") or "").strip()
+        query = str(arguments.get("query") or "").strip()
+        if not agent_id:
+            raise ValueError("agent_id is required")
+        if not query:
+            raise ValueError("query is required")
+
+        agent_result = self.get_agent(owner, agent_id)
+        if not agent_result.success:
+            raise ValueError(agent_result.error)
+
+        agent = agent_result.data
+        if "agent.run" in agent.get("tool_names", []):
+            raise ValueError("Nested agent.run execution is not supported")
+
+        collection_ids = arguments.get("collection_ids")
+        if collection_ids is None:
+            collection_ids = agent.get("collection_ids", [])
+        planned_steps = [
+            self._prepare_agent_run_step(
+                index=index,
+                tool_name=tool_name,
+                query=query,
+                collection_ids=collection_ids,
+            )
+            for index, tool_name in enumerate(agent.get("tool_names", []), start=1)
+        ]
+        validation_error = self._validate_run_steps(planned_steps)
+        if validation_error:
+            raise ValueError(validation_error.error)
+
+        executed_steps = self._execute_ready_steps(planned_steps, owner)
+        return {
+            "agent_id": agent_id,
+            "agent_name": agent.get("name", ""),
+            "status": self._workflow_run_status(executed_steps),
+            "steps": executed_steps,
+        }
+
+    def _execute_ready_steps(self, steps: List[Dict[str, Any]], owner: str) -> List[Dict[str, Any]]:
         executable_statuses = {"planned", "blocked"}
         steps = [dict(step) for step in steps]
         made_progress = True
@@ -1421,7 +1472,7 @@ class AgentPlatformService(BaseService):
                     step["message"] = validation_error.error
                     made_progress = True
                     continue
-                steps[index] = self._execute_run_step(step)
+                steps[index] = self._execute_run_step(step, owner)
                 if steps[index].get("status") != previous_status:
                     made_progress = True
         return steps
