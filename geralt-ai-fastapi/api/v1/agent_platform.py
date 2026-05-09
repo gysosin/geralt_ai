@@ -4,14 +4,15 @@ Agent platform API routes.
 These endpoints expose GeraltAI's document intelligence as stable tool
 contracts for agents, workflows, and future MCP adapters.
 """
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from core.agents.tool_registry import get_agent_tool_registry
 from core.rag.query_classifier import get_query_classifier
 from core.security.jwt import get_optional_user
+from services.agents import AgentPlatformService, get_agent_platform_service
 
 
 router = APIRouter(prefix="/agent-platform", tags=["Agent Platform"])
@@ -41,6 +42,80 @@ class QueryPlanResponse(BaseModel):
     reason: str
 
 
+class AgentDefinitionCreate(BaseModel):
+    """Request to create a reusable agent."""
+
+    name: str = Field(min_length=1)
+    instruction: str = Field(min_length=1)
+    tool_names: List[str] = Field(min_length=1)
+    description: Optional[str] = None
+    model: Optional[str] = None
+    collection_ids: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentDefinitionResponse(BaseModel):
+    """Stored agent definition."""
+
+    agent_id: str
+    name: str
+    description: str = ""
+    instruction: str
+    tool_names: List[str]
+    model: str
+    collection_ids: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_by: str
+    created_at: str
+    updated_at: str
+
+
+class WorkflowStepDefinition(BaseModel):
+    """A workflow step that invokes one registered tool."""
+
+    name: Optional[str] = None
+    tool_name: str = Field(min_length=1)
+    arguments: Dict[str, Any] = Field(default_factory=dict)
+    depends_on: List[str] = Field(default_factory=list)
+    approval_required: bool = False
+
+
+class WorkflowDefinitionCreate(BaseModel):
+    """Request to create a reusable workflow."""
+
+    name: str = Field(min_length=1)
+    steps: List[WorkflowStepDefinition] = Field(min_length=1)
+    description: Optional[str] = None
+    agent_id: Optional[str] = None
+    triggers: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowDefinitionResponse(BaseModel):
+    """Stored workflow definition."""
+
+    workflow_id: str
+    name: str
+    description: str = ""
+    agent_id: Optional[str] = None
+    steps: List[Dict[str, Any]]
+    triggers: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_by: str
+    created_at: str
+    updated_at: str
+
+
+def _owner(current_user: str | None) -> str:
+    return current_user or "anonymous"
+
+
+def _result_or_error(result):
+    if not result.success:
+        raise HTTPException(status_code=result.status_code, detail=result.error)
+    return result.data
+
+
 @router.get("/tools", response_model=ToolListResponse)
 async def list_agent_tools(
     current_user: str | None = Depends(get_optional_user),
@@ -68,3 +143,80 @@ async def plan_query(
         suggested_rerank_top_n=plan.suggested_rerank_top_n,
         reason=plan.reason,
     )
+
+
+@router.post("/agents", response_model=AgentDefinitionResponse, status_code=201)
+async def create_agent_definition(
+    request: AgentDefinitionCreate,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Create a reusable agent definition from registered tools."""
+    result = service.create_agent(
+        owner=_owner(current_user),
+        name=request.name,
+        instruction=request.instruction,
+        tool_names=request.tool_names,
+        description=request.description,
+        model=request.model,
+        collection_ids=request.collection_ids,
+        metadata=request.metadata,
+    )
+    return _result_or_error(result)
+
+
+@router.get("/agents", response_model=List[AgentDefinitionResponse])
+async def list_agent_definitions(
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> List[Dict[str, Any]]:
+    """List reusable agent definitions for the current owner."""
+    return _result_or_error(service.list_agents(_owner(current_user)))
+
+
+@router.get("/agents/{agent_id}", response_model=AgentDefinitionResponse)
+async def get_agent_definition(
+    agent_id: str,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Get a reusable agent definition."""
+    return _result_or_error(service.get_agent(_owner(current_user), agent_id))
+
+
+@router.post("/workflows", response_model=WorkflowDefinitionResponse, status_code=201)
+async def create_workflow_definition(
+    request: WorkflowDefinitionCreate,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Create a reusable workflow definition from registered tools."""
+    result = service.create_workflow(
+        owner=_owner(current_user),
+        name=request.name,
+        steps=[step.model_dump() for step in request.steps],
+        description=request.description,
+        agent_id=request.agent_id,
+        triggers=request.triggers,
+        metadata=request.metadata,
+    )
+    return _result_or_error(result)
+
+
+@router.get("/workflows", response_model=List[WorkflowDefinitionResponse])
+async def list_workflow_definitions(
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> List[Dict[str, Any]]:
+    """List reusable workflow definitions for the current owner."""
+    return _result_or_error(service.list_workflows(_owner(current_user)))
+
+
+@router.get("/workflows/{workflow_id}", response_model=WorkflowDefinitionResponse)
+async def get_workflow_definition(
+    workflow_id: str,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Get a reusable workflow definition."""
+    return _result_or_error(service.get_workflow(_owner(current_user), workflow_id))

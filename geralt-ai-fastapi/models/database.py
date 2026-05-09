@@ -296,6 +296,10 @@ notifications_collection = db.notifications
 # Structured extraction collection
 extraction_collection = db.document_extractions
 
+# Agent platform collections
+agent_definitions_collection = db.agent_definitions
+workflow_definitions_collection = db.workflow_definitions
+
 
 __all__ = [
     # OOP Classes
@@ -324,4 +328,7 @@ __all__ = [
     "quiz_results_collection",
     "quiz_attempts_collection",
     "notifications_collection",
+    "extraction_collection",
+    "agent_definitions_collection",
+    "workflow_definitions_collection",
 ]
