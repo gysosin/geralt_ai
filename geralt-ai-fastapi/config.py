@@ -51,6 +51,7 @@ class Config:
     # ==========================================================================
     MONGO_URI = settings.MONGO_URI
     MONGO_DATABASE = settings.MONGO_DATABASE
+    MONGO_SERVER_SELECTION_TIMEOUT_MS = settings.MONGO_SERVER_SELECTION_TIMEOUT_MS
     
     # ==========================================================================
     # Elasticsearch

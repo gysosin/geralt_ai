@@ -31,6 +31,7 @@ class MockSettings:
     
     MONGO_URI = "mongodb://localhost:27017"
     MONGO_DATABASE = "test_geraltai"
+    MONGO_SERVER_SELECTION_TIMEOUT_MS = 1000
     
     ELASTICSEARCH_URL = "http://localhost:9200"
     ELASTIC_INDEX = "test_documents"

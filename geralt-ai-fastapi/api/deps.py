@@ -23,7 +23,10 @@ logger = logging.getLogger(__name__)
 def get_mongo_client():
     """Get MongoDB client (cached)."""
     from pymongo import MongoClient
-    return MongoClient(settings.MONGO_URI)
+    return MongoClient(
+        settings.MONGO_URI,
+        serverSelectionTimeoutMS=settings.MONGO_SERVER_SELECTION_TIMEOUT_MS,
+    )
 
 
 def get_database():
