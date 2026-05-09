@@ -14,6 +14,7 @@ from selenium.common.exceptions import WebDriverException, TimeoutException
 
 from core.extraction.base import BaseExtractor
 from core.extraction.factory import ExtractorFactory
+from helpers.utils import get_utility_service
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,9 @@ class WebExtractor(BaseExtractor):
             raise ValueError("WebExtractor expects a URL string")
 
         url = file
+        if not get_utility_service().is_valid_url(url):
+            raise ValueError(f"Unsafe URL for web extraction: {url}")
+
         self._log_start(f"Web page: {url}")
         
         max_chunk_size = kwargs.get("max_chunk_size", 500)
