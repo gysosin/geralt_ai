@@ -12,26 +12,33 @@ from datetime import datetime
 # Add parent dir to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models.database import users_collection
-
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Password hashing context (same as auth_service.py)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-def create_admin():
-    email = "admin@geraltai.com"
-    username = "admin" # Simple username for admin
-    password = "admin"
-    firstname = "Admin"
-    lastname = "User"
+def create_admin(users_db=None):
+    if users_db is None:
+        from models.database import users_collection
+        users_db = users_collection
+
+    email = os.getenv("GERALT_ADMIN_EMAIL", "admin@geraltai.com").strip().lower()
+    username = os.getenv("GERALT_ADMIN_USERNAME", "admin").strip()
+    password = os.getenv("GERALT_ADMIN_PASSWORD", "")
+    firstname = os.getenv("GERALT_ADMIN_FIRSTNAME", "Admin").strip()
+    lastname = os.getenv("GERALT_ADMIN_LASTNAME", "User").strip()
     role = "admin"
+
+    if len(password) < 12:
+        raise ValueError("GERALT_ADMIN_PASSWORD must be set to at least 12 characters")
+    if not email or not username:
+        raise ValueError("GERALT_ADMIN_EMAIL and GERALT_ADMIN_USERNAME are required")
 
     logger.info(f"Creating admin user: {email}...")
 
     # Check if exists
-    existing = users_collection.find_one({
+    existing = users_db.find_one({
         "$or": [{"username": username}, {"email": email}]
     })
 
@@ -58,10 +65,9 @@ def create_admin():
     }
 
     try:
-        users_collection.insert_one(new_user)
+        users_db.insert_one(new_user)
         logger.info(f"✓ Admin user created successfully.")
         logger.info(f"  Email: {email}")
-        logger.info(f"  Password: {password}")
     except Exception as e:
         logger.error(f"✗ Failed to create user: {e}")
 
