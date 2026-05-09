@@ -64,7 +64,7 @@ export const mcpToolToWorkflowStepDraft = (
 });
 
 export const canRunWorkflowAgain = (status: string) => (
-  ['planned', 'completed', 'failed', 'canceled'].includes(status)
+  ['planned', 'completed', 'failed', 'canceled', 'blocked'].includes(status)
 );
 
 export const buildWorkflowSteps = (drafts: WorkflowStepDraft[]) => {

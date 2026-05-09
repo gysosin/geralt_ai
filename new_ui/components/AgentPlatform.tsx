@@ -510,6 +510,25 @@ const AgentPlatform: React.FC = () => {
     }
   };
 
+  const rejectWorkflowStep = async (runId: string, stepId: string) => {
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const updated = await agentPlatformService.rejectWorkflowStep(
+        runId,
+        stepId,
+        'Rejected from approval queue'
+      );
+      setRuns((current) => current.map((run) => (run.run_id === updated.run_id ? updated : run)));
+      setPendingApprovals(await agentPlatformService.listPendingApprovals());
+      setAuditEvents(await agentPlatformService.listAuditEvents());
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to reject workflow step');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const approveAllPendingWorkflowSteps = async () => {
     if (pendingApprovals.length === 0) return;
     setIsSubmitting(true);
@@ -1534,14 +1553,24 @@ const AgentPlatform: React.FC = () => {
                       <p className="text-sm text-white truncate">{approval.step_name}</p>
                       <p className="text-xs text-gray-500 font-mono truncate">{approval.tool_name} / {approval.run_id.slice(0, 8)}</p>
                     </div>
-                    <button
-                      onClick={() => approveWorkflowStep(approval.run_id, approval.step_id)}
-                      disabled={isSubmitting}
-                      className="h-8 px-3 rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-100 hover:bg-amber-500/15 disabled:opacity-60 flex items-center gap-1"
-                    >
-                      <CheckCircle2 size={14} />
-                      Approve
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => rejectWorkflowStep(approval.run_id, approval.step_id)}
+                        disabled={isSubmitting}
+                        className="h-8 px-3 rounded-lg border border-red-500/20 bg-red-500/10 text-red-100 hover:bg-red-500/15 disabled:opacity-60 flex items-center gap-1"
+                      >
+                        <XCircle size={14} />
+                        Reject
+                      </button>
+                      <button
+                        onClick={() => approveWorkflowStep(approval.run_id, approval.step_id)}
+                        disabled={isSubmitting}
+                        className="h-8 px-3 rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-100 hover:bg-amber-500/15 disabled:opacity-60 flex items-center gap-1"
+                      >
+                        <CheckCircle2 size={14} />
+                        Approve
+                      </button>
+                    </div>
                   </div>
                   {approval.message && (
                     <p className="mt-2 text-[11px] leading-relaxed text-amber-300">{approval.message}</p>

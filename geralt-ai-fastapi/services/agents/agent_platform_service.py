@@ -1141,6 +1141,70 @@ class AgentPlatformService(BaseService):
         )
         return ServiceResult.ok(self._public_document(updated_doc))
 
+    def reject_workflow_step(
+        self,
+        owner: str,
+        run_id: str,
+        step_id: str,
+        reason: Optional[str] = None,
+    ) -> ServiceResult:
+        """Reject one pending approval step and block the workflow run."""
+        run_result = self.get_workflow_run(owner, run_id)
+        if not run_result.success:
+            return run_result
+
+        run_doc = run_result.data
+        steps = list(run_doc.get("steps") or [])
+        target_index = next(
+            (index for index, step in enumerate(steps) if step.get("step_id") == step_id),
+            None,
+        )
+        if target_index is None:
+            return ServiceResult.fail("Workflow step not found", 404)
+
+        target_step = dict(steps[target_index])
+        if target_step.get("status") != "pending_approval":
+            return ServiceResult.fail("Workflow step is not pending approval", 400)
+
+        rejection_message = (reason or "").strip() or "Rejected by reviewer"
+        target_step["approval_required"] = False
+        target_step["status"] = "blocked"
+        target_step["output"] = None
+        target_step["message"] = rejection_message
+        steps[target_index] = target_step
+
+        for index, step in enumerate(steps):
+            if index == target_index:
+                continue
+            if step.get("status") in {"planned", "blocked", "pending_approval"}:
+                next_step = dict(step)
+                next_step["status"] = "blocked"
+                next_step["message"] = "Blocked by rejected approval"
+                steps[index] = next_step
+
+        now = datetime.utcnow().isoformat()
+        update = {
+            "steps": steps,
+            "status": "blocked",
+            "updated_at": now,
+        }
+        self.run_db.update_one(
+            {"created_by": self.extract_username(owner), "run_id": run_id},
+            {"$set": update},
+        )
+        updated_doc = {
+            **run_doc,
+            **update,
+        }
+        self._record_audit(
+            "workflow.step_rejected",
+            owner,
+            "workflow_run",
+            run_id,
+            {"step_id": step_id, "reason": rejection_message},
+        )
+        return ServiceResult.ok(self._public_document(updated_doc))
+
     def approve_pending_workflow_steps(self, owner: str) -> ServiceResult:
         """Approve every currently pending workflow step for the owner."""
         pending_result = self.list_pending_approvals(owner)

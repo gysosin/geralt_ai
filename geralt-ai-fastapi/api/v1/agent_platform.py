@@ -232,6 +232,12 @@ class WorkflowRunRetryCreate(BaseModel):
     dry_run: Optional[bool] = None
 
 
+class WorkflowStepRejectCreate(BaseModel):
+    """Request to reject a pending workflow approval."""
+
+    reason: Optional[str] = None
+
+
 class WorkflowRunResponse(BaseModel):
     """Workflow run plan or execution record."""
 
@@ -924,6 +930,28 @@ async def approve_workflow_step(
 ) -> Dict[str, Any]:
     """Approve and execute a workflow run step waiting on human approval."""
     return _result_or_error(service.approve_workflow_step(_owner(current_user), run_id, step_id))
+
+
+@router.post(
+    "/workflow-runs/{run_id}/steps/{step_id}/reject",
+    response_model=WorkflowRunResponse,
+)
+async def reject_workflow_step(
+    run_id: str,
+    step_id: str,
+    request: WorkflowStepRejectCreate,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Reject a workflow run step waiting on human approval."""
+    return _result_or_error(
+        service.reject_workflow_step(
+            _owner(current_user),
+            run_id,
+            step_id,
+            reason=request.reason,
+        )
+    )
 
 
 @router.post("/workflow-runs/{run_id}/cancel", response_model=WorkflowRunResponse)

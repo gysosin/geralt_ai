@@ -1565,6 +1565,61 @@ def test_approve_workflow_step_executes_pending_step():
     assert update["status"] == "completed"
 
 
+def test_reject_workflow_step_blocks_pending_run_with_reason():
+    run_db = MagicMock()
+    run_db.find_one.return_value = {
+        "run_id": "run-1",
+        "workflow_id": "workflow-1",
+        "created_by": "mehul",
+        "status": "pending",
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Review",
+                "tool_name": "rag.aggregate",
+                "arguments": {"query": "summarize documents", "collection_ids": []},
+                "depends_on": [],
+                "approval_required": True,
+                "status": "pending_approval",
+                "output": None,
+                "message": "Approval required before execution",
+            },
+            {
+                "step_id": "step-2",
+                "name": "Follow-up",
+                "tool_name": "query.plan",
+                "arguments": {"query": "summarize documents"},
+                "depends_on": ["step-1"],
+                "approval_required": False,
+                "status": "planned",
+                "output": None,
+                "message": "",
+            },
+        ],
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.reject_workflow_step(
+        owner="mehul",
+        run_id="run-1",
+        step_id="step-1",
+        reason="Evidence is incomplete",
+    )
+
+    assert result.success is True
+    update = run_db.update_one.call_args.args[1]["$set"]
+    assert update["status"] == "blocked"
+    assert update["steps"][0]["status"] == "blocked"
+    assert update["steps"][0]["approval_required"] is False
+    assert update["steps"][0]["message"] == "Evidence is incomplete"
+    assert update["steps"][1]["status"] == "blocked"
+    assert update["steps"][1]["message"] == "Blocked by rejected approval"
+
+
 def test_approve_workflow_step_resumes_dependent_steps():
     run_db = MagicMock()
     run_db.find_one.return_value = {

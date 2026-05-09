@@ -93,6 +93,7 @@ describe('agent platform workflow helpers', () => {
     expect(canRunWorkflowAgain('completed')).toBe(true);
     expect(canRunWorkflowAgain('failed')).toBe(true);
     expect(canRunWorkflowAgain('canceled')).toBe(true);
+    expect(canRunWorkflowAgain('blocked')).toBe(true);
     expect(canRunWorkflowAgain('pending')).toBe(false);
     expect(canRunWorkflowAgain('pending_approval')).toBe(false);
   });
