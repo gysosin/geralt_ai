@@ -5,7 +5,7 @@
  */
 import React, { useEffect, useCallback } from 'react';
 import { socketService } from '../services/socket.service';
-import { useNotificationStore } from '../store';
+import { useNotificationStore } from '../store/notification.store';
 import { ToastContainer } from './Toast';
 import type { Notification } from '../types/notification.types';
 

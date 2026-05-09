@@ -10,7 +10,8 @@ import {
   Loader2, RefreshCw
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useAuthStore, useDashboardStore } from '@/src/store';
+import { useAuthStore } from '@/src/store/auth.store';
+import { useDashboardStore } from '@/src/store/dashboard.store';
 
 const containerVariants = {
   hidden: { opacity: 0 },
