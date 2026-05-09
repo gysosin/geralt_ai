@@ -95,7 +95,9 @@ brew install --cask libreoffice
     # --- Databases ---
     MONGO_URI=mongodb://localhost:27017
     ELASTICSEARCH_URL=http://localhost:9200
-    REDIS_URL=redis://localhost:6379/0
+    REDIS_HOST=localhost
+    REDIS_PORT=6379
+    REDIS_PASSWORD=
     
     # --- Object Storage (MinIO) ---
     MINIO_ENDPOINT=localhost:9000
