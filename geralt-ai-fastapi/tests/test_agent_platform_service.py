@@ -849,6 +849,32 @@ def test_start_workflow_run_dry_run_records_planned_steps():
     assert inserted["steps"][0]["arguments"] == {"query": "list all vendors"}
 
 
+def test_archive_workflow_runs_marks_terminal_runs_archived():
+    run_db = MagicMock()
+    run_db.update_many.return_value.modified_count = 3
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.archive_workflow_runs(owner="mehul")
+
+    assert result.success is True
+    assert result.data == {
+        "archived_count": 3,
+        "statuses": ["canceled", "completed", "failed", "planned"],
+    }
+    query, update = run_db.update_many.call_args.args
+    assert query == {
+        "created_by": "mehul",
+        "archived": {"$ne": True},
+        "status": {"$in": ["canceled", "completed", "failed", "planned"]},
+    }
+    assert update["$set"]["archived"] is True
+    assert "archived_at" in update["$set"]
+
+
 def test_run_workflow_trigger_starts_matching_workflows():
     workflow_db = MagicMock()
     run_db = MagicMock()

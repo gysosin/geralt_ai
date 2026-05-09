@@ -1001,6 +1001,34 @@ def test_approve_all_pending_workflow_steps_endpoint():
     assert data["runs"][0]["steps"][0]["output"]["query_type"] == "summary"
 
 
+def test_archive_workflow_runs_endpoint_marks_terminal_runs_archived():
+    run_db = MagicMock()
+    run_db.update_many.return_value.modified_count = 4
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=MagicMock(),
+                    workflow_db=MagicMock(),
+                    run_db=run_db,
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.post("/api/v1/agent-platform/workflow-runs/archive")
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["archived_count"] == 4
+    assert data["statuses"] == ["canceled", "completed", "failed", "planned"]
+
+
 def test_cancel_workflow_run_endpoint_marks_run_canceled():
     run_db = MagicMock()
     run_db.find_one.return_value = {

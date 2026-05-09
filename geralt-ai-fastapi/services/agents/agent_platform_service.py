@@ -906,17 +906,57 @@ class AgentPlatformService(BaseService):
 
     def list_workflow_runs(self, owner: str, workflow_id: Optional[str] = None) -> ServiceResult:
         """List workflow runs for the current owner."""
-        query = {"created_by": self.extract_username(owner)}
+        query = {
+            "created_by": self.extract_username(owner),
+            "archived": {"$ne": True},
+        }
         if workflow_id:
             query["workflow_id"] = workflow_id
         docs = self.run_db.find(query, {"_id": 0})
         return ServiceResult.ok([self._public_document(doc) for doc in docs])
+
+    def archive_workflow_runs(
+        self,
+        owner: str,
+        statuses: Optional[List[str]] = None,
+    ) -> ServiceResult:
+        """Archive terminal workflow runs so normal views stay focused."""
+        terminal_statuses = ["canceled", "completed", "failed", "planned"]
+        selected_statuses = sorted(set(statuses or terminal_statuses))
+        now = datetime.utcnow().isoformat()
+        result = self.run_db.update_many(
+            {
+                "created_by": self.extract_username(owner),
+                "archived": {"$ne": True},
+                "status": {"$in": selected_statuses},
+            },
+            {
+                "$set": {
+                    "archived": True,
+                    "archived_at": now,
+                    "updated_at": now,
+                }
+            },
+        )
+        archived_count = getattr(result, "modified_count", 0)
+        self._record_audit(
+            "workflow_runs.archived",
+            owner,
+            "workflow_run",
+            "bulk",
+            {"archived_count": archived_count, "statuses": selected_statuses},
+        )
+        return ServiceResult.ok({
+            "archived_count": archived_count,
+            "statuses": selected_statuses,
+        })
 
     def list_pending_approvals(self, owner: str) -> ServiceResult:
         """List workflow steps waiting for human approval."""
         docs = self.run_db.find(
             {
                 "created_by": self.extract_username(owner),
+                "archived": {"$ne": True},
                 "steps.status": "pending_approval",
             },
             {"_id": 0},
@@ -1213,7 +1253,10 @@ class AgentPlatformService(BaseService):
         """Return aggregate counts for the current agent platform workspace."""
         username = self.extract_username(owner)
         definition_query = {"created_by": username, "deleted": {"$ne": True}}
-        run_docs = list(self.run_db.find({"created_by": username}, {"_id": 0, "status": 1, "steps": 1}))
+        run_docs = list(self.run_db.find(
+            {"created_by": username, "archived": {"$ne": True}},
+            {"_id": 0, "status": 1, "steps": 1},
+        ))
         mcp_docs = list(self.mcp_server_db.find(
             definition_query,
             {"_id": 0, "last_health_status": 1},
@@ -1362,7 +1405,10 @@ class AgentPlatformService(BaseService):
             {"created_by": username, "deleted": {"$ne": True}},
             {"_id": 0},
         ))
-        runs = list(self.run_db.find({"created_by": username}, {"_id": 0}))
+        runs = list(self.run_db.find(
+            {"created_by": username, "archived": {"$ne": True}},
+            {"_id": 0},
+        ))
         audit_events = self.list_audit_events(owner, limit=100).data or []
         return ServiceResult.ok({
             "schema_version": "1.0",
