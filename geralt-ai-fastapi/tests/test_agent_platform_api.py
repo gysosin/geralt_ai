@@ -286,3 +286,55 @@ def test_get_workflow_run_endpoint_returns_run_record():
 
     assert response.status_code == 200
     assert response.json()["run_id"] == "run-1"
+
+
+def test_delete_workflow_endpoint_soft_deletes_definition():
+    workflow_db = MagicMock()
+    workflow_db.update_one.return_value = MagicMock(modified_count=1)
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=MagicMock(),
+                    workflow_db=workflow_db,
+                    run_db=MagicMock(),
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.delete("/api/v1/agent-platform/workflows/workflow-1")
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["message"] == "Workflow deleted successfully"
+
+
+def test_delete_agent_endpoint_soft_deletes_definition():
+    agent_db = MagicMock()
+    agent_db.update_one.return_value = MagicMock(modified_count=1)
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=agent_db,
+                    workflow_db=MagicMock(),
+                    run_db=MagicMock(),
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.delete("/api/v1/agent-platform/agents/agent-1")
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["message"] == "Agent deleted successfully"

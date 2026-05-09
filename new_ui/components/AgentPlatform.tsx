@@ -9,6 +9,7 @@ import {
   Route,
   Search,
   Settings2,
+  Trash2,
   Workflow,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -190,6 +191,34 @@ const AgentPlatform: React.FC = () => {
     }
   };
 
+  const deleteAgent = async (agentId: string) => {
+    setIsSubmitting(true);
+    setError('');
+    try {
+      await agentPlatformService.deleteAgent(agentId);
+      setAgents((current) => current.filter((agent) => agent.agent_id !== agentId));
+      if (workflowAgentId === agentId) setWorkflowAgentId('');
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to delete agent');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const deleteWorkflow = async (workflowId: string) => {
+    setIsSubmitting(true);
+    setError('');
+    try {
+      await agentPlatformService.deleteWorkflow(workflowId);
+      setWorkflows((current) => current.filter((workflow) => workflow.workflow_id !== workflowId));
+      if (runWorkflowId === workflowId) setRunWorkflowId('');
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to delete workflow');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -353,6 +382,50 @@ const AgentPlatform: React.FC = () => {
                 {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Workflow size={18} />}
                 Create Workflow
               </button>
+            </div>
+          </section>
+
+          <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="border border-white/5 bg-surface/30 rounded-2xl p-5">
+              <h2 className="text-lg font-semibold text-white mb-4">Agent Definitions</h2>
+              <div className="space-y-2">
+                {agents.map((agent) => (
+                  <div key={agent.agent_id} className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-black/20 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="text-sm text-white truncate">{agent.name}</p>
+                      <p className="text-xs text-gray-500 font-mono truncate">{agent.tool_names.join(', ')}</p>
+                    </div>
+                    <button
+                      onClick={() => deleteAgent(agent.agent_id)}
+                      className="p-2 rounded-lg text-gray-500 hover:text-red-300 hover:bg-red-500/10"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+                {agents.length === 0 && <p className="text-sm text-gray-500">No agents</p>}
+              </div>
+            </div>
+
+            <div className="border border-white/5 bg-surface/30 rounded-2xl p-5">
+              <h2 className="text-lg font-semibold text-white mb-4">Workflow Definitions</h2>
+              <div className="space-y-2">
+                {workflows.map((workflow) => (
+                  <div key={workflow.workflow_id} className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-black/20 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="text-sm text-white truncate">{workflow.name}</p>
+                      <p className="text-xs text-gray-500 font-mono truncate">{workflow.steps.length} steps</p>
+                    </div>
+                    <button
+                      onClick={() => deleteWorkflow(workflow.workflow_id)}
+                      className="p-2 rounded-lg text-gray-500 hover:text-red-300 hover:bg-red-500/10"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+                {workflows.length === 0 && <p className="text-sm text-gray-500">No workflows</p>}
+              </div>
             </div>
           </section>
         </section>

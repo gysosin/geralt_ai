@@ -216,6 +216,16 @@ async def get_agent_definition(
     return _result_or_error(service.get_agent(_owner(current_user), agent_id))
 
 
+@router.delete("/agents/{agent_id}")
+async def delete_agent_definition(
+    agent_id: str,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Soft-delete a reusable agent definition."""
+    return _result_or_error(service.delete_agent(_owner(current_user), agent_id))
+
+
 @router.post("/workflows", response_model=WorkflowDefinitionResponse, status_code=201)
 async def create_workflow_definition(
     request: WorkflowDefinitionCreate,
@@ -284,6 +294,16 @@ async def get_workflow_definition(
 ) -> Dict[str, Any]:
     """Get a reusable workflow definition."""
     return _result_or_error(service.get_workflow(_owner(current_user), workflow_id))
+
+
+@router.delete("/workflows/{workflow_id}")
+async def delete_workflow_definition(
+    workflow_id: str,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Soft-delete a reusable workflow definition."""
+    return _result_or_error(service.delete_workflow(_owner(current_user), workflow_id))
 
 
 @router.post(
