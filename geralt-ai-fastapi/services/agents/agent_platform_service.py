@@ -1075,6 +1075,8 @@ class AgentPlatformService(BaseService):
         if workflow_id:
             query["workflow_id"] = workflow_id
         docs = self.run_db.find(query, {"_id": 0})
+        if hasattr(docs, "sort") and not isinstance(docs, list):
+            docs = docs.sort("updated_at", -1)
         return ServiceResult.ok([self._public_document(doc) for doc in docs])
 
     def archive_workflow_runs(

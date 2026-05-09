@@ -1185,6 +1185,28 @@ def test_list_workflow_runs_can_include_archived_records():
     assert query == {"created_by": "mehul"}
 
 
+def test_list_workflow_runs_sorts_newest_updated_first():
+    run_db = MagicMock()
+    cursor = MagicMock()
+    sorted_runs = [
+        {"run_id": "newer", "updated_at": "2026-05-09T12:00:00"},
+        {"run_id": "older", "updated_at": "2026-05-09T10:00:00"},
+    ]
+    cursor.sort.return_value = sorted_runs
+    run_db.find.return_value = cursor
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.list_workflow_runs(owner="mehul")
+
+    assert result.success is True
+    cursor.sort.assert_called_once_with("updated_at", -1)
+    assert [run["run_id"] for run in result.data] == ["newer", "older"]
+
+
 def test_run_workflow_trigger_starts_matching_workflows():
     workflow_db = MagicMock()
     run_db = MagicMock()
