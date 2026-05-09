@@ -52,6 +52,17 @@ class AppFactory:
             [sys.executable, "-m", "celery", "-A", "core.tasks", "worker", "--loglevel=info"]
         )
 
+    def _start_celery_worker_if_enabled(self) -> subprocess.Popen | None:
+        """Start Celery only when local API-managed workers are enabled."""
+        if not settings.AUTO_START_CELERY_WORKER:
+            self.logger.info("Celery worker auto-start disabled")
+            return None
+
+        self.logger.info("👷 Starting Celery worker...")
+        celery_process = self._start_celery_worker()
+        self.logger.info(f"✅ Celery worker started (PID: {celery_process.pid})")
+        return celery_process
+
     @asynccontextmanager
     async def lifespan(self, app: FastAPI) -> AsyncGenerator:
         """
@@ -65,13 +76,7 @@ class AppFactory:
         
         celery_process = None
         try:
-            # Kill any existing celery workers (prevent duplicates on reload)
-            subprocess.run(["pkill", "-f", "celery -A core.tasks worker"], check=False)
-            
-            # Start Celery Worker
-            self.logger.info("👷 Starting Celery worker...")
-            celery_process = self._start_celery_worker()
-            self.logger.info(f"✅ Celery worker started (PID: {celery_process.pid})")
+            celery_process = self._start_celery_worker_if_enabled()
         except Exception as e:
             self.logger.error(f"❌ Failed to start Celery worker: {e}")
 

@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     DEBUG: bool = False
     API_ENDPOINT: str = Field(default="127.0.0.1:8000")
+    AUTO_START_CELERY_WORKER: bool = Field(
+        default=True,
+        description="Start a local Celery worker with the API process for development only.",
+    )
 
     # ==========================================================================
     # Security
@@ -199,6 +203,8 @@ class Settings(BaseSettings):
             errors.append("SECRET_KEY must be a strong production secret")
         if "*" in self.CORS_ORIGINS:
             errors.append("CORS_ORIGINS must not include '*' in production")
+        if self.AUTO_START_CELERY_WORKER:
+            errors.append("AUTO_START_CELERY_WORKER must be false in production")
         if self.MINIO_ACCESS_KEY == "minioadmin" or self.MINIO_SECRET_KEY == "minioadmin":
             errors.append("MINIO credentials must not use public defaults in production")
         errors.extend(self._required_key_errors())

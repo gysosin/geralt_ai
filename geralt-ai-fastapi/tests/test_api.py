@@ -111,6 +111,7 @@ class TestCoreSettings:
         
         assert settings.API_VERSION == "v1"
         assert settings.JWT_ALGORITHM == "HS256"
+        assert settings.AUTO_START_CELERY_WORKER is True
         assert settings.CHUNK_SIZE >= 100
         assert settings.CHUNK_SIZE <= 2000
     
@@ -167,6 +168,7 @@ class TestCoreSettings:
             ENVIRONMENT="production",
             SECRET_KEY="a-production-secret-with-enough-entropy",
             CORS_ORIGINS=["https://app.example.com"],
+            AUTO_START_CELERY_WORKER=False,
             MINIO_ACCESS_KEY="prod-access",
             MINIO_SECRET_KEY="prod-secret",
             DEFAULT_AI_MODEL="gemini",
@@ -185,6 +187,7 @@ class TestCoreSettings:
             ENVIRONMENT="production",
             SECRET_KEY="a-production-secret-with-enough-entropy",
             CORS_ORIGINS=["https://app.example.com"],
+            AUTO_START_CELERY_WORKER=False,
             GEMINI_API_KEY="gemini-key",
             DEFAULT_RERANKER="none",
             MINIO_ACCESS_KEY="minioadmin",
@@ -202,6 +205,7 @@ class TestCoreSettings:
             ENVIRONMENT="production",
             SECRET_KEY="a-production-secret-with-enough-entropy",
             CORS_ORIGINS=["https://app.example.com"],
+            AUTO_START_CELERY_WORKER=False,
             MINIO_ACCESS_KEY="prod-access",
             MINIO_SECRET_KEY="prod-secret",
             GEMINI_API_KEY="gemini-key",
@@ -209,6 +213,24 @@ class TestCoreSettings:
         )
 
         settings.validate_startup_configuration()
+
+    def test_startup_configuration_rejects_worker_autostart_in_production(self):
+        """Production startup should use a separately supervised Celery worker."""
+        from core.config import Settings
+
+        settings = Settings(
+            ENVIRONMENT="production",
+            SECRET_KEY="a-production-secret-with-enough-entropy",
+            CORS_ORIGINS=["https://app.example.com"],
+            AUTO_START_CELERY_WORKER=True,
+            MINIO_ACCESS_KEY="prod-access",
+            MINIO_SECRET_KEY="prod-secret",
+            GEMINI_API_KEY="gemini-key",
+            DEFAULT_RERANKER="none",
+        )
+
+        with pytest.raises(ValueError, match="AUTO_START_CELERY_WORKER"):
+            settings.validate_startup_configuration()
 
 
 class TestAPIRouterStructure:
@@ -267,6 +289,24 @@ class TestAPIRouterStructure:
             "--loglevel=info",
         ]
         assert calls[0][1] == {}
+
+    def test_app_factory_skips_celery_worker_when_disabled(self, monkeypatch):
+        """App startup should not spawn Celery when auto-start is disabled."""
+        import main
+
+        calls = []
+
+        def fake_popen(args, **kwargs):
+            calls.append((args, kwargs))
+            raise AssertionError("Celery worker should not be started")
+
+        monkeypatch.setattr(main.settings, "AUTO_START_CELERY_WORKER", False)
+        monkeypatch.setattr(main.subprocess, "Popen", fake_popen)
+
+        process = main.AppFactory()._start_celery_worker_if_enabled()
+
+        assert process is None
+        assert calls == []
 
 
 class TestServicesStructure:
