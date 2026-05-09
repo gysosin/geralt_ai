@@ -38,6 +38,14 @@ export interface WorkflowDefinition {
     updated_at: string
 }
 
+export interface WorkflowTemplate {
+    template_id: string
+    name: string
+    description: string
+    required_inputs: string[]
+    steps: Array<Record<string, unknown>>
+}
+
 export interface WorkflowRun {
     run_id: string
     workflow_id: string
@@ -85,6 +93,23 @@ export const agentPlatformService = {
         metadata?: Record<string, unknown>
     }): Promise<WorkflowDefinition> {
         const response = await api.post(`${BASE_PATH}/workflows`, data)
+        return response.data
+    },
+
+    async listWorkflowTemplates(): Promise<WorkflowTemplate[]> {
+        const response = await api.get(`${BASE_PATH}/workflow-templates`)
+        return response.data
+    },
+
+    async createWorkflowFromTemplate(data: {
+        template_id: string
+        name?: string
+        description?: string
+        agent_id?: string
+        triggers?: string[]
+        metadata?: Record<string, unknown>
+    }): Promise<WorkflowDefinition> {
+        const response = await api.post(`${BASE_PATH}/workflows/from-template`, data)
         return response.data
     },
 

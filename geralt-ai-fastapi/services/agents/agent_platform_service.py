@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from core.agents.tool_executor import get_agent_tool_executor
 from core.agents.tool_registry import get_agent_tool_registry
+from core.agents.workflow_templates import get_workflow_template_registry
 from models.database import (
     agent_definitions_collection,
     workflow_definitions_collection,
@@ -34,6 +35,7 @@ class AgentPlatformService(BaseService):
         self.run_db = run_db or workflow_runs_collection
         self.tool_executor = tool_executor or get_agent_tool_executor()
         self.registry = get_agent_tool_registry()
+        self.template_registry = get_workflow_template_registry()
 
     def create_agent(
         self,
@@ -140,6 +142,40 @@ class AgentPlatformService(BaseService):
         }
         self.workflow_db.insert_one(document)
         return ServiceResult.ok(self._public_document(document), status_code=201)
+
+    def list_workflow_templates(self) -> ServiceResult:
+        """List built-in workflow templates."""
+        return ServiceResult.ok(self.template_registry.list_templates())
+
+    def create_workflow_from_template(
+        self,
+        owner: str,
+        template_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        triggers: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> ServiceResult:
+        """Create a workflow from a built-in template."""
+        template = self.template_registry.get_template(template_id)
+        if not template:
+            return ServiceResult.fail("Workflow template not found", 404)
+
+        template_metadata = {
+            "template_id": template_id,
+            "required_inputs": template.get("required_inputs", []),
+            **(metadata or {}),
+        }
+        return self.create_workflow(
+            owner=owner,
+            name=name or template["name"],
+            description=description or template.get("description"),
+            agent_id=agent_id,
+            triggers=triggers,
+            metadata=template_metadata,
+            steps=template["steps"],
+        )
 
     def list_workflows(self, owner: str) -> ServiceResult:
         """List non-deleted workflows owned by a user."""
