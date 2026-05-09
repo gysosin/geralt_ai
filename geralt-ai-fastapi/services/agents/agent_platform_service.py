@@ -8,8 +8,8 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
+from core.agents.tool_executor import get_agent_tool_executor
 from core.agents.tool_registry import get_agent_tool_registry
-from core.rag.query_classifier import get_query_classifier
 from models.database import (
     agent_definitions_collection,
     workflow_definitions_collection,
@@ -26,11 +26,13 @@ class AgentPlatformService(BaseService):
         agent_db=None,
         workflow_db=None,
         run_db=None,
+        tool_executor=None,
     ) -> None:
         super().__init__()
         self.agent_db = agent_db or agent_definitions_collection
         self.workflow_db = workflow_db or workflow_definitions_collection
         self.run_db = run_db or workflow_runs_collection
+        self.tool_executor = tool_executor or get_agent_tool_executor()
         self.registry = get_agent_tool_registry()
 
     def create_agent(
@@ -241,21 +243,18 @@ class AgentPlatformService(BaseService):
         if dry_run:
             return planned
 
-        if step["tool_name"] == "query.plan":
-            plan = get_query_classifier().plan(arguments.get("query", ""))
+        try:
+            planned["output"] = self.tool_executor.execute(step["tool_name"], arguments)
             planned["status"] = "completed"
-            planned["output"] = {
-                "query_type": plan.query_type.value,
-                "should_retrieve": plan.should_retrieve,
-                "needs_all_docs": plan.needs_all_docs,
-                "suggested_top_k": plan.suggested_top_k,
-                "suggested_rerank_top_n": plan.suggested_rerank_top_n,
-                "reason": plan.reason,
-            }
+            return planned
+        except NotImplementedError as e:
+            planned["status"] = "pending"
+            planned["message"] = str(e)
             return planned
 
-        planned["status"] = "pending"
-        planned["message"] = f"Execution for {step['tool_name']} is not implemented yet"
+        except Exception as e:
+            planned["status"] = "failed"
+            planned["message"] = str(e)
         return planned
 
     def _resolve_arguments(self, value: Any, inputs: Dict[str, Any]) -> Any:

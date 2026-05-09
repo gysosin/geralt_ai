@@ -21,11 +21,41 @@ class AggregationEngine:
     questions like "total payments by vendor" or "contracts expiring this month".
     """
 
-    def __init__(self):
-        from models.database import extraction_collection
-        self.collection = extraction_collection
-        self.llm = AIProviderFactory.get_llm_provider()
+    def __init__(self, collection=None, llm=None, load_llm: bool = True):
+        if collection is None:
+            from models.database import extraction_collection
+            collection = extraction_collection
+        self.collection = collection
+        self.llm = llm if llm is not None else (
+            AIProviderFactory.get_llm_provider() if load_llm else None
+        )
         self.logger = logging.getLogger(f"{self.__class__.__name__}")
+
+    def aggregate_deterministic(
+        self,
+        query: str,
+        collection_ids: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Run aggregation without provider calls."""
+        stats = self.get_collection_stats_sync(collection_ids)
+        if stats["total_documents"] == 0:
+            return {
+                "answer": "No documents with extracted data found in this collection.",
+                "data": [],
+                "metadata": {"documents_analyzed": 0},
+            }
+
+        extractions = self._get_extractions(collection_ids)
+        aggregation_data = self._run_aggregation(query, extractions)
+        return {
+            "answer": self._format_answer_deterministic(query, aggregation_data, stats),
+            "data": aggregation_data,
+            "metadata": {
+                "documents_analyzed": stats["total_documents"],
+                "total_amount": stats.get("total_amount"),
+                "document_types": stats.get("document_types", []),
+            },
+        }
 
     async def aggregate(
         self,
@@ -46,7 +76,7 @@ class AggregationEngine:
             self.logger.info(f"Aggregation query: {query[:50]}...")
 
             # Get collection stats first
-            stats = await self.get_collection_stats(collection_ids)
+            stats = self.get_collection_stats_sync(collection_ids)
 
             if stats["total_documents"] == 0:
                 return {
@@ -83,6 +113,13 @@ class AggregationEngine:
             }
 
     async def get_collection_stats(
+        self,
+        collection_ids: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Async compatibility wrapper for collection statistics."""
+        return self.get_collection_stats_sync(collection_ids)
+
+    def get_collection_stats_sync(
         self,
         collection_ids: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
@@ -303,12 +340,39 @@ Collection Stats:
 Provide a direct answer to the query based on the data. Be specific with numbers and names."""
 
         try:
+            if not self.llm:
+                return self._format_answer_deterministic(query, data, stats)
             answer = await self.llm.complete(prompt, max_tokens=500, temperature=0.3)
             return answer.strip()
         except Exception as e:
             self.logger.warning(f"LLM formatting failed: {e}")
             # Fallback to simple formatting
             return f"Found {len(data)} results across {stats.get('total_documents', 0)} documents."
+
+    def _format_answer_deterministic(
+        self,
+        query: str,
+        data: List[Dict],
+        stats: Dict,
+    ) -> str:
+        """Format an aggregation answer without using a model."""
+        document_count = stats.get("total_documents", 0)
+        if not data:
+            return f"No aggregation results found across {document_count} documents."
+
+        first = data[0]
+        if "total_amount" in first:
+            return (
+                f"Total amount is {first['total_amount']} "
+                f"across {first.get('documents_with_amounts', 0)} documents with amounts."
+            )
+        if "vendor" in first:
+            return f"Found {len(data)} vendor totals across {document_count} documents."
+        if "name" in first:
+            return f"Found {len(data)} entities across {document_count} documents."
+        if "date" in first:
+            return f"Found {len(data)} dates across {document_count} documents."
+        return f"Found {len(data)} results across {document_count} documents."
 
 
 # Singleton
