@@ -19,6 +19,7 @@ import {
   type AuditEvent,
   type AgentDefinition,
   type AgentTool,
+  type McpServer,
   type PlatformStats,
   type ToolInvocationResult,
   type WorkflowDefinition,
@@ -42,6 +43,7 @@ const statusTone: Record<string, string> = {
 const AgentPlatform: React.FC = () => {
   const [tools, setTools] = useState<AgentTool[]>([]);
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
+  const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([]);
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
@@ -57,6 +59,9 @@ const AgentPlatform: React.FC = () => {
   const [agentInstruction, setAgentInstruction] = useState('Plan the user request, search or aggregate selected document collections, and return grounded results.');
   const [selectedTools, setSelectedTools] = useState<string[]>(['query.plan', 'rag.aggregate']);
   const [agentCollections, setAgentCollections] = useState('');
+  const [mcpName, setMcpName] = useState('Docs MCP');
+  const [mcpUrl, setMcpUrl] = useState('');
+  const [mcpToolNames, setMcpToolNames] = useState('');
 
   const [workflowName, setWorkflowName] = useState('Document Aggregation Workflow');
   const [workflowAgentId, setWorkflowAgentId] = useState('');
@@ -75,9 +80,10 @@ const AgentPlatform: React.FC = () => {
     setIsLoading(true);
     setError('');
     try {
-      const [toolResult, agentResult, workflowResult, templateResult, runResult, auditResult, statsResult] = await Promise.allSettled([
+      const [toolResult, agentResult, mcpServerResult, workflowResult, templateResult, runResult, auditResult, statsResult] = await Promise.allSettled([
         agentPlatformService.getTools(),
         agentPlatformService.listAgents(),
+        agentPlatformService.listMcpServers(),
         agentPlatformService.listWorkflows(),
         agentPlatformService.listWorkflowTemplates(),
         agentPlatformService.listWorkflowRuns(),
@@ -87,6 +93,7 @@ const AgentPlatform: React.FC = () => {
       setTools(toolResult.status === 'fulfilled' ? toolResult.value.tools || [] : []);
       const loadedAgents = agentResult.status === 'fulfilled' ? agentResult.value || [] : [];
       setAgents(loadedAgents);
+      setMcpServers(mcpServerResult.status === 'fulfilled' ? mcpServerResult.value || [] : []);
       const loadedWorkflows = workflowResult.status === 'fulfilled' ? workflowResult.value || [] : [];
       setWorkflows(loadedWorkflows);
       const loadedTemplates = templateResult.status === 'fulfilled' ? templateResult.value || [] : [];
@@ -103,7 +110,7 @@ const AgentPlatform: React.FC = () => {
       if (!runAgentId && loadedAgents?.[0]?.agent_id) {
         setRunAgentId(loadedAgents[0].agent_id);
       }
-      if ([toolResult, agentResult, workflowResult, templateResult, runResult, auditResult, statsResult].some((result) => result.status === 'rejected')) {
+      if ([toolResult, agentResult, mcpServerResult, workflowResult, templateResult, runResult, auditResult, statsResult].some((result) => result.status === 'rejected')) {
         setError('Some platform records are unavailable. Tool registry is still loaded when the API is reachable.');
       }
     } catch (loadError) {
@@ -191,6 +198,25 @@ const AgentPlatform: React.FC = () => {
       setRunWorkflowId(created.workflow_id);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to create workflow');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const createMcpServer = async () => {
+    if (!mcpName.trim() || !mcpUrl.trim()) return;
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const created = await agentPlatformService.createMcpServer({
+        name: mcpName,
+        transport: 'streamable_http',
+        url: mcpUrl,
+        tool_names: splitIds(mcpToolNames),
+      });
+      setMcpServers((current) => [created, ...current]);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to register MCP server');
     } finally {
       setIsSubmitting(false);
     }
@@ -343,6 +369,19 @@ const AgentPlatform: React.FC = () => {
       if (runWorkflowId === workflowId) setRunWorkflowId('');
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to delete workflow');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const deleteMcpServer = async (serverId: string) => {
+    setIsSubmitting(true);
+    setError('');
+    try {
+      await agentPlatformService.deleteMcpServer(serverId);
+      setMcpServers((current) => current.filter((server) => server.server_id !== serverId));
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to delete MCP server');
     } finally {
       setIsSubmitting(false);
     }
@@ -630,7 +669,7 @@ const AgentPlatform: React.FC = () => {
                     </button>
                   </div>
                 ))}
-                {agents.length === 0 && <p className="text-sm text-gray-500">No agents</p>}
+              {agents.length === 0 && <p className="text-sm text-gray-500">No agents</p>}
               </div>
             </div>
 
@@ -655,6 +694,54 @@ const AgentPlatform: React.FC = () => {
                 ))}
                 {workflows.length === 0 && <p className="text-sm text-gray-500">No workflows</p>}
               </div>
+            </div>
+          </section>
+
+          <section className="border border-white/5 bg-surface/30 rounded-2xl p-5 space-y-4">
+            <h2 className="text-lg font-semibold text-white">External MCP Servers</h2>
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr_1fr_auto] gap-3">
+              <input
+                value={mcpName}
+                onChange={(event) => setMcpName(event.target.value)}
+                className="bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500/60"
+              />
+              <input
+                value={mcpUrl}
+                onChange={(event) => setMcpUrl(event.target.value)}
+                placeholder="https://server.example.com/mcp"
+                className="bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500/60"
+              />
+              <input
+                value={mcpToolNames}
+                onChange={(event) => setMcpToolNames(event.target.value)}
+                placeholder="tool_a, tool_b"
+                className="bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500/60"
+              />
+              <button
+                onClick={createMcpServer}
+                disabled={isSubmitting || !mcpName.trim() || !mcpUrl.trim()}
+                className="h-11 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-medium flex items-center justify-center gap-2"
+              >
+                {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Settings2 size={18} />}
+                Register
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {mcpServers.map((server) => (
+                <div key={server.server_id} className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-black/20 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-sm text-white truncate">{server.name}</p>
+                    <p className="text-xs text-gray-500 font-mono truncate">{server.url || server.command}</p>
+                  </div>
+                  <button
+                    onClick={() => deleteMcpServer(server.server_id)}
+                    className="p-2 rounded-lg text-gray-500 hover:text-red-300 hover:bg-red-500/10"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+              {mcpServers.length === 0 && <p className="text-sm text-gray-500">No external MCP servers</p>}
             </div>
           </section>
         </section>

@@ -307,6 +307,7 @@ agent_definitions_collection = db.agent_definitions
 workflow_definitions_collection = db.workflow_definitions
 workflow_runs_collection = db.workflow_runs
 agent_audit_collection = db.agent_audit_events
+mcp_servers_collection = db.mcp_servers
 
 
 __all__ = [
@@ -341,4 +342,5 @@ __all__ = [
     "workflow_definitions_collection",
     "workflow_runs_collection",
     "agent_audit_collection",
+    "mcp_servers_collection",
 ]

@@ -14,6 +14,7 @@ from core.agents.workflow_templates import get_workflow_template_registry
 from models.database import (
     agent_definitions_collection,
     agent_audit_collection,
+    mcp_servers_collection,
     workflow_definitions_collection,
     workflow_runs_collection,
 )
@@ -29,15 +30,22 @@ class AgentPlatformService(BaseService):
         workflow_db=None,
         run_db=None,
         audit_db=None,
+        mcp_server_db=None,
         tool_executor=None,
     ) -> None:
         super().__init__()
         self.agent_db = agent_db or agent_definitions_collection
         self.workflow_db = workflow_db or workflow_definitions_collection
         self.run_db = run_db or workflow_runs_collection
+        self.mcp_server_db = mcp_server_db or mcp_servers_collection
         if audit_db is not None:
             self.audit_db = audit_db
-        elif agent_db is not None or workflow_db is not None or run_db is not None:
+        elif (
+            agent_db is not None
+            or workflow_db is not None
+            or run_db is not None
+            or mcp_server_db is not None
+        ):
             self.audit_db = None
         else:
             self.audit_db = agent_audit_collection
@@ -117,6 +125,72 @@ class AgentPlatformService(BaseService):
             return ServiceResult.fail("Agent not found", 404)
         self._record_audit("agent.deleted", owner, "agent", agent_id)
         return ServiceResult.ok({"message": "Agent deleted successfully"})
+
+    def create_mcp_server(
+        self,
+        owner: str,
+        name: str,
+        transport: str,
+        url: Optional[str] = None,
+        command: Optional[str] = None,
+        args: Optional[List[str]] = None,
+        tool_names: Optional[List[str]] = None,
+        description: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> ServiceResult:
+        """Register an external MCP server that can provide additional tools."""
+        if not name.strip():
+            return ServiceResult.fail("MCP server name is required", 400)
+        if transport not in {"streamable_http", "stdio"}:
+            return ServiceResult.fail("Unsupported MCP transport", 400)
+        if transport == "streamable_http" and not (url or "").strip():
+            return ServiceResult.fail("MCP server URL is required for streamable_http", 400)
+        if transport == "stdio" and not (command or "").strip():
+            return ServiceResult.fail("MCP server command is required for stdio", 400)
+
+        now = datetime.utcnow().isoformat()
+        server_id = str(uuid4())
+        document = {
+            "server_id": server_id,
+            "name": name.strip(),
+            "description": description or "",
+            "transport": transport,
+            "url": (url or "").strip(),
+            "command": (command or "").strip(),
+            "args": args or [],
+            "tool_names": tool_names or [],
+            "metadata": metadata or {},
+            "created_by": self.extract_username(owner),
+            "created_at": now,
+            "updated_at": now,
+            "deleted": False,
+        }
+        self.mcp_server_db.insert_one(document)
+        self._record_audit("mcp_server.created", owner, "mcp_server", server_id)
+        return ServiceResult.ok(self._public_document(document), status_code=201)
+
+    def list_mcp_servers(self, owner: str) -> ServiceResult:
+        """List non-deleted external MCP servers for the current owner."""
+        docs = self.mcp_server_db.find(
+            {"created_by": self.extract_username(owner), "deleted": {"$ne": True}},
+            {"_id": 0},
+        )
+        return ServiceResult.ok([self._public_document(doc) for doc in docs])
+
+    def delete_mcp_server(self, owner: str, server_id: str) -> ServiceResult:
+        """Soft-delete an external MCP server registration."""
+        result = self.mcp_server_db.update_one(
+            {
+                "server_id": server_id,
+                "created_by": self.extract_username(owner),
+                "deleted": {"$ne": True},
+            },
+            {"$set": {"deleted": True, "updated_at": datetime.utcnow().isoformat()}},
+        )
+        if getattr(result, "modified_count", 0) == 0:
+            return ServiceResult.fail("MCP server not found", 404)
+        self._record_audit("mcp_server.deleted", owner, "mcp_server", server_id)
+        return ServiceResult.ok({"message": "MCP server deleted successfully"})
 
     def start_agent_run(
         self,
@@ -670,6 +744,10 @@ class AgentPlatformService(BaseService):
             {"created_by": username, "deleted": {"$ne": True}},
             {"_id": 0},
         ))
+        mcp_servers = list(self.mcp_server_db.find(
+            {"created_by": username, "deleted": {"$ne": True}},
+            {"_id": 0},
+        ))
         return ServiceResult.ok({
             "name": "GeraltAI Agent Platform",
             "version": "1.0.0",
@@ -691,6 +769,19 @@ class AgentPlatformService(BaseService):
                     "mcp_toolset": "geraltai_mcp_tools",
                 }
                 for agent in agents
+            ],
+            "external_mcp_servers": [
+                {
+                    "server_id": server.get("server_id"),
+                    "name": server.get("name"),
+                    "description": server.get("description", ""),
+                    "transport": server.get("transport"),
+                    "url": server.get("url", ""),
+                    "command": server.get("command", ""),
+                    "args": server.get("args", []),
+                    "tool_names": server.get("tool_names", []),
+                }
+                for server in mcp_servers
             ],
             "workflows": [
                 {
@@ -724,6 +815,10 @@ class AgentPlatformService(BaseService):
             {"created_by": username, "deleted": {"$ne": True}},
             {"_id": 0},
         ))
+        mcp_servers = list(self.mcp_server_db.find(
+            {"created_by": username, "deleted": {"$ne": True}},
+            {"_id": 0},
+        ))
         runs = list(self.run_db.find({"created_by": username}, {"_id": 0}))
         audit_events = self.list_audit_events(owner, limit=100).data or []
         return ServiceResult.ok({
@@ -733,6 +828,7 @@ class AgentPlatformService(BaseService):
             "mcp_manifest": self.get_mcp_manifest().data,
             "agents": [self._public_document(doc) for doc in agents],
             "workflows": [self._public_document(doc) for doc in workflows],
+            "mcp_servers": [self._public_document(doc) for doc in mcp_servers],
             "runs": [self._public_document(doc) for doc in runs],
             "audit_events": audit_events,
         })
