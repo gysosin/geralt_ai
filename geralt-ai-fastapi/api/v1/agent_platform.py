@@ -649,6 +649,15 @@ async def list_workflow_templates(
     return _result_or_error(service.list_workflow_templates())
 
 
+@router.get("/triggers", response_model=List[Dict[str, Any]])
+async def list_workflow_triggers(
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> List[Dict[str, Any]]:
+    """List automation triggers bound to reusable workflows."""
+    return _result_or_error(service.list_workflow_triggers(_owner(current_user)))
+
+
 @router.post(
     "/triggers/{trigger_name}/runs",
     response_model=List[WorkflowRunResponse],

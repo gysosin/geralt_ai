@@ -27,6 +27,7 @@ import {
   type WorkflowDefinition,
   type WorkflowRun,
   type WorkflowTemplate,
+  type WorkflowTrigger,
 } from '../src/services/agent-platform.service';
 
 const splitIds = (value: string) =>
@@ -49,6 +50,7 @@ const AgentPlatform: React.FC = () => {
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([]);
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
+  const [automationTriggers, setAutomationTriggers] = useState<WorkflowTrigger[]>([]);
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
@@ -88,13 +90,14 @@ const AgentPlatform: React.FC = () => {
     setIsLoading(true);
     setError('');
     try {
-      const [toolResult, agentTemplateResult, agentResult, mcpServerResult, workflowResult, templateResult, runResult, approvalResult, auditResult, statsResult] = await Promise.allSettled([
+      const [toolResult, agentTemplateResult, agentResult, mcpServerResult, workflowResult, templateResult, triggerResult, runResult, approvalResult, auditResult, statsResult] = await Promise.allSettled([
         agentPlatformService.getTools(),
         agentPlatformService.listAgentTemplates(),
         agentPlatformService.listAgents(),
         agentPlatformService.listMcpServers(),
         agentPlatformService.listWorkflows(),
         agentPlatformService.listWorkflowTemplates(),
+        agentPlatformService.listWorkflowTriggers(),
         agentPlatformService.listWorkflowRuns(),
         agentPlatformService.listPendingApprovals(),
         agentPlatformService.listAuditEvents(),
@@ -112,6 +115,7 @@ const AgentPlatform: React.FC = () => {
       if (!selectedTemplateId && loadedTemplates?.[0]?.template_id) {
         setSelectedTemplateId(loadedTemplates[0].template_id);
       }
+      setAutomationTriggers(triggerResult.status === 'fulfilled' ? triggerResult.value || [] : []);
       setRuns(runResult.status === 'fulfilled' ? runResult.value || [] : []);
       setPendingApprovals(approvalResult.status === 'fulfilled' ? approvalResult.value || [] : []);
       setAuditEvents(auditResult.status === 'fulfilled' ? auditResult.value || [] : []);
@@ -122,7 +126,7 @@ const AgentPlatform: React.FC = () => {
       if (!runAgentId && loadedAgents?.[0]?.agent_id) {
         setRunAgentId(loadedAgents[0].agent_id);
       }
-      if ([toolResult, agentTemplateResult, agentResult, mcpServerResult, workflowResult, templateResult, runResult, approvalResult, auditResult, statsResult].some((result) => result.status === 'rejected')) {
+      if ([toolResult, agentTemplateResult, agentResult, mcpServerResult, workflowResult, templateResult, triggerResult, runResult, approvalResult, auditResult, statsResult].some((result) => result.status === 'rejected')) {
         setError('Some platform records are unavailable. Tool registry is still loaded when the API is reachable.');
       }
     } catch (loadError) {
@@ -344,12 +348,14 @@ const AgentPlatform: React.FC = () => {
     }
   };
 
-  const startTriggerRuns = async () => {
-    if (!triggerName.trim()) return;
+  const startTriggerRuns = async (selectedTrigger = triggerName) => {
+    const nextTrigger = selectedTrigger.trim();
+    if (!nextTrigger) return;
     setIsSubmitting(true);
     setError('');
     try {
-      const created = await agentPlatformService.startTriggerRuns(triggerName.trim(), {
+      setTriggerName(nextTrigger);
+      const created = await agentPlatformService.startTriggerRuns(nextTrigger, {
         dry_run: dryRun,
         inputs: {
           query: runQuery,
@@ -975,13 +981,28 @@ const AgentPlatform: React.FC = () => {
               className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-amber-500/60"
             />
             <button
-              onClick={startTriggerRuns}
+              onClick={() => startTriggerRuns()}
               disabled={isSubmitting || !triggerName.trim()}
               className="w-full h-11 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-60 text-white font-medium flex items-center justify-center gap-2"
             >
               {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Route size={18} />}
               Run Trigger
             </button>
+            {automationTriggers.length > 0 && (
+              <div className="space-y-2 pt-1">
+                {automationTriggers.slice(0, 5).map((trigger) => (
+                  <button
+                    key={trigger.trigger}
+                    onClick={() => startTriggerRuns(trigger.trigger)}
+                    disabled={isSubmitting}
+                    className="w-full rounded-xl border border-white/5 bg-black/20 hover:border-amber-500/20 px-4 py-3 text-left disabled:opacity-60"
+                  >
+                    <span className="block text-sm text-white truncate">{trigger.trigger}</span>
+                    <span className="block text-xs text-gray-500">{trigger.workflow_count} workflow{trigger.workflow_count === 1 ? '' : 's'}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </section>
 
           <section className="border border-white/5 bg-surface/30 rounded-2xl p-5 space-y-4">

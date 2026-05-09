@@ -766,6 +766,30 @@ class AgentPlatformService(BaseService):
             runs.append(result.data)
         return ServiceResult.ok(runs, status_code=201)
 
+    def list_workflow_triggers(self, owner: str) -> ServiceResult:
+        """List trigger names and the workflows bound to each trigger."""
+        docs = self.workflow_db.find(
+            {"created_by": self.extract_username(owner), "deleted": {"$ne": True}},
+            {"_id": 0, "workflow_id": 1, "triggers": 1},
+        )
+        trigger_map: Dict[str, List[str]] = {}
+        for workflow in docs:
+            workflow_id = workflow.get("workflow_id")
+            for trigger in workflow.get("triggers") or []:
+                trigger_name = str(trigger).strip()
+                if not trigger_name:
+                    continue
+                trigger_map.setdefault(trigger_name, []).append(workflow_id)
+
+        return ServiceResult.ok([
+            {
+                "trigger": trigger,
+                "workflow_count": len(workflow_ids),
+                "workflow_ids": workflow_ids,
+            }
+            for trigger, workflow_ids in sorted(trigger_map.items())
+        ])
+
     def _create_workflow_run_from_document(
         self,
         owner: str,
