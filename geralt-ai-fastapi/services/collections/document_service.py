@@ -164,6 +164,12 @@ class DocumentService(BaseService):
             content = file.file.read()
             size = len(content)
             file.file.seek(0)
+
+        if size > Config.MAX_CONTENT_LENGTH:
+            return {
+                "message": f"Document '{original_filename}' exceeds the {Config.MAX_CONTENT_LENGTH} byte upload limit.",
+                "status": "too_large",
+            }, False
         
         self.storage.put_object(Config.BUCKET_NAME, file_path, file.file, length=size)
         
