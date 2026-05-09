@@ -1,8 +1,14 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText, ExternalLink, ChevronDown, ChevronUp, Layers, Eye, X } from 'lucide-react';
 import type { Source } from '@/types';
 import { HighlightedSnapshot } from './highlighted-snapshot';
+import {
+    filterSourcesByConfidence,
+    getSourceConfidencePercent,
+    sourceConfidenceFilters,
+    type SourceConfidenceFilter,
+} from '@/src/utils/source-confidence';
 
 interface SourcesListProps {
     sources: Source[];
@@ -12,18 +18,24 @@ interface SourcesListProps {
 export function SourcesList({ sources, className = '' }: SourcesListProps) {
     const [isListExpanded, setIsListExpanded] = useState(false);
     const [expandedSourceId, setExpandedSourceId] = useState<string | null>(null);
+    const [confidenceFilter, setConfidenceFilter] = useState<SourceConfidenceFilter>('all');
     const [mediaPreview, setMediaPreview] = useState<{ type: 'pdf' | 'image'; url: string; title: string; pages?: number[]; bbox?: number[]; bboxes?: number[][]; imageDimensions?: { width: number; height: number } } | null>(null);
 
     if (!sources || sources.length === 0) {
         return null;
     }
 
-    const displayedSources = isListExpanded ? sources : sources.slice(0, 3);
-    const hasMore = sources.length > 3;
+    const filteredSources = useMemo(
+        () => filterSourcesByConfidence(sources, confidenceFilter),
+        [confidenceFilter, sources],
+    );
+    const displayedSources = isListExpanded ? filteredSources : sources.slice(0, 3);
+    const hasMore = filteredSources.length > 3;
+    const hiddenSourceCount = sources.length - filteredSources.length;
 
-    const formatScore = (score: number) => {
-        if (!score || score === 0) return null;
-        const percentage = score > 1 ? Math.min(Math.round(score * 10), 100) : Math.round(score * 100);
+    const formatScore = (source: Source) => {
+        const percentage = getSourceConfidencePercent(source);
+        if (!percentage) return null;
         return `${percentage}%`;
     };
 
@@ -73,9 +85,40 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                             className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors mb-2"
                         >
                             <FileText className="h-4 w-4" />
-                            <span className="font-medium">Sources ({sources.length})</span>
+                            <span className="font-medium">
+                                Sources ({filteredSources.length}/{sources.length})
+                            </span>
                             <ChevronUp className="h-4 w-4" />
                         </button>
+
+                        <div className="mb-2 rounded-lg border border-white/5 bg-black/20 p-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-600">
+                                    Source confidence
+                                </span>
+                                {hiddenSourceCount > 0 && (
+                                    <span className="text-[10px] text-gray-600">
+                                        {hiddenSourceCount} hidden by filter
+                                    </span>
+                                )}
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                {sourceConfidenceFilters.map((filter) => (
+                                    <button
+                                        key={filter.id}
+                                        type="button"
+                                        onClick={() => setConfidenceFilter(filter.id)}
+                                        className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors ${confidenceFilter === filter.id
+                                            ? 'border-violet-400/30 bg-violet-400/10 text-white'
+                                            : 'border-white/10 bg-white/[0.03] text-gray-500 hover:text-white'
+                                            }`}
+                                        aria-pressed={confidenceFilter === filter.id}
+                                    >
+                                        {filter.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
 
                         <motion.div
                             initial={{ opacity: 0, height: 0 }}
@@ -83,7 +126,11 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                             exit={{ opacity: 0, height: 0 }}
                             className="space-y-2"
                         >
-                            {displayedSources.map((source, index) => {
+                            {displayedSources.length === 0 ? (
+                                <div className="rounded-lg border border-white/5 bg-white/[0.03] p-3 text-xs text-gray-500">
+                                    No sources match this confidence filter.
+                                </div>
+                            ) : displayedSources.map((source, index) => {
                                 const pageNumbers = source.metadata?.page_numbers as number[] | undefined;
                                 const chunkSnippets = source.metadata?.chunk_snippets as string[] | undefined;
                                 const chunkDetails = source.metadata?.chunk_details as {
@@ -105,7 +152,7 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                                 const firstPageImage = pageImages?.[0]?.path;
                                 const fileType = source.metadata?.file_type as string | undefined;
                                 const isSourceExpanded = expandedSourceId === (source.id || `source-${index}`);
-                                const scoreDisplay = formatScore(source.score);
+                                const scoreDisplay = formatScore(source);
                                 const pagesDisplay = formatPageNumbers(pageNumbers);
                                 const isPdf = fileType === 'pdf' || source.title?.toLowerCase().endsWith('.pdf');
 
