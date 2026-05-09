@@ -355,6 +355,15 @@ def test_adk_manifest_exports_agents_workflows_and_mcp_pointer():
             "url": "https://docs.example.com/mcp",
             "tool_names": ["search_docs"],
             "created_by": "mehul",
+        },
+        {
+            "server_id": "mcp-2",
+            "name": "Filesystem MCP",
+            "transport": "stdio",
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+            "tool_names": ["read_file"],
+            "created_by": "mehul",
         }
     ]
     service = AgentPlatformService(
@@ -372,6 +381,17 @@ def test_adk_manifest_exports_agents_workflows_and_mcp_pointer():
     assert result.data["agents"][0]["tools"] == ["query.plan"]
     assert result.data["agents"][0]["instruction"] == "Plan document questions."
     assert result.data["external_mcp_servers"][0]["name"] == "Docs MCP"
+    assert result.data["adk_toolsets"][0]["connection_params"] == {
+        "type": "StreamableHTTPConnectionParams",
+        "url": "https://docs.example.com/mcp",
+    }
+    assert result.data["adk_toolsets"][1]["connection_params"] == {
+        "type": "StdioConnectionParams",
+        "server_params": {
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+        },
+    }
     assert result.data["workflows"][0]["triggers"] == ["document.uploaded"]
 
 
