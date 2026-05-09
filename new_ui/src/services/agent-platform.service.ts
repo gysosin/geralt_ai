@@ -212,6 +212,11 @@ export const agentPlatformService = {
         return response.data
     },
 
+    async cancelWorkflowRun(runId: string): Promise<WorkflowRun> {
+        const response = await api.post(`${BASE_PATH}/workflow-runs/${runId}/cancel`)
+        return response.data
+    },
+
     async listAuditEvents(limit = 25): Promise<AuditEvent[]> {
         const response = await api.get(`${BASE_PATH}/audit-events?limit=${limit}`)
         return response.data

@@ -481,6 +481,48 @@ class AgentPlatformService(BaseService):
         )
         return ServiceResult.ok(self._public_document(updated_doc))
 
+    def cancel_workflow_run(self, owner: str, run_id: str) -> ServiceResult:
+        """Cancel a non-terminal workflow run."""
+        run_result = self.get_workflow_run(owner, run_id)
+        if not run_result.success:
+            return run_result
+
+        run_doc = run_result.data
+        if run_doc.get("status") in {"completed", "canceled"}:
+            return ServiceResult.fail("Workflow run cannot be canceled", 400)
+
+        terminal_step_statuses = {"completed", "failed", "canceled"}
+        steps = []
+        for step in run_doc.get("steps") or []:
+            next_step = dict(step)
+            if next_step.get("status") not in terminal_step_statuses:
+                next_step["status"] = "canceled"
+                next_step["message"] = "Run canceled"
+            steps.append(next_step)
+
+        now = datetime.utcnow().isoformat()
+        update = {
+            "steps": steps,
+            "status": "canceled",
+            "updated_at": now,
+        }
+        self.run_db.update_one(
+            {"created_by": self.extract_username(owner), "run_id": run_id},
+            {"$set": update},
+        )
+        updated_doc = {
+            **run_doc,
+            **update,
+        }
+        self._record_audit(
+            "workflow.run_canceled",
+            owner,
+            "workflow_run",
+            run_id,
+            {"workflow_id": run_doc.get("workflow_id")},
+        )
+        return ServiceResult.ok(self._public_document(updated_doc))
+
     def list_audit_events(self, owner: str, limit: int = 50) -> ServiceResult:
         """List recent agent platform audit events."""
         if self.audit_db is None:

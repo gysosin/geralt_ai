@@ -508,6 +508,16 @@ async def approve_workflow_step(
     return _result_or_error(service.approve_workflow_step(_owner(current_user), run_id, step_id))
 
 
+@router.post("/workflow-runs/{run_id}/cancel", response_model=WorkflowRunResponse)
+async def cancel_workflow_run(
+    run_id: str,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Cancel a workflow run that has not completed."""
+    return _result_or_error(service.cancel_workflow_run(_owner(current_user), run_id))
+
+
 @router.get("/audit-events", response_model=List[AuditEventResponse])
 async def list_audit_events(
     limit: int = 50,

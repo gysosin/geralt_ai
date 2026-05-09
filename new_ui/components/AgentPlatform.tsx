@@ -11,6 +11,7 @@ import {
   Settings2,
   Trash2,
   Workflow,
+  XCircle,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import {
@@ -33,6 +34,7 @@ const statusTone: Record<string, string> = {
   pending: 'text-amber-300 bg-amber-500/10 border-amber-500/20',
   blocked: 'text-orange-300 bg-orange-500/10 border-orange-500/20',
   pending_approval: 'text-amber-300 bg-amber-500/10 border-amber-500/20',
+  canceled: 'text-gray-300 bg-white/5 border-white/10',
   failed: 'text-red-300 bg-red-500/10 border-red-500/20',
 };
 
@@ -260,6 +262,20 @@ const AgentPlatform: React.FC = () => {
       setAuditEvents(await agentPlatformService.listAuditEvents());
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to approve workflow step');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const cancelWorkflowRun = async (runId: string) => {
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const updated = await agentPlatformService.cancelWorkflowRun(runId);
+      setRuns((current) => current.map((run) => (run.run_id === updated.run_id ? updated : run)));
+      setAuditEvents(await agentPlatformService.listAuditEvents());
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to cancel workflow run');
     } finally {
       setIsSubmitting(false);
     }
@@ -708,9 +724,21 @@ const AgentPlatform: React.FC = () => {
                 <div key={run.run_id} className="rounded-xl border border-white/5 bg-black/20 p-4">
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-sm text-white font-mono truncate">{run.run_id.slice(0, 8)}</span>
-                    <span className={`text-xs border rounded-full px-2 py-1 ${statusTone[run.status] || 'text-gray-300 bg-white/5 border-white/10'}`}>
-                      {run.status}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {run.status !== 'completed' && run.status !== 'canceled' && (
+                        <button
+                          onClick={() => cancelWorkflowRun(run.run_id)}
+                          disabled={isSubmitting}
+                          className="h-7 px-2 rounded-lg border border-red-500/20 bg-red-500/10 text-red-100 hover:bg-red-500/15 disabled:opacity-60 flex items-center gap-1"
+                        >
+                          <XCircle size={13} />
+                          Cancel
+                        </button>
+                      )}
+                      <span className={`text-xs border rounded-full px-2 py-1 ${statusTone[run.status] || 'text-gray-300 bg-white/5 border-white/10'}`}>
+                        {run.status}
+                      </span>
+                    </div>
                   </div>
                   <div className="mt-3 space-y-2">
                     {run.steps.map((step: any) => (
