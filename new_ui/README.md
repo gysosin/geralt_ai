@@ -1,20 +1,35 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# GeraltAI Frontend
 
-# Run and deploy your AI Studio app
+React/Vite interface for GeraltAI document intelligence, chat, analytics, and the agent platform workspace.
 
-This contains everything you need to run your app locally.
+## Local Development
 
-View your app in AI Studio: https://ai.studio/apps/drive/1JuG_APTj9zu-NGngpJOY4ybaOaZpyRNR
+Prerequisites:
 
-## Run Locally
+- Node.js 20 or newer
+- GeraltAI FastAPI backend running locally
 
-**Prerequisites:**  Node.js
+Install dependencies and start Vite:
 
+```bash
+npm install
+npm run dev
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+By default the app calls `http://localhost:8000`. Override the API target with:
+
+```bash
+VITE_API_URL=http://127.0.0.1:8011 npm run dev
+```
+
+## Validation
+
+```bash
+npm run test
+npm run build
+npm audit --omit=dev --audit-level=moderate
+```
+
+## Environment Safety
+
+Only non-secret browser configuration should use the `VITE_` prefix. Provider API keys, model credentials, and service secrets belong in the backend environment, not in this Vite app, because browser-exposed variables are bundled into client JavaScript.
