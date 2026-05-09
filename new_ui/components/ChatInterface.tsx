@@ -5,7 +5,7 @@ import {
   MoreHorizontal, ChevronDown, X,
   Maximize2, Share, ThumbsUp, ThumbsDown, Copy,
   ArrowRight, Menu, Loader2, Edit, BookOpenText, Search, Clock3, Trash2,
-  Database, FolderOpen, Check, AlertCircle
+  Database, FolderOpen, Check, AlertCircle, AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../src/store/auth.store';
@@ -45,6 +45,7 @@ import {
 } from '../src/utils/chat-attachments';
 import { buildChatPreflightSummary } from '../src/utils/chat-preflight';
 import { evaluateChatPromptQuality } from '../src/utils/chat-prompt-quality';
+import { evaluateChatSendGuard } from '../src/utils/chat-send-guard';
 
 const SUGGESTIONS = [
   { title: "Analyze Financials", desc: "Review Q3 profit margins vs Q2" },
@@ -108,6 +109,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
   const [responseModeId, setResponseModeId] = useState<ChatResponseModeId>('direct');
   const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
   const [hydratedDraftKey, setHydratedDraftKey] = useState('');
+  const [sendReview, setSendReview] = useState<{ prompt: string; reasons: string[] } | null>(null);
   const [recentPrompts, setRecentPrompts] = useState<RecentPrompt[]>(() => {
     if (typeof window === 'undefined') return [];
     return parseRecentPrompts(window.localStorage.getItem(RECENT_PROMPTS_STORAGE_KEY));
@@ -244,10 +246,17 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
     setDraftSavedAt(input.trim() ? new Date() : null);
   }, [draftKey, hydratedDraftKey, input]);
 
-  const handleSend = async (text: string = input) => {
+  const handleSend = async (text: string = input, options: { skipGuard?: boolean } = {}) => {
     if (!text.trim() || isSending) return;
 
     const query = text.trim();
+    const sendGuard = evaluateChatSendGuard(query);
+    if (sendGuard.requiresConfirmation && !options.skipGuard) {
+      setSendReview({ prompt: query, reasons: sendGuard.reasons });
+      return;
+    }
+
+    setSendReview(null);
     clearChatDraft(draftKey);
     setDraftSavedAt(null);
     setRecentPrompts((current) => {
@@ -1007,6 +1016,73 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
           </div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {sendReview && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="send-review-title"
+          >
+            <motion.div
+              initial={{ y: 16, scale: 0.98 }}
+              animate={{ y: 0, scale: 1 }}
+              exit={{ y: 16, scale: 0.98 }}
+              className="w-full max-w-lg rounded-2xl border border-amber-400/20 bg-[#18181b] p-5 shadow-2xl"
+            >
+              <div className="mb-4 flex items-start gap-3">
+                <div className="rounded-xl bg-amber-400/10 p-2 text-amber-200">
+                  <AlertTriangle size={20} />
+                </div>
+                <div>
+                  <h3 id="send-review-title" className="text-base font-semibold text-white">Review before sending</h3>
+                  <p className="mt-1 text-sm text-gray-500">This prompt mentions a high-impact action. Confirm the request before it is sent.</p>
+                </div>
+              </div>
+
+              <div className="mb-4 rounded-xl border border-white/5 bg-black/20 p-3">
+                <p className="mb-2 text-[10px] font-semibold uppercase text-gray-600">Detected reasons</p>
+                <div className="flex flex-wrap gap-2">
+                  {sendReview.reasons.map((reason) => (
+                    <span key={reason} className="rounded-lg border border-amber-400/20 bg-amber-400/10 px-2 py-1 text-xs text-amber-100">
+                      {reason}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mb-5 rounded-xl border border-white/5 bg-white/[0.03] p-3">
+                <p className="mb-2 text-[10px] font-semibold uppercase text-gray-600">Prompt preview</p>
+                <p className="max-h-36 overflow-y-auto whitespace-pre-wrap text-sm leading-6 text-gray-300">{sendReview.prompt}</p>
+              </div>
+
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSendReview(null);
+                    window.requestAnimationFrame(() => textareaRef.current?.focus());
+                  }}
+                  className="rounded-lg border border-white/10 px-4 py-2 text-sm font-semibold text-gray-300 transition-colors hover:bg-white/5 hover:text-white"
+                >
+                  Edit prompt
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSend(sendReview.prompt, { skipGuard: true })}
+                  className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-amber-400"
+                >
+                  Send anyway
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <CreateBotDialog
         isOpen={isEditDialogOpen}
