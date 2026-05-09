@@ -1,5 +1,7 @@
 export type ChatResponseModeId = 'direct' | 'cited' | 'plan' | 'extract';
 
+export const CHAT_RESPONSE_MODE_STORAGE_KEY = 'geralt.chatResponseMode';
+
 export type ChatResponseMode = {
     id: ChatResponseModeId;
     label: string;
@@ -36,6 +38,33 @@ export const chatResponseModes: ChatResponseMode[] = [
 
 export const getChatResponseModeById = (modeId: string): ChatResponseMode =>
     chatResponseModes.find((mode) => mode.id === modeId) || chatResponseModes[0];
+
+type ResponseModeStorage = {
+    getItem: (key: string) => string | null;
+    setItem: (key: string, value: string) => void;
+};
+
+const getLocalStorage = (): ResponseModeStorage | undefined => {
+    if (typeof window === 'undefined') return undefined;
+    return window.localStorage;
+};
+
+const isChatResponseModeId = (modeId: string | null): modeId is ChatResponseModeId =>
+    Boolean(modeId && chatResponseModes.some((mode) => mode.id === modeId));
+
+export const readStoredChatResponseMode = (
+    storage: ResponseModeStorage | undefined = getLocalStorage(),
+): ChatResponseModeId => {
+    const modeId = storage?.getItem(CHAT_RESPONSE_MODE_STORAGE_KEY) || null;
+    return isChatResponseModeId(modeId) ? modeId : 'direct';
+};
+
+export const writeStoredChatResponseMode = (
+    modeId: ChatResponseModeId,
+    storage: ResponseModeStorage | undefined = getLocalStorage(),
+) => {
+    storage?.setItem(CHAT_RESPONSE_MODE_STORAGE_KEY, modeId);
+};
 
 export const applyChatResponseMode = (prompt: string, modeId: ChatResponseModeId): string => {
     const mode = getChatResponseModeById(modeId);
