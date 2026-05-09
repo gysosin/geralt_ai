@@ -10,6 +10,11 @@ import {
     type SourceConfidenceFilter,
 } from '@/src/utils/source-confidence';
 import { buildSourceCoverageSummary } from '@/src/utils/source-coverage';
+import {
+    sortSources,
+    sourceSortOptions,
+    type SourceSortId,
+} from '@/src/utils/source-sort';
 
 interface SourcesListProps {
     sources: Source[];
@@ -20,6 +25,7 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
     const [isListExpanded, setIsListExpanded] = useState(false);
     const [expandedSourceId, setExpandedSourceId] = useState<string | null>(null);
     const [confidenceFilter, setConfidenceFilter] = useState<SourceConfidenceFilter>('all');
+    const [sourceSort, setSourceSort] = useState<SourceSortId>('relevance');
     const [mediaPreview, setMediaPreview] = useState<{ type: 'pdf' | 'image'; url: string; title: string; pages?: number[]; bbox?: number[]; bboxes?: number[][]; imageDimensions?: { width: number; height: number } } | null>(null);
 
     if (!sources || sources.length === 0) {
@@ -30,11 +36,15 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
         () => filterSourcesByConfidence(sources, confidenceFilter),
         [confidenceFilter, sources],
     );
+    const sortedSources = useMemo(
+        () => sortSources(filteredSources, sourceSort),
+        [filteredSources, sourceSort],
+    );
     const coverageSummary = useMemo(
         () => buildSourceCoverageSummary(sources),
         [sources],
     );
-    const displayedSources = isListExpanded ? filteredSources : sources.slice(0, 3);
+    const displayedSources = isListExpanded ? sortedSources : sources.slice(0, 3);
     const hasMore = filteredSources.length > 3;
     const hiddenSourceCount = sources.length - filteredSources.length;
 
@@ -143,6 +153,27 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                                         {filter.label}
                                     </button>
                                 ))}
+                            </div>
+                            <div className="mt-2 border-t border-white/5 pt-2">
+                                <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-600">
+                                    Sort sources
+                                </span>
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {sourceSortOptions.map((option) => (
+                                        <button
+                                            key={option.id}
+                                            type="button"
+                                            onClick={() => setSourceSort(option.id)}
+                                            className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors ${sourceSort === option.id
+                                                ? 'border-sky-400/30 bg-sky-400/10 text-white'
+                                                : 'border-white/10 bg-white/[0.03] text-gray-500 hover:text-white'
+                                                }`}
+                                            aria-pressed={sourceSort === option.id}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                         </div>
 
