@@ -293,6 +293,10 @@ class AgentPlatformService(BaseService):
             validation_error = self._validate_streamable_http_url(url or "")
             if validation_error:
                 return ServiceResult.fail(validation_error, 400)
+        if transport == "stdio":
+            validation_error = self._validate_stdio_command(command or "")
+            if validation_error:
+                return ServiceResult.fail(validation_error, 400)
 
         now = datetime.utcnow().isoformat()
         server_id = str(uuid4())
@@ -400,6 +404,10 @@ class AgentPlatformService(BaseService):
             return ServiceResult.fail("MCP server command is required for stdio", 400)
         if merged.get("transport") == "streamable_http":
             validation_error = self._validate_streamable_http_url(str(merged.get("url") or ""))
+            if validation_error:
+                return ServiceResult.fail(validation_error, 400)
+        if merged.get("transport") == "stdio":
+            validation_error = self._validate_stdio_command(str(merged.get("command") or ""))
             if validation_error:
                 return ServiceResult.fail(validation_error, 400)
 
@@ -595,10 +603,21 @@ class AgentPlatformService(BaseService):
         command = str(server.get("command") or "").strip()
         if not command:
             return "unreachable", "MCP server command is missing"
+        validation_error = self._validate_stdio_command(command)
+        if validation_error:
+            return "unreachable", validation_error
         executable = shutil.which(command)
         if not executable:
             return "unreachable", f"Command {command} not found on server PATH"
         return "reachable", f"Command available at {executable}"
+
+    def _validate_stdio_command(self, command: str) -> Optional[str]:
+        command = command.strip()
+        if any(character.isspace() for character in command):
+            return "MCP server command must be a single executable; put flags in args"
+        if any(character in command for character in {";", "|", "&", "`", "$", ">", "<"}):
+            return "MCP server command cannot contain shell metacharacters"
+        return None
 
     def delete_mcp_server(self, owner: str, server_id: str) -> ServiceResult:
         """Soft-delete an external MCP server registration."""
@@ -1662,6 +1681,14 @@ class AgentPlatformService(BaseService):
                 return ServiceResult.fail("Imported MCP server URL is required", 400)
             if transport == "stdio" and not str(server.get("command", "")).strip():
                 return ServiceResult.fail("Imported MCP server command is required", 400)
+            if transport == "streamable_http":
+                validation_error = self._validate_streamable_http_url(str(server.get("url", "")))
+                if validation_error:
+                    return ServiceResult.fail(validation_error, 400)
+            if transport == "stdio":
+                validation_error = self._validate_stdio_command(str(server.get("command", "")))
+                if validation_error:
+                    return ServiceResult.fail(validation_error, 400)
 
         normalized_workflows = []
         for workflow in workflows:
