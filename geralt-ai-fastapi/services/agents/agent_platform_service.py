@@ -926,7 +926,17 @@ class AgentPlatformService(BaseService):
                     continue
 
                 previous_status = step.get("status")
+                step["arguments"] = self._resolve_step_references(
+                    step.get("arguments") or {},
+                    steps_by_id,
+                )
                 step["message"] = ""
+                validation_error = self._validate_run_steps([step])
+                if validation_error:
+                    step["status"] = "failed"
+                    step["message"] = validation_error.error
+                    made_progress = True
+                    continue
                 steps[index] = self._execute_run_step(step)
                 if steps[index].get("status") != previous_status:
                     made_progress = True
@@ -1008,6 +1018,31 @@ class AgentPlatformService(BaseService):
         if isinstance(value, str) and value.startswith("{{input.") and value.endswith("}}"):
             key = value[len("{{input."):-2].strip()
             return inputs.get(key)
+        return value
+
+    def _resolve_step_references(
+        self,
+        value: Any,
+        steps_by_id: Dict[str, Dict[str, Any]],
+    ) -> Any:
+        if isinstance(value, dict):
+            return {
+                key: self._resolve_step_references(item, steps_by_id)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [self._resolve_step_references(item, steps_by_id) for item in value]
+        if isinstance(value, str) and value.startswith("{{step.") and value.endswith("}}"):
+            reference = value[len("{{step."):-2].strip()
+            parts = reference.split(".")
+            if not parts:
+                return None
+            resolved: Any = steps_by_id.get(parts[0])
+            for part in parts[1:]:
+                if not isinstance(resolved, dict):
+                    return None
+                resolved = resolved.get(part)
+            return resolved
         return value
 
     def _record_audit(
