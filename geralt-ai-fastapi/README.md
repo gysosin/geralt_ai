@@ -14,6 +14,8 @@ Modern, high-performance FastAPI backend for GeraltAI. Features comprehensive RA
   - **Smart Snapshots**: Generates visual page snapshots with **highlighted regions** showing exact extraction points.
 - **Real-time Updates**: Socket.IO integration for live processing status.
 - **Background Processing**: Celery + Redis for robust asynchronous task management.
+- **Agent Platform**: Reusable agents, deterministic workflows, approval queues, run history, ADK manifests, and MCP-compatible tool declarations.
+- **MCP Registry Safety**: External streamable HTTP MCP servers are validated before registration and health checks to reject non-HTTP schemes, localhost, private IPs, link-local addresses, and DNS resolutions to unsafe networks.
 
 ## 🛠️ System Requirements
 
@@ -131,6 +133,23 @@ This processes background tasks like document ingestion, embedding generation, a
 celery -A core.tasks worker --loglevel=info
 ```
 > **Note:** The API server attempts to auto-start a worker process for development convenience, but running it separately is recommended for production or debugging.
+
+## 🤖 Agent Platform Operations
+
+The `/api/v1/agent-platform` API exposes document intelligence as reusable agent and workflow primitives:
+
+- `GET /tools` lists built-in tools and MCP-ready tool declarations.
+- `POST /agents` creates reusable agents with approved tool contracts.
+- `POST /workflows` creates deterministic multi-step workflows.
+- `POST /workflows/{workflow_id}/runs` starts a workflow run with optional dry-run planning.
+- `GET /workflow-runs/pending-approvals` lists human approval interrupts with step arguments and run inputs.
+- `POST /workflow-runs/{run_id}/steps/{step_id}/approve` resumes an approved step.
+- `POST /workflow-runs/{run_id}/steps/{step_id}/reject` blocks a run with an auditable rejection reason.
+- `GET /adk/manifest` exports agents, workflows, and MCP toolsets for ADK-oriented runtimes.
+
+### MCP Server Registration
+
+Streamable HTTP MCP servers must use `http` or `https` and must not point to local or private infrastructure. The service rejects obvious unsafe targets during create/update and resolves hostnames during health checks before making outbound requests. Register local developer tools with the `stdio` transport instead of pointing streamable HTTP at `localhost`.
 
 ## 📂 Project Structure
 
