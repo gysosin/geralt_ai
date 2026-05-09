@@ -67,6 +67,8 @@ export const canRunWorkflowAgain = (status: string) => (
   ['planned', 'completed', 'failed', 'canceled', 'blocked'].includes(status)
 );
 
+export const canCancelWorkflowRun = (status: string) => status === 'pending';
+
 export const buildWorkflowSteps = (drafts: WorkflowStepDraft[]) => {
   const errors: string[] = [];
   const steps: WorkflowStepPayload[] = [];

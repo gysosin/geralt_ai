@@ -1265,6 +1265,55 @@ def test_cancel_workflow_run_endpoint_marks_run_canceled():
     assert data["steps"][0]["status"] == "canceled"
 
 
+def test_cancel_workflow_run_endpoint_rejects_blocked_run():
+    run_db = MagicMock()
+    run_db.find_one.return_value = {
+        "run_id": "run-1",
+        "workflow_id": "workflow-1",
+        "status": "blocked",
+        "dry_run": False,
+        "inputs": {"query": "summarize documents"},
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Approval",
+                "tool_name": "query.plan",
+                "arguments": {"query": "summarize documents"},
+                "depends_on": [],
+                "approval_required": True,
+                "status": "blocked",
+                "output": None,
+                "message": "Rejected by reviewer",
+            }
+        ],
+        "created_by": "anonymous",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+    }
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=MagicMock(),
+                    workflow_db=MagicMock(),
+                    run_db=run_db,
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.post("/api/v1/agent-platform/workflow-runs/run-1/cancel")
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Workflow run cannot be canceled"
+    run_db.update_one.assert_not_called()
+
+
 def test_retry_workflow_run_endpoint_creates_new_run():
     run_db = MagicMock()
     run_db.find_one.return_value = {

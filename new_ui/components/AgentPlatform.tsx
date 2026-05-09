@@ -42,6 +42,7 @@ import { buildMcpServerPayload, isMcpServerFormReady, type McpTransport } from '
 import { getAgentPlatformStats } from '../src/utils/agent-platform-stats';
 import {
   buildWorkflowSteps,
+  canCancelWorkflowRun,
   canRunWorkflowAgain,
   defaultWorkflowStepDrafts,
   mcpToolToWorkflowStepDraft,
@@ -1647,7 +1648,7 @@ const AgentPlatform: React.FC = () => {
                         <Route size={13} />
                         Trace
                       </button>
-                      {run.status !== 'completed' && run.status !== 'canceled' && (
+                      {canCancelWorkflowRun(run.status) && (
                         <button
                           onClick={() => cancelWorkflowRun(run.run_id)}
                           disabled={isSubmitting}
