@@ -111,8 +111,10 @@ export interface PlatformExport {
 export interface PlatformImportSummary {
     agents_imported: number
     workflows_imported: number
+    mcp_servers_imported: number
     agent_id_map: Record<string, string>
     workflow_id_map: Record<string, string>
+    mcp_server_id_map: Record<string, string>
 }
 
 export interface PlatformStats {
@@ -299,6 +301,7 @@ export const agentPlatformService = {
     async importPlatform(data: {
         agents?: Array<Record<string, unknown>>
         workflows?: Array<Record<string, unknown>>
+        mcp_servers?: Array<Record<string, unknown>>
     }): Promise<PlatformImportSummary> {
         const response = await api.post(`${BASE_PATH}/import`, data)
         return response.data

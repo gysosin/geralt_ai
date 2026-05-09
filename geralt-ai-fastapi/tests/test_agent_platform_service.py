@@ -187,10 +187,12 @@ def test_platform_stats_counts_definitions_and_run_statuses():
 def test_import_platform_creates_fresh_agents_and_workflows():
     agent_db = MagicMock()
     workflow_db = MagicMock()
+    mcp_server_db = MagicMock()
     service = AgentPlatformService(
         agent_db=agent_db,
         workflow_db=workflow_db,
         run_db=MagicMock(),
+        mcp_server_db=mcp_server_db,
     )
     payload = {
         "agents": [
@@ -220,6 +222,15 @@ def test_import_platform_creates_fresh_agents_and_workflows():
                 ],
             }
         ],
+        "mcp_servers": [
+            {
+                "server_id": "old-mcp",
+                "name": "Docs MCP",
+                "transport": "streamable_http",
+                "url": "https://docs.example.com/mcp",
+                "tool_names": ["search_docs"],
+            }
+        ],
     }
 
     result = service.import_platform(owner="mehul", payload=payload)
@@ -227,11 +238,15 @@ def test_import_platform_creates_fresh_agents_and_workflows():
     assert result.success is True
     assert result.data["agents_imported"] == 1
     assert result.data["workflows_imported"] == 1
+    assert result.data["mcp_servers_imported"] == 1
     new_agent_id = result.data["agent_id_map"]["old-agent"]
     new_workflow_id = result.data["workflow_id_map"]["old-workflow"]
+    new_mcp_server_id = result.data["mcp_server_id_map"]["old-mcp"]
     assert new_agent_id != "old-agent"
     assert new_workflow_id != "old-workflow"
+    assert new_mcp_server_id != "old-mcp"
     assert agent_db.insert_one.call_args.args[0]["agent_id"] == new_agent_id
+    assert mcp_server_db.insert_one.call_args.args[0]["server_id"] == new_mcp_server_id
     inserted_workflow = workflow_db.insert_one.call_args.args[0]
     assert inserted_workflow["agent_id"] == new_agent_id
     assert inserted_workflow["triggers"] == ["document.uploaded"]

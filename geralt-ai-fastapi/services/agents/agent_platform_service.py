@@ -838,8 +838,10 @@ class AgentPlatformService(BaseService):
         username = self.extract_username(owner)
         agents = payload.get("agents") or []
         workflows = payload.get("workflows") or []
+        mcp_servers = payload.get("mcp_servers") or []
         agent_id_map: Dict[str, str] = {}
         workflow_id_map: Dict[str, str] = {}
+        mcp_server_id_map: Dict[str, str] = {}
 
         for agent in agents:
             tool_names = agent.get("tool_names") or agent.get("tools") or []
@@ -850,6 +852,18 @@ class AgentPlatformService(BaseService):
                 return ServiceResult.fail("Imported agent name is required", 400)
             if not str(agent.get("instruction", "")).strip():
                 return ServiceResult.fail("Imported agent instruction is required", 400)
+
+        for server in mcp_servers:
+            name = str(server.get("name", "")).strip()
+            transport = server.get("transport")
+            if not name:
+                return ServiceResult.fail("Imported MCP server name is required", 400)
+            if transport not in {"streamable_http", "stdio"}:
+                return ServiceResult.fail("Unsupported MCP transport", 400)
+            if transport == "streamable_http" and not str(server.get("url", "")).strip():
+                return ServiceResult.fail("Imported MCP server URL is required", 400)
+            if transport == "stdio" and not str(server.get("command", "")).strip():
+                return ServiceResult.fail("Imported MCP server command is required", 400)
 
         normalized_workflows = []
         for workflow in workflows:
@@ -894,6 +908,26 @@ class AgentPlatformService(BaseService):
                 "deleted": False,
             })
 
+        for server in mcp_servers:
+            old_server_id = server.get("server_id") or str(uuid4())
+            new_server_id = str(uuid4())
+            mcp_server_id_map[old_server_id] = new_server_id
+            self.mcp_server_db.insert_one({
+                "server_id": new_server_id,
+                "name": str(server.get("name", "")).strip(),
+                "description": server.get("description", ""),
+                "transport": server.get("transport"),
+                "url": str(server.get("url", "")).strip(),
+                "command": str(server.get("command", "")).strip(),
+                "args": server.get("args", []),
+                "tool_names": server.get("tool_names", []),
+                "metadata": server.get("metadata", {}),
+                "created_by": username,
+                "created_at": now,
+                "updated_at": now,
+                "deleted": False,
+            })
+
         for workflow, steps in normalized_workflows:
             old_workflow_id = workflow.get("workflow_id") or str(uuid4())
             new_workflow_id = str(uuid4())
@@ -921,13 +955,16 @@ class AgentPlatformService(BaseService):
             {
                 "agents_imported": len(agents),
                 "workflows_imported": len(workflows),
+                "mcp_servers_imported": len(mcp_servers),
             },
         )
         return ServiceResult.ok({
             "agents_imported": len(agents),
             "workflows_imported": len(workflows),
+            "mcp_servers_imported": len(mcp_servers),
             "agent_id_map": agent_id_map,
             "workflow_id_map": workflow_id_map,
+            "mcp_server_id_map": mcp_server_id_map,
         }, status_code=201)
 
     def _validate_tools(self, tool_names: List[Optional[str]]) -> Optional[ServiceResult]:
