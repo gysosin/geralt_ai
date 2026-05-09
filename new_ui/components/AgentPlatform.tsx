@@ -132,7 +132,7 @@ const AgentPlatform: React.FC = () => {
         agentPlatformService.listWorkflows(),
         agentPlatformService.listWorkflowTemplates(),
         agentPlatformService.listWorkflowTriggers(),
-        agentPlatformService.listWorkflowRuns(undefined, showArchivedRuns),
+        agentPlatformService.listWorkflowRuns(undefined, showArchivedRuns, runStatusFilter),
         agentPlatformService.listPendingApprovals(),
         agentPlatformService.listAuditEvents(),
         agentPlatformService.getStats(),
@@ -590,7 +590,7 @@ const AgentPlatform: React.FC = () => {
     setError('');
     try {
       const result = await agentPlatformService.archiveWorkflowRuns();
-      setRuns(await agentPlatformService.listWorkflowRuns(undefined, showArchivedRuns));
+      setRuns(await agentPlatformService.listWorkflowRuns(undefined, showArchivedRuns, runStatusFilter));
       setPlatformStats(await agentPlatformService.getStats());
       setAuditEvents(await agentPlatformService.listAuditEvents());
       setExportSummary(`${result.archived_count} run${result.archived_count === 1 ? '' : 's'} archived`);
@@ -606,7 +606,20 @@ const AgentPlatform: React.FC = () => {
     setIsSubmitting(true);
     setError('');
     try {
-      setRuns(await agentPlatformService.listWorkflowRuns(undefined, checked));
+      setRuns(await agentPlatformService.listWorkflowRuns(undefined, checked, runStatusFilter));
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to load workflow runs');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const changeRunStatusFilter = async (status: string) => {
+    setRunStatusFilter(status);
+    setIsSubmitting(true);
+    setError('');
+    try {
+      setRuns(await agentPlatformService.listWorkflowRuns(undefined, showArchivedRuns, status));
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to load workflow runs');
     } finally {
@@ -1631,7 +1644,7 @@ const AgentPlatform: React.FC = () => {
               <div className="flex items-center gap-2">
                 <select
                   value={runStatusFilter}
-                  onChange={(event) => setRunStatusFilter(event.target.value)}
+                  onChange={(event) => changeRunStatusFilter(event.target.value)}
                   className="h-8 rounded-lg border border-white/10 bg-white/5 px-3 text-xs text-gray-200 outline-none focus:border-sky-500/50"
                 >
                   <option value="all">All statuses</option>
