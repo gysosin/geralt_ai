@@ -41,6 +41,7 @@ import {
 } from '../src/services/agent-platform.service';
 import { getAdkManifestSummary, getAdkToolsetTarget } from '../src/utils/agent-platform-adk';
 import { buildMcpServerPayload, isMcpServerFormReady, type McpTransport } from '../src/utils/agent-platform-mcp';
+import { summarizeWorkflowStepOutput } from '../src/utils/agent-platform-output';
 import { getAgentPlatformStats } from '../src/utils/agent-platform-stats';
 import {
   buildWorkflowSteps,
@@ -69,6 +70,61 @@ const statusTone: Record<string, string> = {
 
 const RUN_PAGE_SIZE = 8;
 const RUN_FETCH_SIZE = RUN_PAGE_SIZE + 1;
+
+const WorkflowStepOutputView = ({ output }: { output: unknown }) => {
+  const summary = summarizeWorkflowStepOutput(output);
+
+  if (!summary.hasStructuredSummary) {
+    return (
+      <pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-gray-500 font-mono">
+        {summary.rawJson}
+      </pre>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-2 text-[11px] leading-relaxed">
+      {summary.answer && (
+        <p className="text-gray-300">{summary.answer}</p>
+      )}
+      {summary.sources.length > 0 && (
+        <div className="space-y-1">
+          {summary.sources.map((source) => (
+            <div key={`${source.documentId}-${source.title}`} className="flex items-start gap-2 text-gray-400">
+              <FileCode2 size={13} className="mt-0.5 shrink-0 text-emerald-300" />
+              <div className="min-w-0">
+                <p className="truncate text-gray-200">{source.title}</p>
+                <p className="truncate text-gray-500">
+                  {source.documentType}{source.score !== undefined ? ` / score ${source.score}` : ''}
+                </p>
+                {source.summary && <p className="mt-0.5 line-clamp-2 text-gray-400">{source.summary}</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {summary.routing && (
+        <div className="flex flex-wrap gap-1.5">
+          {summary.routing.source && (
+            <span className="rounded-md bg-white/5 px-2 py-1 text-gray-400">{summary.routing.source}</span>
+          )}
+          {summary.routing.matchedCount !== undefined && (
+            <span className="rounded-md bg-white/5 px-2 py-1 text-gray-400">{summary.routing.matchedCount} matches</span>
+          )}
+          {summary.routing.documentsScanned !== undefined && (
+            <span className="rounded-md bg-white/5 px-2 py-1 text-gray-400">{summary.routing.documentsScanned} scanned</span>
+          )}
+        </div>
+      )}
+      <details>
+        <summary className="cursor-pointer text-gray-500 hover:text-gray-300">Raw output</summary>
+        <pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-gray-500 font-mono">
+          {summary.rawJson}
+        </pre>
+      </details>
+    </div>
+  );
+};
 
 const AgentPlatform: React.FC = () => {
   const [tools, setTools] = useState<AgentTool[]>([]);
@@ -1816,9 +1872,7 @@ const AgentPlatform: React.FC = () => {
                           <p className="mt-2 text-[11px] leading-relaxed text-amber-300">{step.message}</p>
                         )}
                         {step.output && (
-                          <pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-gray-500 font-mono">
-                            {JSON.stringify(step.output, null, 2)}
-                          </pre>
+                          <WorkflowStepOutputView output={step.output} />
                         )}
                       </div>
                     ))}
@@ -1855,6 +1909,9 @@ const AgentPlatform: React.FC = () => {
                       <p className="mt-1 text-[11px] text-gray-500 font-mono truncate">{step.tool_name}</p>
                       {step.message && (
                         <p className="mt-2 text-[11px] leading-relaxed text-amber-300">{step.message}</p>
+                      )}
+                      {step.output && (
+                        <WorkflowStepOutputView output={step.output} />
                       )}
                     </div>
                   ))}
