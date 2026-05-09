@@ -5,7 +5,7 @@ import {
   MoreHorizontal, ChevronDown, X,
   Maximize2, Share, ThumbsUp, ThumbsDown, Copy,
   ArrowRight, Menu, Loader2, Edit, BookOpenText, Search, Clock3, Trash2,
-  Database, FolderOpen, Check, AlertCircle, AlertTriangle
+  Database, FolderOpen, Check, AlertCircle, AlertTriangle, Keyboard
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../src/store/auth.store';
@@ -48,6 +48,7 @@ import {
 import { buildChatPreflightSummary } from '../src/utils/chat-preflight';
 import { evaluateChatPromptQuality } from '../src/utils/chat-prompt-quality';
 import { evaluateChatSendGuard } from '../src/utils/chat-send-guard';
+import { chatComposerShortcuts } from '../src/utils/chat-shortcuts';
 
 const SUGGESTIONS = [
   { title: "Analyze Financials", desc: "Review Q3 profit margins vs Q2" },
@@ -106,6 +107,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
   const [showPromptTemplates, setShowPromptTemplates] = useState(false);
   const [showRecentPrompts, setShowRecentPrompts] = useState(false);
   const [showAttachmentTray, setShowAttachmentTray] = useState(false);
+  const [showShortcutHelp, setShowShortcutHelp] = useState(false);
   const [promptTemplateQuery, setPromptTemplateQuery] = useState('');
   const [promptTemplateFilter, setPromptTemplateFilter] = useState<ChatPromptTemplateFilter>('all');
   const [responseModeId, setResponseModeId] = useState<ChatResponseModeId>(() => readStoredChatResponseMode());
@@ -251,6 +253,21 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
   useEffect(() => {
     writeStoredChatResponseMode(responseModeId);
   }, [responseModeId]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+
+      setShowPromptTemplates(false);
+      setShowRecentPrompts(false);
+      setShowAttachmentTray(false);
+      setShowShortcutHelp(false);
+      setShowBotMenu(false);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const handleSend = async (text: string = input, options: { skipGuard?: boolean } = {}) => {
     if (!text.trim() || isSending) return;
@@ -632,6 +649,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                     setShowPromptTemplates(false);
                     setShowRecentPrompts(false);
                     setShowAttachmentTray(false);
+                    setShowShortcutHelp(false);
                   }}
                 />
                 <div className="absolute bottom-full left-0 z-40 mb-3 w-full max-w-xl rounded-2xl border border-white/10 bg-[#18181b] p-4 shadow-2xl">
@@ -709,6 +727,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                     setShowPromptTemplates(false);
                     setShowRecentPrompts(false);
                     setShowAttachmentTray(false);
+                    setShowShortcutHelp(false);
                   }}
                 />
                 <div className="absolute bottom-full left-0 z-40 mb-3 w-full max-w-xl rounded-2xl border border-white/10 bg-[#18181b] p-4 shadow-2xl">
@@ -765,6 +784,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                     setShowPromptTemplates(false);
                     setShowRecentPrompts(false);
                     setShowAttachmentTray(false);
+                    setShowShortcutHelp(false);
                   }}
                 />
                 <div className="absolute bottom-full left-0 z-40 mb-3 w-full max-w-xl rounded-2xl border border-white/10 bg-[#18181b] p-4 shadow-2xl">
@@ -859,6 +879,40 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                 </div>
               </>
             )}
+            {showShortcutHelp && (
+              <>
+                <button
+                  type="button"
+                  className="fixed inset-0 z-30 cursor-default"
+                  aria-label="Close keyboard shortcuts"
+                  onClick={() => {
+                    setShowPromptTemplates(false);
+                    setShowRecentPrompts(false);
+                    setShowAttachmentTray(false);
+                    setShowShortcutHelp(false);
+                  }}
+                />
+                <div className="absolute bottom-full left-0 z-40 mb-3 w-full max-w-md rounded-2xl border border-white/10 bg-[#18181b] p-4 shadow-2xl">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-white">Keyboard shortcuts</h3>
+                      <p className="text-xs text-gray-500">Fast controls for the chat composer.</p>
+                    </div>
+                    <Keyboard size={18} className="text-violet-300" />
+                  </div>
+                  <div className="space-y-2">
+                    {chatComposerShortcuts.map((shortcut) => (
+                      <div key={shortcut.keys} className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2">
+                        <span className="text-sm text-gray-300">{shortcut.action}</span>
+                        <kbd className="shrink-0 rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-[11px] font-semibold text-gray-400">
+                          {shortcut.keys}
+                        </kbd>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
             <div className="relative bg-[#121215] border border-white/10 rounded-xl shadow-2xl flex flex-col overflow-hidden">
               <textarea
                 ref={textareaRef}
@@ -949,6 +1003,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                     onClick={() => {
                       setShowRecentPrompts(false);
                       setShowAttachmentTray(false);
+                      setShowShortcutHelp(false);
                       setShowPromptTemplates((open) => !open);
                     }}
                     className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors ${showPromptTemplates
@@ -965,6 +1020,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                     onClick={() => {
                       setShowPromptTemplates(false);
                       setShowAttachmentTray(false);
+                      setShowShortcutHelp(false);
                       setShowRecentPrompts((open) => !open);
                     }}
                     className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors ${showRecentPrompts
@@ -981,6 +1037,24 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                     onClick={() => {
                       setShowPromptTemplates(false);
                       setShowRecentPrompts(false);
+                      setShowAttachmentTray(false);
+                      setShowShortcutHelp((open) => !open);
+                    }}
+                    className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors ${showShortcutHelp
+                      ? 'bg-violet-500/20 text-violet-200'
+                      : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                      }`}
+                    aria-expanded={showShortcutHelp}
+                  >
+                    <Keyboard size={16} />
+                    <span className="hidden sm:inline">Shortcuts</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPromptTemplates(false);
+                      setShowRecentPrompts(false);
+                      setShowShortcutHelp(false);
                       setShowAttachmentTray((open) => !open);
                     }}
                     className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors ${showAttachmentTray || currentCollectionId
