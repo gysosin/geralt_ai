@@ -44,6 +44,14 @@ class BotTokenService(BaseService, CRUDMixin):
     """
     
     ALLOWED_ICON_EXTENSIONS = {"png", "jpg", "jpeg", "gif"}
+    ALLOWED_ICON_CONTENT_TYPES = {"image/png", "image/jpeg", "image/gif"}
+    ICON_CONTENT_TYPES_BY_EXTENSION = {
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "gif": "image/gif",
+    }
+    MAX_ICON_SIZE = 5 * 1024 * 1024
     VALID_ACTION_TYPES = {"open_url", "open_in_iframe", "send_message"}
     
     DEFAULT_PROMPT = (
@@ -578,22 +586,55 @@ class BotTokenService(BaseService, CRUDMixin):
                 f"Invalid image format. Allowed: {', '.join(self.ALLOWED_ICON_EXTENSIONS)}",
                 400
             )
+
+        content_type = (getattr(icon_file, "content_type", "") or "").split(";")[0].strip().lower()
+        if content_type and content_type not in self.ALLOWED_ICON_CONTENT_TYPES:
+            return ServiceResult.fail(
+                "Invalid image content type. Allowed: image/png, image/jpeg, image/gif",
+                400
+            )
+        if content_type and content_type != self.ICON_CONTENT_TYPES_BY_EXTENSION[extension]:
+            return ServiceResult.fail(
+                f"Invalid image content type for .{extension} file",
+                400
+            )
         
         icon_filename = f"{uuid.uuid4()}.{extension}"
         file_path = f"{username}/bot_icons/{icon_filename}"
+        stream = getattr(icon_file, "file", icon_file)
         
-        icon_file.seek(0, os.SEEK_END)
-        file_size = icon_file.tell()
-        icon_file.seek(0)
+        stream.seek(0, os.SEEK_END)
+        file_size = stream.tell()
+        stream.seek(0)
+
+        if file_size <= 0:
+            return ServiceResult.fail("Icon image cannot be empty", 400)
+        if file_size > self.MAX_ICON_SIZE:
+            return ServiceResult.fail("Icon image is too large", 413)
+
+        header = stream.read(16)
+        stream.seek(0)
+        if not self._matches_icon_signature(extension, header):
+            return ServiceResult.fail("Invalid image content", 400)
         
         self.storage.put_object(
             Config.BUCKET_NAME,
             file_path,
-            icon_file,
+            stream,
             length=file_size
         )
         
         return ServiceResult.ok({"file_path": file_path})
+
+    def _matches_icon_signature(self, extension: str, header: bytes) -> bool:
+        """Validate icon content against the declared extension."""
+        if extension == "png":
+            return header.startswith(b"\x89PNG\r\n\x1a\n")
+        if extension in {"jpg", "jpeg"}:
+            return header.startswith(b"\xff\xd8\xff")
+        if extension == "gif":
+            return header.startswith((b"GIF87a", b"GIF89a"))
+        return False
     
     def _get_icon_url(self, icon_file_path: str) -> str:
         """Generate a proxied icon URL."""
