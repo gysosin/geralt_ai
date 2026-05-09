@@ -10,7 +10,7 @@ import uuid
 import secrets
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
-from urllib.parse import quote_plus, unquote
+from urllib.parse import quote_plus, unquote, urlsplit
 import requests
 
 from helpers.upload_validation import validate_image_upload
@@ -414,10 +414,11 @@ class BotTokenService(BaseService, CRUDMixin):
         """Proxy an icon from a presigned URL."""
         try:
             pre_signed_url = unquote(encoded_url)
-            response = requests.get(pre_signed_url)
-            
-            if response.status_code != 200:
-                return ServiceResult.fail("Failed to retrieve image from MinIO.", 500)
+            if not self._is_allowed_storage_proxy_url(pre_signed_url):
+                return ServiceResult.fail("Proxy URL must target configured storage", 400)
+
+            response = requests.get(pre_signed_url, timeout=10)
+            response.raise_for_status()
             
             return ServiceResult.ok({
                 "content": response.content,
@@ -432,10 +433,11 @@ class BotTokenService(BaseService, CRUDMixin):
         """Proxy a file download from a presigned URL."""
         try:
             decoded_url = unquote(url)
-            response = requests.get(decoded_url)
-            
-            if response.status_code != 200:
-                return ServiceResult.fail("Failed to retrieve file.", 500)
+            if not self._is_allowed_storage_proxy_url(decoded_url):
+                return ServiceResult.fail("Proxy URL must target configured storage", 400)
+
+            response = requests.get(decoded_url, timeout=10)
+            response.raise_for_status()
             
             return ServiceResult.ok({
                 "content": response.content,
@@ -446,6 +448,37 @@ class BotTokenService(BaseService, CRUDMixin):
         except Exception as e:
             self.logger.error(f"Error proxying file: {e}")
             return ServiceResult.fail(f"Failed to proxy file: {str(e)}", 500)
+
+    def _is_allowed_storage_proxy_url(self, target_url: str) -> bool:
+        """Allow proxying only URLs that point at the configured storage bucket."""
+        try:
+            target = urlsplit(target_url)
+            target_port = target.port
+        except ValueError:
+            return False
+
+        if target.scheme not in {"http", "https"} or not target.hostname:
+            return False
+
+        endpoint = (Config.MINIO_ENDPOINT or "").strip()
+        endpoint_url = endpoint if "://" in endpoint else f"//{endpoint}"
+        try:
+            configured = urlsplit(endpoint_url)
+            configured_port = configured.port
+        except ValueError:
+            return False
+
+        configured_host = (configured.hostname or "").lower().rstrip(".")
+        target_host = target.hostname.lower().rstrip(".")
+        if not configured_host or target_host != configured_host:
+            return False
+        if configured_port is not None and target_port != configured_port:
+            return False
+        if configured.scheme and target.scheme != configured.scheme:
+            return False
+
+        bucket_path = f"/{Config.BUCKET_NAME}"
+        return target.path == bucket_path or target.path.startswith(f"{bucket_path}/")
 
     # =========================================================================
     # Private Helper Methods

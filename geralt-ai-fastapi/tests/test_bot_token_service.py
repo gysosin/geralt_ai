@@ -3,6 +3,7 @@ Tests for bot token service upload hardening.
 """
 from io import BytesIO
 from unittest.mock import MagicMock
+from urllib.parse import quote
 
 
 class FakeIconUpload:
@@ -90,3 +91,44 @@ def test_upload_icon_rejects_mismatched_content_type():
     assert result.status_code == 400
     assert "content type" in result.error.lower()
     service.storage.put_object.assert_not_called()
+
+
+def test_proxy_file_rejects_non_storage_url(monkeypatch):
+    from config import Config
+    from services.bots import token_service
+    from services.bots.token_service import BotTokenService
+
+    service = BotTokenService()
+    monkeypatch.setattr(Config, "MINIO_ENDPOINT", "storage.example.com:9000")
+    monkeypatch.setattr(token_service.requests, "get", MagicMock())
+
+    result = service.proxy_file(
+        quote("http://169.254.169.254/latest/meta-data", safe=""),
+        "metadata",
+    )
+
+    assert result.success is False
+    assert result.status_code == 400
+    assert "storage" in result.error.lower()
+    token_service.requests.get.assert_not_called()
+
+
+def test_proxy_icon_allows_configured_storage_url(monkeypatch):
+    from config import Config
+    from services.bots import token_service
+    from services.bots.token_service import BotTokenService
+
+    service = BotTokenService()
+    monkeypatch.setattr(Config, "MINIO_ENDPOINT", "storage.example.com:9000")
+    mock_response = MagicMock()
+    mock_response.content = b"icon"
+    mock_response.headers = {"Content-Type": "image/png"}
+    mock_response.raise_for_status.return_value = None
+    monkeypatch.setattr(token_service.requests, "get", MagicMock(return_value=mock_response))
+
+    target_url = "https://storage.example.com:9000/documents/icon.png?signature=abc"
+    result = service.proxy_icon(quote(target_url, safe=""))
+
+    assert result.success is True
+    token_service.requests.get.assert_called_once_with(target_url, timeout=10)
+    mock_response.raise_for_status.assert_called_once()
