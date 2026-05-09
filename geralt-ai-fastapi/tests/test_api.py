@@ -238,6 +238,36 @@ class TestAPIRouterStructure:
                     # Docs should redirect or return HTML
                     assert response.status_code in [200, 307]
 
+    def test_app_factory_starts_one_celery_worker(self, monkeypatch):
+        """App startup should create one Celery worker process."""
+        import main
+
+        calls = []
+
+        class DummyProcess:
+            pid = 12345
+
+        def fake_popen(args, **kwargs):
+            calls.append((args, kwargs))
+            return DummyProcess()
+
+        monkeypatch.setattr(main.subprocess, "Popen", fake_popen)
+
+        process = main.AppFactory()._start_celery_worker()
+
+        assert process.pid == 12345
+        assert len(calls) == 1
+        assert calls[0][0] == [
+            main.sys.executable,
+            "-m",
+            "celery",
+            "-A",
+            "core.tasks",
+            "worker",
+            "--loglevel=info",
+        ]
+        assert calls[0][1] == {}
+
 
 class TestServicesStructure:
     """Test suite for services package structure."""
