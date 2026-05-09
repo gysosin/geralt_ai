@@ -320,6 +320,45 @@ def test_check_mcp_server_endpoint_records_health_status():
     assert data["last_health_status"] == "reachable"
 
 
+def test_external_mcp_tools_endpoint_returns_flat_catalog():
+    mcp_server_db = MagicMock()
+    mcp_server_db.find.return_value = [
+        {
+            "server_id": "mcp-1",
+            "name": "Docs MCP",
+            "transport": "streamable_http",
+            "url": "https://docs.example.com/mcp",
+            "command": "",
+            "tool_names": ["search_docs"],
+            "last_health_status": "reachable",
+        }
+    ]
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=MagicMock(),
+                    workflow_db=MagicMock(),
+                    run_db=MagicMock(),
+                    mcp_server_db=mcp_server_db,
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.get("/api/v1/agent-platform/mcp-servers/tools")
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data[0]["tool_name"] == "search_docs"
+    assert data[0]["server_name"] == "Docs MCP"
+
+
 def test_start_agent_run_endpoint_executes_agent_tool_plan():
     agent_db = MagicMock()
     agent_db.find_one.return_value = {

@@ -263,6 +263,65 @@ def test_check_mcp_server_records_missing_stdio_command():
     assert "not found" in result.data["last_health_message"]
 
 
+def test_list_external_mcp_tools_flattens_registered_servers():
+    mcp_server_db = MagicMock()
+    mcp_server_db.find.return_value = [
+        {
+            "server_id": "mcp-1",
+            "name": "Docs MCP",
+            "transport": "streamable_http",
+            "url": "https://docs.example.com/mcp",
+            "command": "",
+            "tool_names": ["search_docs", "read_doc"],
+            "last_health_status": "reachable",
+        },
+        {
+            "server_id": "mcp-2",
+            "name": "Local MCP",
+            "transport": "stdio",
+            "url": "",
+            "command": "local-mcp",
+            "tool_names": ["local_lookup"],
+        },
+    ]
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=MagicMock(),
+        mcp_server_db=mcp_server_db,
+    )
+
+    result = service.list_external_mcp_tools(owner="mehul")
+
+    assert result.success is True
+    assert result.data == [
+        {
+            "server_id": "mcp-1",
+            "server_name": "Docs MCP",
+            "tool_name": "read_doc",
+            "transport": "streamable_http",
+            "target": "https://docs.example.com/mcp",
+            "health_status": "reachable",
+        },
+        {
+            "server_id": "mcp-1",
+            "server_name": "Docs MCP",
+            "tool_name": "search_docs",
+            "transport": "streamable_http",
+            "target": "https://docs.example.com/mcp",
+            "health_status": "reachable",
+        },
+        {
+            "server_id": "mcp-2",
+            "server_name": "Local MCP",
+            "tool_name": "local_lookup",
+            "transport": "stdio",
+            "target": "local-mcp",
+            "health_status": None,
+        },
+    ]
+
+
 def test_adk_manifest_exports_agents_workflows_and_mcp_pointer():
     agent_db = MagicMock()
     workflow_db = MagicMock()
