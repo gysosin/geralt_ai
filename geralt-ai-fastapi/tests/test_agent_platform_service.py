@@ -135,6 +135,45 @@ def test_create_mcp_server_requires_transport_target():
     assert result.status_code == 400
 
 
+def test_update_mcp_server_persists_changed_transport_fields():
+    mcp_server_db = MagicMock()
+    mcp_server_db.find_one.return_value = {
+        "server_id": "mcp-1",
+        "name": "Old MCP",
+        "description": "",
+        "transport": "streamable_http",
+        "url": "https://old.example.com/mcp",
+        "command": "",
+        "args": [],
+        "tool_names": [],
+        "metadata": {},
+        "created_by": "mehul",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+        "deleted": False,
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=MagicMock(),
+        mcp_server_db=mcp_server_db,
+    )
+
+    result = service.update_mcp_server(
+        owner="mehul",
+        server_id="mcp-1",
+        name="Updated MCP",
+        url="https://new.example.com/mcp",
+        tool_names=["search_docs"],
+    )
+
+    assert result.success is True
+    assert result.data["name"] == "Updated MCP"
+    assert result.data["url"] == "https://new.example.com/mcp"
+    update = mcp_server_db.update_one.call_args.args[1]["$set"]
+    assert update["tool_names"] == ["search_docs"]
+
+
 def test_adk_manifest_exports_agents_workflows_and_mcp_pointer():
     agent_db = MagicMock()
     workflow_db = MagicMock()

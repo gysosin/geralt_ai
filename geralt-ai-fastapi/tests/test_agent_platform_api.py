@@ -173,6 +173,56 @@ def test_create_mcp_server_endpoint_records_external_tool_source():
     assert data["tool_names"] == ["search_docs"]
 
 
+def test_update_mcp_server_endpoint_returns_updated_server():
+    mcp_server_db = MagicMock()
+    mcp_server_db.find_one.return_value = {
+        "server_id": "mcp-1",
+        "name": "Old MCP",
+        "description": "",
+        "transport": "streamable_http",
+        "url": "https://old.example.com/mcp",
+        "command": "",
+        "args": [],
+        "tool_names": [],
+        "metadata": {},
+        "created_by": "anonymous",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+        "deleted": False,
+    }
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=MagicMock(),
+                    workflow_db=MagicMock(),
+                    run_db=MagicMock(),
+                    mcp_server_db=mcp_server_db,
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.patch(
+                    "/api/v1/agent-platform/mcp-servers/mcp-1",
+                    json={
+                        "name": "Updated MCP",
+                        "url": "https://new.example.com/mcp",
+                        "tool_names": ["search_docs"],
+                    },
+                )
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Updated MCP"
+    assert data["tool_names"] == ["search_docs"]
+
+
 def test_start_agent_run_endpoint_executes_agent_tool_plan():
     agent_db = MagicMock()
     agent_db.find_one.return_value = {
