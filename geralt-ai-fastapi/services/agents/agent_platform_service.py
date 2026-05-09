@@ -316,6 +316,47 @@ class AgentPlatformService(BaseService):
         ).sort("created_at", -1).limit(limit)
         return ServiceResult.ok([self._public_document(doc) for doc in docs])
 
+    def invoke_tool(
+        self,
+        owner: str,
+        tool_name: str,
+        arguments: Optional[Dict[str, Any]] = None,
+        dry_run: bool = False,
+    ) -> ServiceResult:
+        """Validate and invoke one registered tool."""
+        planned = {
+            "step_id": "tool-invocation",
+            "name": tool_name,
+            "tool_name": tool_name,
+            "arguments": arguments or {},
+            "depends_on": [],
+            "approval_required": False,
+            "status": "planned",
+            "output": None,
+            "message": "",
+        }
+        validation_error = self._validate_run_steps([planned])
+        if validation_error:
+            return validation_error
+
+        result = planned if dry_run else self._execute_run_step(planned)
+        self._record_audit(
+            "tool.invoked",
+            owner,
+            "tool",
+            tool_name,
+            {"status": result["status"], "dry_run": dry_run},
+        )
+        return ServiceResult.ok(result)
+
+    def get_mcp_manifest(self) -> ServiceResult:
+        """Return an MCP-style manifest for external agent runtimes."""
+        return ServiceResult.ok({
+            "name": "GeraltAI Agent Platform",
+            "version": "1.0.0",
+            "tools": self.registry.list_mcp_tools(),
+        })
+
     def _validate_tools(self, tool_names: List[Optional[str]]) -> Optional[ServiceResult]:
         missing = [
             tool_name

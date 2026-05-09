@@ -4,6 +4,17 @@ Tests for agent platform API endpoints.
 from unittest.mock import MagicMock, patch
 
 
+class FakeToolExecutor:
+    def execute(self, tool_name, arguments):
+        if tool_name == "rag.aggregate":
+            return {
+                "answer": "Found 1 vendor totals across 2 documents.",
+                "data": [{"vendor": "Acme", "total": 200, "count": 2}],
+                "metadata": {"documents_analyzed": 2},
+            }
+        raise NotImplementedError(f"Execution for {tool_name} is not implemented yet")
+
+
 def test_agent_tools_endpoint_returns_mcp_ready_specs():
     with patch("models.database.MongoClient"):
         with patch("core.clients.redis_client.redis.StrictRedis"):
@@ -377,3 +388,54 @@ def test_agent_platform_audit_endpoint_returns_events():
 
     assert response.status_code == 200
     assert response.json()[0]["event"] == "workflow.created"
+
+
+def test_mcp_manifest_endpoint_returns_tool_declarations():
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+
+                client = TestClient(app)
+                response = client.get("/api/v1/agent-platform/mcp/manifest")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "GeraltAI Agent Platform"
+    assert any(tool["name"] == "rag.aggregate" for tool in data["tools"])
+
+
+def test_tool_invocation_endpoint_executes_tool():
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=MagicMock(),
+                    workflow_db=MagicMock(),
+                    run_db=MagicMock(),
+                    tool_executor=FakeToolExecutor(),
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.post(
+                    "/api/v1/agent-platform/tool-invocations",
+                    json={
+                        "tool_name": "rag.aggregate",
+                        "arguments": {
+                            "query": "total amount by vendor",
+                            "collection_ids": ["collection-1"],
+                        },
+                    },
+                )
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "completed"
+    assert data["output"]["data"][0]["total"] == 200

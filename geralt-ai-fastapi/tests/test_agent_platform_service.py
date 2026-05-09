@@ -497,3 +497,49 @@ def test_audit_write_failure_does_not_break_agent_creation():
 
     assert result.success is True
     agent_db.insert_one.assert_called_once()
+
+
+def test_invoke_tool_executes_deterministic_tool():
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        tool_executor=FakeToolExecutor(),
+    )
+
+    result = service.invoke_tool(
+        owner="mehul",
+        tool_name="rag.aggregate",
+        arguments={"query": "total amount by vendor", "collection_ids": ["collection-1"]},
+    )
+
+    assert result.success is True
+    assert result.data["status"] == "completed"
+    assert result.data["output"]["data"][0]["total"] == 200
+
+
+def test_invoke_tool_rejects_missing_argument():
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        tool_executor=FakeToolExecutor(),
+    )
+
+    result = service.invoke_tool(
+        owner="mehul",
+        tool_name="rag.aggregate",
+        arguments={"query": "total amount by vendor"},
+    )
+
+    assert result.success is False
+    assert result.status_code == 400
+    assert "collection_ids" in result.error
+
+
+def test_mcp_manifest_uses_registered_tool_declarations():
+    service = AgentPlatformService(agent_db=MagicMock(), workflow_db=MagicMock())
+
+    result = service.get_mcp_manifest()
+
+    assert result.success is True
+    assert result.data["name"] == "GeraltAI Agent Platform"
+    assert any(tool["name"] == "rag.aggregate" for tool in result.data["tools"])

@@ -67,11 +67,37 @@ export interface AuditEvent {
     created_at: string
 }
 
+export interface ToolInvocationResult {
+    step_id: string
+    name: string
+    tool_name: string
+    arguments: Record<string, unknown>
+    depends_on: string[]
+    approval_required: boolean
+    status: string
+    output: unknown
+    message: string
+}
+
 const BASE_PATH = '/api/v1/agent-platform'
 
 export const agentPlatformService = {
     async getTools(): Promise<{ tools: AgentTool[]; mcp_tools: Array<Record<string, unknown>> }> {
         const response = await api.get(`${BASE_PATH}/tools`)
+        return response.data
+    },
+
+    async getMcpManifest(): Promise<{ name: string; version: string; tools: Array<Record<string, unknown>> }> {
+        const response = await api.get(`${BASE_PATH}/mcp/manifest`)
+        return response.data
+    },
+
+    async invokeTool(data: {
+        tool_name: string
+        arguments: Record<string, unknown>
+        dry_run?: boolean
+    }): Promise<ToolInvocationResult> {
+        const response = await api.post(`${BASE_PATH}/tool-invocations`, data)
         return response.data
     },
 
