@@ -532,6 +532,60 @@ class AgentPlatformService(BaseService):
             "tools": self.registry.list_mcp_tools(),
         })
 
+    def get_adk_manifest(self, owner: str) -> ServiceResult:
+        """Return an ADK-oriented manifest for agents, workflows, and MCP tools."""
+        username = self.extract_username(owner)
+        agents = list(self.agent_db.find(
+            {"created_by": username, "deleted": {"$ne": True}},
+            {"_id": 0},
+        ))
+        workflows = list(self.workflow_db.find(
+            {"created_by": username, "deleted": {"$ne": True}},
+            {"_id": 0},
+        ))
+        return ServiceResult.ok({
+            "name": "GeraltAI Agent Platform",
+            "version": "1.0.0",
+            "adk_version_hint": "google-adk",
+            "mcp": {
+                "toolset_name": "geraltai_mcp_tools",
+                "transport": "streamable_http",
+                "manifest_path": "/api/v1/agent-platform/mcp/manifest",
+                "tools": self.registry.list_mcp_tools(),
+            },
+            "agents": [
+                {
+                    "agent_id": agent.get("agent_id"),
+                    "name": agent.get("name"),
+                    "model": agent.get("model") or "default",
+                    "instruction": agent.get("instruction") or "",
+                    "tools": agent.get("tool_names", []),
+                    "collection_ids": agent.get("collection_ids", []),
+                    "mcp_toolset": "geraltai_mcp_tools",
+                }
+                for agent in agents
+            ],
+            "workflows": [
+                {
+                    "workflow_id": workflow.get("workflow_id"),
+                    "name": workflow.get("name"),
+                    "description": workflow.get("description", ""),
+                    "triggers": workflow.get("triggers", []),
+                    "steps": [
+                        {
+                            "step_id": step.get("step_id"),
+                            "tool_name": step.get("tool_name"),
+                            "arguments": step.get("arguments", {}),
+                            "depends_on": step.get("depends_on", []),
+                            "approval_required": step.get("approval_required", False),
+                        }
+                        for step in workflow.get("steps", [])
+                    ],
+                }
+                for workflow in workflows
+            ],
+        })
+
     def export_platform(self, owner: str) -> ServiceResult:
         """Export agent platform definitions and recent activity."""
         username = self.extract_username(owner)

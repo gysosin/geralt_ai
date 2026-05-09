@@ -56,6 +56,46 @@ def test_create_agent_definition_rejects_unknown_tool():
     assert "missing.tool" in result.error
 
 
+def test_adk_manifest_exports_agents_workflows_and_mcp_pointer():
+    agent_db = MagicMock()
+    workflow_db = MagicMock()
+    agent_db.find.return_value = [
+        {
+            "agent_id": "agent-1",
+            "name": "Planner",
+            "instruction": "Plan document questions.",
+            "tool_names": ["query.plan"],
+            "model": "gemini-2.5-flash",
+            "collection_ids": [],
+            "created_by": "mehul",
+        }
+    ]
+    workflow_db.find.return_value = [
+        {
+            "workflow_id": "workflow-1",
+            "name": "Document Flow",
+            "description": "Plan then aggregate",
+            "triggers": ["document.uploaded"],
+            "steps": [{"tool_name": "query.plan"}],
+            "created_by": "mehul",
+        }
+    ]
+    service = AgentPlatformService(
+        agent_db=agent_db,
+        workflow_db=workflow_db,
+        run_db=MagicMock(),
+    )
+
+    result = service.get_adk_manifest(owner="mehul")
+
+    assert result.success is True
+    assert result.data["name"] == "GeraltAI Agent Platform"
+    assert result.data["mcp"]["manifest_path"] == "/api/v1/agent-platform/mcp/manifest"
+    assert result.data["agents"][0]["tools"] == ["query.plan"]
+    assert result.data["agents"][0]["instruction"] == "Plan document questions."
+    assert result.data["workflows"][0]["triggers"] == ["document.uploaded"]
+
+
 def test_start_agent_run_executes_agent_tool_plan():
     agent_db = MagicMock()
     run_db = MagicMock()
