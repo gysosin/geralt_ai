@@ -82,6 +82,32 @@ export const filterWorkflowRunsByStatus = <TRun extends { status: string }>(
   return runs.filter((run) => run.status === status);
 };
 
+export type WorkflowRunListQueryOptions = {
+  workflowId?: string;
+  includeArchived?: boolean;
+  status?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export const DEFAULT_WORKFLOW_RUN_LIST_LIMIT = 50;
+
+export const buildWorkflowRunListQuery = ({
+  workflowId,
+  includeArchived = false,
+  status = 'all',
+  limit = DEFAULT_WORKFLOW_RUN_LIST_LIMIT,
+  offset = 0,
+}: WorkflowRunListQueryOptions = {}) => {
+  const params = new URLSearchParams();
+  if (workflowId) params.set('workflow_id', workflowId);
+  if (includeArchived) params.set('include_archived', 'true');
+  if (status !== 'all') params.set('status', status);
+  params.set('limit', String(limit));
+  if (offset > 0) params.set('offset', String(offset));
+  return `?${params.toString()}`;
+};
+
 export const buildWorkflowSteps = (drafts: WorkflowStepDraft[]) => {
   const errors: string[] = [];
   const steps: WorkflowStepPayload[] = [];

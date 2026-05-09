@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildWorkflowSteps,
+  buildWorkflowRunListQuery,
   canCancelWorkflowRun,
   canRunWorkflowAgain,
   filterWorkflowRunsByStatus,
@@ -131,5 +132,17 @@ describe('agent platform workflow helpers', () => {
       { run_id: 'run-2', status: 'blocked' },
     ]);
     expect(filterWorkflowRunsByStatus(runs, 'failed')).toEqual([]);
+  });
+
+  it('builds a bounded workflow run list query', () => {
+    expect(buildWorkflowRunListQuery()).toBe('?limit=50');
+    expect(buildWorkflowRunListQuery({
+      workflowId: 'workflow 1',
+      includeArchived: true,
+      status: 'blocked',
+      limit: 25,
+      offset: 50,
+    })).toBe('?workflow_id=workflow+1&include_archived=true&status=blocked&limit=25&offset=50');
+    expect(buildWorkflowRunListQuery({ status: 'all', limit: 10, offset: 0 })).toBe('?limit=10');
   });
 });
