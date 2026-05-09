@@ -41,12 +41,18 @@ class DeterministicRagSearcher:
             raise ValueError("collection_ids must include at least one collection")
 
         documents = self._load_extractions(selected_collections)
+        evidence_source = "extractions"
+        if not documents:
+            documents = self._load_document_summaries(selected_collections)
+            evidence_source = "document_summaries"
+
         if not documents:
             return {
-                "answer": "No extracted document data was found in the selected collections.",
+                "answer": "No searchable document evidence was found in the selected collections.",
                 "sources": [],
                 "routing": {
                     "method": "deterministic_extraction_search",
+                    "source": evidence_source,
                     "collection_ids": selected_collections,
                     "top_k": bounded_top_k,
                     "matched_count": 0,
@@ -70,6 +76,7 @@ class DeterministicRagSearcher:
                 "sources": [],
                 "routing": {
                     "method": "deterministic_extraction_search",
+                    "source": evidence_source,
                     "collection_ids": selected_collections,
                     "top_k": bounded_top_k,
                     "matched_count": 0,
@@ -95,6 +102,7 @@ class DeterministicRagSearcher:
             "sources": sources,
             "routing": {
                 "method": "deterministic_extraction_search",
+                "source": evidence_source,
                 "collection_ids": selected_collections,
                 "top_k": bounded_top_k,
                 "matched_count": len(sources),
@@ -107,6 +115,36 @@ class DeterministicRagSearcher:
         if hasattr(cursor, "limit"):
             cursor = cursor.limit(self.MAX_SCAN_DOCUMENTS)
         return list(cursor)
+
+    def _load_document_summaries(self, collection_ids: List[str]) -> List[Dict[str, Any]]:
+        cursor = self.document_collection.find({
+            "collection_id": {"$in": collection_ids},
+            "status": {"$ne": "deleting"},
+        })
+        if hasattr(cursor, "limit"):
+            cursor = cursor.limit(self.MAX_SCAN_DOCUMENTS)
+        return [self._document_summary_payload(doc) for doc in cursor]
+
+    def _document_summary_payload(self, doc: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "document_id": str(doc.get("_id") or doc.get("document_id") or ""),
+            "collection_id": str(doc.get("collection_id", "")),
+            "title": doc.get("file_name") or doc.get("url") or "Untitled document",
+            "summary": doc.get("extraction_summary") or doc.get("latest_status") or "",
+            "document_type": doc.get("extraction_type") or doc.get("type") or "document",
+            "status": doc.get("status"),
+            "reference_numbers": [],
+            "entities": [],
+            "dates": [],
+            "amounts": [],
+            "line_items": [],
+            "key_terms": [],
+            "additional_fields": {
+                "url": doc.get("url"),
+                "processed": doc.get("processed"),
+                "resource_type": doc.get("resource_type"),
+            },
+        }
 
     def _score_document(self, doc: Dict[str, Any], query: str, query_tokens: set[str]) -> int:
         search_text = self._search_text(doc)
