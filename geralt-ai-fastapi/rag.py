@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 from langchain_google_genai import GoogleGenerativeAIEmbeddings  # Updated import for embeddings
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -19,7 +20,6 @@ from langchain_core.documents import Document  # Import Document for conversion
 # Constants
 ELASTICSEARCH_HOST = Config.ELASTICSEARCH_URL
 INDEX_NAME = "documents"
-OPENAI_API_KEY = "sk-WHnBIWokFeya12O_KxRcDpAVOvrOoA1M3nIXOrTC3yT3BlbkFJkIb5RPTx-iyA3F75eI0cW8yt58QiQH5b4VWUmoJkkA"
 
 # Updated strict prompt template: only use the provided context (ingested documents) and no external knowledge.
 PROFILE_TEMPLATE = """
@@ -157,8 +157,11 @@ def ingest_documents(file_path: str, es_client: Elasticsearch, embedding: Google
 ###############################################################################
 # Retrieval QA Chain Setup
 ###############################################################################
-def create_qa_chain(retriever: HybridElasticsearchRetriever):
-    llm = OpenAI(api_key=OPENAI_API_KEY)
+def create_qa_chain(retriever: HybridElasticsearchRetriever, api_key: Optional[str] = None):
+    openai_api_key = api_key or Config.OPENAI_API_KEY
+    if not openai_api_key:
+        raise ValueError("OPENAI_API_KEY is required to create the QA chain")
+    llm = OpenAI(api_key=openai_api_key)
     # Build the RetrievalQA chain using the custom prompt template.
     return RetrievalQA.from_chain_type(
         llm=llm,
