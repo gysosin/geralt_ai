@@ -9,7 +9,7 @@ import sys
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import settings
@@ -164,6 +164,19 @@ class AppFactory:
             """Health check endpoint."""
             return {"status": "healthy", "version": "1.0.0"}
 
+        @app.get("/ready", tags=["Health"])
+        async def readiness_check(response: Response):
+            """Readiness endpoint for dependency-aware deployment probes."""
+            checks = self._readiness_checks()
+            is_ready = all(check["status"] == "ok" for check in checks.values())
+            if not is_ready:
+                response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+            return {
+                "status": "ready" if is_ready else "not_ready",
+                "version": "1.0.0",
+                "checks": checks,
+            }
+
         @app.get("/", tags=["Health"])
         async def root():
             """Root endpoint."""
@@ -172,7 +185,39 @@ class AppFactory:
                 "version": "1.0.0",
                 "docs": "/docs",
                 "health": "/health",
+                "ready": "/ready",
             }
+
+    def _readiness_checks(self) -> dict:
+        """Run lightweight dependency checks for readiness probes."""
+        return {
+            "mongodb": self._dependency_check(self._check_mongodb),
+            "redis": self._dependency_check(self._check_redis),
+            "minio": self._dependency_check(self._check_minio),
+        }
+
+    def _dependency_check(self, checker) -> dict:
+        try:
+            checker()
+            return {"status": "ok"}
+        except Exception as e:
+            self.logger.warning("Readiness check failed: %s", e)
+            return {"status": "unavailable", "error_type": e.__class__.__name__}
+
+    def _check_mongodb(self) -> None:
+        from api.deps import get_mongo_client
+
+        get_mongo_client().admin.command("ping")
+
+    def _check_redis(self) -> None:
+        from api.deps import get_redis_client
+
+        get_redis_client().ping()
+
+    def _check_minio(self) -> None:
+        from api.deps import get_minio_client
+
+        get_minio_client().bucket_exists(settings.MINIO_BUCKET)
 
 
 # Create global app instance for uvicorn
