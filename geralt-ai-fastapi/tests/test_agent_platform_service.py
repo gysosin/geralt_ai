@@ -1727,25 +1727,27 @@ def test_cancel_workflow_run_marks_non_terminal_steps_canceled():
     assert update["status"] == "canceled"
 
 
-def test_cancel_workflow_run_rejects_completed_run():
-    run_db = MagicMock()
-    run_db.find_one.return_value = {
-        "run_id": "run-1",
-        "workflow_id": "workflow-1",
-        "created_by": "mehul",
-        "status": "completed",
-        "steps": [],
-    }
-    service = AgentPlatformService(
-        agent_db=MagicMock(),
-        workflow_db=MagicMock(),
-        run_db=run_db,
-    )
+def test_cancel_workflow_run_rejects_terminal_runs():
+    for status in ["blocked", "canceled", "completed", "failed", "planned"]:
+        run_db = MagicMock()
+        run_db.find_one.return_value = {
+            "run_id": "run-1",
+            "workflow_id": "workflow-1",
+            "created_by": "mehul",
+            "status": status,
+            "steps": [],
+        }
+        service = AgentPlatformService(
+            agent_db=MagicMock(),
+            workflow_db=MagicMock(),
+            run_db=run_db,
+        )
 
-    result = service.cancel_workflow_run(owner="mehul", run_id="run-1")
+        result = service.cancel_workflow_run(owner="mehul", run_id="run-1")
 
-    assert result.success is False
-    assert result.status_code == 400
+        assert result.success is False
+        assert result.status_code == 400
+        run_db.update_one.assert_not_called()
 
 
 def test_retry_workflow_run_creates_new_run_from_recorded_steps():

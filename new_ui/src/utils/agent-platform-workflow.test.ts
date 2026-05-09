@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildWorkflowSteps, canRunWorkflowAgain, mcpToolToWorkflowStepDraft } from './agent-platform-workflow';
+import { buildWorkflowSteps, canCancelWorkflowRun, canRunWorkflowAgain, mcpToolToWorkflowStepDraft } from './agent-platform-workflow';
 
 describe('agent platform workflow helpers', () => {
   it('builds validated workflow steps from editable drafts', () => {
@@ -96,5 +96,14 @@ describe('agent platform workflow helpers', () => {
     expect(canRunWorkflowAgain('blocked')).toBe(true);
     expect(canRunWorkflowAgain('pending')).toBe(false);
     expect(canRunWorkflowAgain('pending_approval')).toBe(false);
+  });
+
+  it('allows cancellation only for active workflow runs', () => {
+    expect(canCancelWorkflowRun('pending')).toBe(true);
+    expect(canCancelWorkflowRun('blocked')).toBe(false);
+    expect(canCancelWorkflowRun('planned')).toBe(false);
+    expect(canCancelWorkflowRun('failed')).toBe(false);
+    expect(canCancelWorkflowRun('completed')).toBe(false);
+    expect(canCancelWorkflowRun('canceled')).toBe(false);
   });
 });

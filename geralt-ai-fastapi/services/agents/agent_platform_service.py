@@ -1239,7 +1239,7 @@ class AgentPlatformService(BaseService):
             return run_result
 
         run_doc = run_result.data
-        if run_doc.get("status") in {"completed", "canceled"}:
+        if run_doc.get("status") in {"blocked", "canceled", "completed", "failed", "planned"}:
             return ServiceResult.fail("Workflow run cannot be canceled", 400)
 
         terminal_step_statuses = {"completed", "failed", "canceled"}
