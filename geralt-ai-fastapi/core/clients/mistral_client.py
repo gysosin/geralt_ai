@@ -7,7 +7,10 @@ Updated for mistralai v1.x
 import logging
 from typing import Optional
 
-from mistralai import Mistral
+try:
+    from mistralai import Mistral
+except ImportError:  # mistralai >= 2 exposes the client from mistralai.client
+    from mistralai.client import Mistral
 
 from config import Config
 

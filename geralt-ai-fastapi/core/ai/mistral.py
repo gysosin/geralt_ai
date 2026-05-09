@@ -12,6 +12,15 @@ from core.config import settings
 logger = logging.getLogger(__name__)
 
 
+def _get_mistral_client_class():
+    try:
+        from mistralai import Mistral
+    except ImportError:  # mistralai >= 2 exposes the client from mistralai.client
+        from mistralai.client import Mistral
+
+    return Mistral
+
+
 class MistralEmbeddingProvider(EmbeddingProvider):
     """
     Mistral embedding provider using mistral-embed model.
@@ -20,12 +29,11 @@ class MistralEmbeddingProvider(EmbeddingProvider):
     """
     
     def __init__(self, api_key: Optional[str] = None):
-        from mistralai import Mistral
-        
         self._api_key = api_key or settings.MISTRAL_API_KEY
         if not self._api_key:
             raise ValueError("MISTRAL_API_KEY is required for MistralEmbeddingProvider")
         
+        Mistral = _get_mistral_client_class()
         self._client = Mistral(api_key=self._api_key)
         self._model = settings.MISTRAL_EMBEDDING_MODEL
         self._dimension = 1024
@@ -71,12 +79,11 @@ class MistralLLMProvider(LLMProvider):
     """
     
     def __init__(self, api_key: Optional[str] = None):
-        from mistralai import Mistral
-        
         self._api_key = api_key or settings.MISTRAL_API_KEY
         if not self._api_key:
             raise ValueError("MISTRAL_API_KEY is required for MistralLLMProvider")
         
+        Mistral = _get_mistral_client_class()
         self._client = Mistral(api_key=self._api_key)
         self._model = settings.MISTRAL_LLM_MODEL
     
