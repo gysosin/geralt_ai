@@ -42,6 +42,7 @@ import { getAgentPlatformStats } from '../src/utils/agent-platform-stats';
 import {
   buildWorkflowSteps,
   defaultWorkflowStepDrafts,
+  mcpToolToWorkflowStepDraft,
   workflowStepsToDrafts,
   type WorkflowStepDraft,
 } from '../src/utils/agent-platform-workflow';
@@ -321,6 +322,14 @@ const AgentPlatform: React.FC = () => {
         dependsOn: current.length > 0 ? `step-${current.length}` : '',
         approvalRequired: false,
       },
+    ]);
+  };
+
+  const addMcpWorkflowStepDraft = (tool: ExternalMcpTool) => {
+    setSelectedTemplateId('');
+    setWorkflowStepDrafts((current) => [
+      ...current,
+      mcpToolToWorkflowStepDraft(tool, current.length),
     ]);
   };
 
@@ -1018,6 +1027,22 @@ const AgentPlatform: React.FC = () => {
                     <Plus size={16} />
                     Add Step
                   </button>
+                  {externalMcpTools.length > 0 && (
+                    <div className="rounded-xl border border-white/5 bg-black/20 p-3">
+                      <p className="text-[11px] text-gray-500 uppercase tracking-widest mb-3">Add MCP Step</p>
+                      <div className="flex flex-wrap gap-2">
+                        {externalMcpTools.slice(0, 8).map((tool) => (
+                          <button
+                            key={`${tool.server_id}-${tool.tool_name}`}
+                            onClick={() => addMcpWorkflowStepDraft(tool)}
+                            className="rounded-lg border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-[11px] text-sky-100 hover:bg-sky-500/15"
+                          >
+                            {tool.server_name}: {tool.tool_name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               <button
