@@ -71,6 +71,7 @@ const AgentPlatform: React.FC = () => {
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
   const [automationTriggers, setAutomationTriggers] = useState<WorkflowTrigger[]>([]);
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
+  const [showArchivedRuns, setShowArchivedRuns] = useState(false);
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [toolResult, setToolResult] = useState<ToolInvocationResult | null>(null);
@@ -125,7 +126,7 @@ const AgentPlatform: React.FC = () => {
         agentPlatformService.listWorkflows(),
         agentPlatformService.listWorkflowTemplates(),
         agentPlatformService.listWorkflowTriggers(),
-        agentPlatformService.listWorkflowRuns(),
+        agentPlatformService.listWorkflowRuns(undefined, showArchivedRuns),
         agentPlatformService.listPendingApprovals(),
         agentPlatformService.listAuditEvents(),
         agentPlatformService.getStats(),
@@ -508,12 +509,25 @@ const AgentPlatform: React.FC = () => {
     setError('');
     try {
       const result = await agentPlatformService.archiveWorkflowRuns();
-      setRuns(await agentPlatformService.listWorkflowRuns());
+      setRuns(await agentPlatformService.listWorkflowRuns(undefined, showArchivedRuns));
       setPlatformStats(await agentPlatformService.getStats());
       setAuditEvents(await agentPlatformService.listAuditEvents());
       setExportSummary(`${result.archived_count} run${result.archived_count === 1 ? '' : 's'} archived`);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to archive workflow runs');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const toggleArchivedRuns = async (checked: boolean) => {
+    setShowArchivedRuns(checked);
+    setIsSubmitting(true);
+    setError('');
+    try {
+      setRuns(await agentPlatformService.listWorkflowRuns(undefined, checked));
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to load workflow runs');
     } finally {
       setIsSubmitting(false);
     }
@@ -1467,14 +1481,25 @@ const AgentPlatform: React.FC = () => {
           <section className="border border-white/5 bg-surface/30 rounded-2xl p-5">
             <div className="flex items-center justify-between gap-3 mb-4">
               <h2 className="text-lg font-semibold text-white">Runs</h2>
-              <button
-                onClick={archiveWorkflowRuns}
-                disabled={isSubmitting || runs.length === 0}
-                className="h-8 px-3 rounded-lg border border-white/10 bg-white/5 text-gray-200 hover:bg-white/10 disabled:opacity-60 flex items-center gap-1"
-              >
-                {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />}
-                Archive Done
-              </button>
+              <div className="flex items-center gap-2">
+                <label className="h-8 px-3 rounded-lg border border-white/10 bg-white/5 text-gray-200 flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={showArchivedRuns}
+                    onChange={(event) => toggleArchivedRuns(event.target.checked)}
+                    className="accent-violet-500"
+                  />
+                  Archived
+                </label>
+                <button
+                  onClick={archiveWorkflowRuns}
+                  disabled={isSubmitting || runs.length === 0}
+                  className="h-8 px-3 rounded-lg border border-white/10 bg-white/5 text-gray-200 hover:bg-white/10 disabled:opacity-60 flex items-center gap-1"
+                >
+                  {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />}
+                  Archive Done
+                </button>
+              </div>
             </div>
             <div className="space-y-3">
               {runs.slice(0, 8).map((run) => (
