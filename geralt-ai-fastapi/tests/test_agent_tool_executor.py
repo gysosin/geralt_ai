@@ -3,6 +3,7 @@ Tests for agent tool execution.
 """
 from core.agents.tool_executor import AgentToolExecutor
 from core.rag.aggregation_engine import AggregationEngine
+from core.rag.collection_summarizer import CollectionSummarizer
 
 
 class FakeCursor(list):
@@ -31,10 +32,29 @@ class FakeExtractionCollection:
 
     def _filter(self, query):
         collection_filter = query.get("collection_id", {})
-        allowed_ids = collection_filter.get("$in")
+        allowed_ids = (
+            collection_filter.get("$in")
+            if isinstance(collection_filter, dict)
+            else [collection_filter]
+        )
         if not allowed_ids:
             return list(self.documents)
         return [doc for doc in self.documents if doc.get("collection_id") in allowed_ids]
+
+
+class FakeDocumentCollection:
+    def __init__(self, documents):
+        self.documents = documents
+
+    def find(self, query):
+        collection_id = query.get("collection_id")
+        status = query.get("status")
+        documents = [
+            doc for doc in self.documents
+            if (not collection_id or doc.get("collection_id") == collection_id)
+            and (not status or doc.get("status") == status)
+        ]
+        return FakeCursor(documents)
 
 
 def test_executor_runs_query_plan_tool():
@@ -79,3 +99,38 @@ def test_executor_runs_deterministic_aggregation_tool():
     assert result["data"][0]["vendor"] == "Acme"
     assert result["data"][0]["total"] == 200
     assert "2 documents" in result["answer"]
+
+
+def test_executor_runs_deterministic_collection_summary_tool():
+    summarizer = CollectionSummarizer(
+        extraction_collection=FakeExtractionCollection([
+            {
+                "collection_id": "collection-1",
+                "document_id": "doc-1",
+                "document_type": "invoice",
+                "title": "Invoice 1",
+                "summary": "First invoice for Acme.",
+                "total_amount": 120,
+                "entities": [{"name": "Acme"}],
+            },
+            {
+                "collection_id": "collection-1",
+                "document_id": "doc-2",
+                "document_type": "contract",
+                "title": "Contract 1",
+                "summary": "Service agreement with Acme.",
+                "total_amount": 80,
+                "entities": [{"name": "Acme"}],
+            },
+        ]),
+        document_collection=FakeDocumentCollection([]),
+        load_llm=False,
+    )
+    executor = AgentToolExecutor(collection_summarizer=summarizer)
+
+    result = executor.execute("collection.summarize", {"collection_id": "collection-1"})
+
+    assert result["document_count"] == 2
+    assert "invoice" in result["document_types"]
+    assert "contract" in result["document_types"]
+    assert any("Acme" in finding for finding in result["key_findings"])
