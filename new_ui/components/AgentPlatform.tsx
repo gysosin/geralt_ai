@@ -42,6 +42,7 @@ import { buildMcpServerPayload, isMcpServerFormReady, type McpTransport } from '
 import { getAgentPlatformStats } from '../src/utils/agent-platform-stats';
 import {
   buildWorkflowSteps,
+  canRunWorkflowAgain,
   defaultWorkflowStepDrafts,
   mcpToolToWorkflowStepDraft,
   workflowStepsToDrafts,
@@ -537,9 +538,16 @@ const AgentPlatform: React.FC = () => {
     setIsSubmitting(true);
     setError('');
     try {
-      const created = await agentPlatformService.retryWorkflowRun(runId, false);
+      const created = await agentPlatformService.retryWorkflowRun(runId, dryRun);
       setRuns((current) => [created, ...current]);
-      setAuditEvents(await agentPlatformService.listAuditEvents());
+      const [approvalResult, auditResult, statsResult] = await Promise.all([
+        agentPlatformService.listPendingApprovals(),
+        agentPlatformService.listAuditEvents(),
+        agentPlatformService.getStats(),
+      ]);
+      setPendingApprovals(approvalResult);
+      setAuditEvents(auditResult);
+      setPlatformStats(statsResult);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to retry workflow run');
     } finally {
@@ -1507,14 +1515,15 @@ const AgentPlatform: React.FC = () => {
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-sm text-white font-mono truncate">{run.run_id.slice(0, 8)}</span>
                     <div className="flex items-center gap-2">
-                      {['pending', 'failed', 'canceled'].includes(run.status) && (
+                      {canRunWorkflowAgain(run.status) && (
                         <button
                           onClick={() => retryWorkflowRun(run.run_id)}
                           disabled={isSubmitting}
+                          title={dryRun ? 'Run again as a dry run' : 'Run again live'}
                           className="h-7 px-2 rounded-lg border border-sky-500/20 bg-sky-500/10 text-sky-100 hover:bg-sky-500/15 disabled:opacity-60 flex items-center gap-1"
                         >
                           <RefreshCw size={13} />
-                          Retry
+                          Run Again
                         </button>
                       )}
                       <button
