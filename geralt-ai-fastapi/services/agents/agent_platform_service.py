@@ -318,12 +318,64 @@ class AgentPlatformService(BaseService):
         if not workflow_result.success:
             return workflow_result
 
+        return self._create_workflow_run_from_document(
+            owner=owner,
+            workflow=workflow_result.data,
+            inputs=inputs,
+            dry_run=dry_run,
+        )
+
+    def run_workflow_trigger(
+        self,
+        owner: str,
+        trigger_name: str,
+        inputs: Optional[Dict[str, Any]] = None,
+        dry_run: bool = True,
+    ) -> ServiceResult:
+        """Start every workflow owned by the user that has the named trigger."""
+        trigger_name = trigger_name.strip()
+        if not trigger_name:
+            return ServiceResult.fail("Workflow trigger name is required", 400)
+
+        docs = self.workflow_db.find(
+            {
+                "created_by": self.extract_username(owner),
+                "triggers": trigger_name,
+                "deleted": {"$ne": True},
+            },
+            {"_id": 0},
+        )
+        runs = []
+        for workflow in docs:
+            result = self._create_workflow_run_from_document(
+                owner=owner,
+                workflow=workflow,
+                inputs=inputs,
+                dry_run=dry_run,
+                audit_event="workflow.trigger_run",
+                audit_metadata={"trigger": trigger_name},
+            )
+            if not result.success:
+                return result
+            runs.append(result.data)
+        return ServiceResult.ok(runs, status_code=201)
+
+    def _create_workflow_run_from_document(
+        self,
+        owner: str,
+        workflow: Dict[str, Any],
+        inputs: Optional[Dict[str, Any]] = None,
+        dry_run: bool = True,
+        audit_event: str = "workflow.run_started",
+        audit_metadata: Optional[Dict[str, Any]] = None,
+    ) -> ServiceResult:
+        workflow_id = workflow["workflow_id"]
         inputs = inputs or {}
         now = datetime.utcnow().isoformat()
         run_id = str(uuid4())
         planned_steps = [
             self._prepare_run_step(step, inputs)
-            for step in workflow_result.data.get("steps", [])
+            for step in workflow.get("steps", [])
         ]
         validation_error = self._validate_run_steps(planned_steps)
         if validation_error:
@@ -349,12 +401,18 @@ class AgentPlatformService(BaseService):
             "updated_at": now,
         }
         self.run_db.insert_one(document)
+        metadata = {
+            "workflow_id": workflow_id,
+            "status": status,
+            "dry_run": dry_run,
+            **(audit_metadata or {}),
+        }
         self._record_audit(
-            "workflow.run_started",
+            audit_event,
             owner,
             "workflow_run",
             run_id,
-            {"workflow_id": workflow_id, "status": status, "dry_run": dry_run},
+            metadata,
         )
         return ServiceResult.ok(self._public_document(document), status_code=201)
 

@@ -264,6 +264,50 @@ def test_start_workflow_run_dry_run_records_planned_steps():
     assert inserted["steps"][0]["arguments"] == {"query": "list all vendors"}
 
 
+def test_run_workflow_trigger_starts_matching_workflows():
+    workflow_db = MagicMock()
+    run_db = MagicMock()
+    workflow_db.find.return_value = [
+        {
+            "workflow_id": "workflow-1",
+            "name": "Triggered Flow",
+            "created_by": "mehul",
+            "triggers": ["document.uploaded"],
+            "steps": [
+                {
+                    "step_id": "step-1",
+                    "name": "Plan",
+                    "tool_name": "query.plan",
+                    "arguments": {"query": "{{input.query}}"},
+                    "depends_on": [],
+                    "approval_required": False,
+                }
+            ],
+            "deleted": False,
+        }
+    ]
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=workflow_db,
+        run_db=run_db,
+    )
+
+    result = service.run_workflow_trigger(
+        owner="mehul",
+        trigger_name="document.uploaded",
+        inputs={"query": "summarize these documents"},
+        dry_run=False,
+    )
+
+    assert result.success is True
+    assert len(result.data) == 1
+    inserted = run_db.insert_one.call_args.args[0]
+    assert inserted["workflow_id"] == "workflow-1"
+    assert inserted["status"] == "completed"
+    assert inserted["steps"][0]["output"]["query_type"] == "summary"
+    workflow_db.find.assert_called_once()
+
+
 def test_start_workflow_run_executes_query_plan_step():
     workflow_db = MagicMock()
     run_db = MagicMock()

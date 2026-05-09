@@ -56,9 +56,11 @@ const AgentPlatform: React.FC = () => {
 
   const [workflowName, setWorkflowName] = useState('Document Aggregation Workflow');
   const [workflowAgentId, setWorkflowAgentId] = useState('');
+  const [workflowTriggers, setWorkflowTriggers] = useState('document.uploaded');
   const [selectedTemplateId, setSelectedTemplateId] = useState('document_aggregation');
   const [runAgentId, setRunAgentId] = useState('');
   const [runWorkflowId, setRunWorkflowId] = useState('');
+  const [triggerName, setTriggerName] = useState('document.uploaded');
   const [runQuery, setRunQuery] = useState('total amount by vendor');
   const [runCollections, setRunCollections] = useState('');
   const [dryRun, setDryRun] = useState(true);
@@ -157,10 +159,12 @@ const AgentPlatform: React.FC = () => {
           template_id: selectedTemplateId,
           name: workflowName,
           agent_id: workflowAgentId || undefined,
+          triggers: splitIds(workflowTriggers),
         })
         : await agentPlatformService.createWorkflow({
           name: workflowName,
           agent_id: workflowAgentId || undefined,
+          triggers: splitIds(workflowTriggers),
           steps: [
             {
               name: 'Plan route',
@@ -222,6 +226,26 @@ const AgentPlatform: React.FC = () => {
       setRuns((current) => [created, ...current]);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to start workflow run');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const startTriggerRuns = async () => {
+    if (!triggerName.trim()) return;
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const created = await agentPlatformService.startTriggerRuns(triggerName.trim(), {
+        dry_run: dryRun,
+        inputs: {
+          query: runQuery,
+          collection_ids: splitIds(runCollections),
+        },
+      });
+      setRuns((current) => [...created, ...current]);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to start trigger runs');
     } finally {
       setIsSubmitting(false);
     }
@@ -464,6 +488,12 @@ const AgentPlatform: React.FC = () => {
                   <option key={template.template_id} value={template.template_id}>{template.name}</option>
                 ))}
               </select>
+              <input
+                value={workflowTriggers}
+                onChange={(event) => setWorkflowTriggers(event.target.value)}
+                placeholder="document.uploaded, daily.summary"
+                className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-sky-500/60"
+              />
               <div className="space-y-2">
                 {(selectedTemplate?.steps || [
                   { tool_name: 'query.plan' },
@@ -517,7 +547,9 @@ const AgentPlatform: React.FC = () => {
                   <div key={workflow.workflow_id} className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-black/20 px-4 py-3">
                     <div className="min-w-0">
                       <p className="text-sm text-white truncate">{workflow.name}</p>
-                      <p className="text-xs text-gray-500 font-mono truncate">{workflow.steps.length} steps</p>
+                      <p className="text-xs text-gray-500 font-mono truncate">
+                        {workflow.steps.length} steps{workflow.triggers.length ? ` / ${workflow.triggers.join(', ')}` : ''}
+                      </p>
                     </div>
                     <button
                       onClick={() => deleteWorkflow(workflow.workflow_id)}
@@ -594,6 +626,20 @@ const AgentPlatform: React.FC = () => {
             >
               {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Play size={18} />}
               Start Run
+            </button>
+            <input
+              value={triggerName}
+              onChange={(event) => setTriggerName(event.target.value)}
+              placeholder="document.uploaded"
+              className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-amber-500/60"
+            />
+            <button
+              onClick={startTriggerRuns}
+              disabled={isSubmitting || !triggerName.trim()}
+              className="w-full h-11 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-60 text-white font-medium flex items-center justify-center gap-2"
+            >
+              {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Route size={18} />}
+              Run Trigger
             </button>
           </section>
 
