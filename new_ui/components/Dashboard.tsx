@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -12,6 +12,8 @@ import {
 import { motion } from 'framer-motion';
 import { useAuthStore } from '@/src/store/auth.store';
 import { useDashboardStore } from '@/src/store/dashboard.store';
+import { healthService, type WorkspaceHealthSnapshot } from '@/src/services';
+import { WorkspaceHealthSummary } from '@/src/components/WorkspaceHealthSummary';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -99,10 +101,30 @@ const Dashboard: React.FC = () => {
   } = useDashboardStore();
 
   const tenantId = user?.tenant_id || 'default';
+  const [workspaceHealth, setWorkspaceHealth] = useState<WorkspaceHealthSnapshot | null>(null);
+  const [isWorkspaceHealthLoading, setIsWorkspaceHealthLoading] = useState(true);
+  const [workspaceHealthError, setWorkspaceHealthError] = useState<string | null>(null);
+
+  const fetchWorkspaceHealth = useCallback(async () => {
+    setIsWorkspaceHealthLoading(true);
+    setWorkspaceHealthError(null);
+    try {
+      const snapshot = await healthService.getWorkspaceHealth();
+      setWorkspaceHealth(snapshot);
+      if (snapshot.status !== 'ready') {
+        setWorkspaceHealthError('One or more workspace dependencies need attention.');
+      }
+    } catch (error) {
+      setWorkspaceHealthError('Unable to load workspace health right now.');
+    } finally {
+      setIsWorkspaceHealthLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchDashboardData(tenantId);
-  }, [tenantId, fetchDashboardData]);
+    fetchWorkspaceHealth();
+  }, [tenantId, fetchDashboardData, fetchWorkspaceHealth]);
 
   // Get greeting based on time
   const greeting = useMemo(() => {
@@ -186,16 +208,19 @@ const Dashboard: React.FC = () => {
         <div className="flex items-center gap-3">
           <div className="hidden md:flex flex-col items-end mr-4">
             <span className="text-xs text-gray-500 font-mono">SERVER STATUS</span>
-            <span className="text-sm text-emerald-400 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-              Operational
+            <span className={`text-sm flex items-center gap-1.5 ${workspaceHealth?.status === 'ready' ? 'text-emerald-400' : 'text-amber-300'}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${workspaceHealth?.status === 'ready' ? 'bg-emerald-400' : 'bg-amber-300'} ${isWorkspaceHealthLoading ? 'animate-pulse' : ''}`}></span>
+              {workspaceHealth?.status === 'ready' ? 'Operational' : 'Checking'}
             </span>
           </div>
           <button
-            onClick={() => fetchDashboardData(tenantId)}
+            onClick={() => {
+              fetchDashboardData(tenantId);
+              fetchWorkspaceHealth();
+            }}
             className="h-10 px-4 bg-white/5 hover:bg-white/10 text-white text-sm font-medium rounded-xl border border-white/10 transition-colors flex items-center gap-2"
           >
-            <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
+            <RefreshCw size={16} className={isLoading || isWorkspaceHealthLoading ? 'animate-spin' : ''} />
             Refresh
           </button>
           <button
@@ -207,6 +232,13 @@ const Dashboard: React.FC = () => {
           </button>
         </div>
       </div>
+
+      <WorkspaceHealthSummary
+        snapshot={workspaceHealth}
+        isLoading={isWorkspaceHealthLoading}
+        error={workspaceHealthError}
+        onRefresh={fetchWorkspaceHealth}
+      />
 
       {/* KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

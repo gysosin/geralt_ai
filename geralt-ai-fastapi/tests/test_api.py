@@ -94,6 +94,27 @@ class TestHealthEndpoints:
                     data = response.json()
                     assert data["status"] == "not_ready"
                     assert data["checks"]["redis"]["error_type"] == "ConnectionError"
+
+    def test_readiness_checks_include_search_and_vector_dependencies(self, monkeypatch):
+        """Test readiness checks cover API storage, search, and vector dependencies."""
+        with patch('models.database.MongoClient'):
+            with patch('core.clients.redis_client.redis.StrictRedis'):
+                with patch('core.clients.minio_client.Minio'):
+                    import main
+
+                    for checker_name in (
+                        "_check_mongodb",
+                        "_check_redis",
+                        "_check_minio",
+                        "_check_elasticsearch",
+                        "_check_milvus",
+                    ):
+                        monkeypatch.setattr(main.app_factory, checker_name, lambda: None)
+
+                    checks = main.app_factory._readiness_checks()
+
+                    assert set(checks) == {"mongodb", "redis", "minio", "elasticsearch", "milvus"}
+                    assert all(check["status"] == "ok" for check in checks.values())
     
     def test_root_endpoint(self):
         """Test root endpoint returns API info."""
