@@ -89,6 +89,7 @@ brew install --cask libreoffice
     ENVIRONMENT=development
     SECRET_KEY=your_secure_jwt_secret_here
     DEBUG=True
+    AUTO_START_CELERY_WORKER=True
     
     # --- Databases ---
     MONGO_URI=mongodb://localhost:27017
@@ -113,8 +114,9 @@ brew install --cask libreoffice
     For production deployments, set `ENVIRONMENT=production`, replace
     `SECRET_KEY` with a high-entropy value of at least 32 characters, and use
     explicit `CORS_ORIGINS` instead of `*`. Also replace the default MinIO
-    credentials and provide API keys for the selected AI model/reranker. Startup
-    validation rejects unsafe production defaults.
+    credentials, provide API keys for the selected AI model/reranker, and set
+    `AUTO_START_CELERY_WORKER=False` so the worker is supervised separately.
+    Startup validation rejects unsafe production defaults.
 
 ## 🏃 Running the Application
 
@@ -139,7 +141,7 @@ This processes background tasks like document ingestion, embedding generation, a
 ```bash
 celery -A core.tasks worker --loglevel=info
 ```
-> **Note:** The API server attempts to auto-start a worker process for development convenience, but running it separately is recommended for production or debugging.
+> **Note:** The API server can auto-start one worker process for development convenience when `AUTO_START_CELERY_WORKER=True`. Production must run the worker separately under its process supervisor.
 
 ## 👤 Admin Bootstrap
 

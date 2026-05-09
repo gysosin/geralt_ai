@@ -20,8 +20,10 @@ class MockSettings:
     """Mock settings for testing without real environment variables."""
     API_VERSION = "v1"
     API_TITLE = "GeraltAI API Test"
+    ENVIRONMENT = "test"
     DEBUG = True
     API_ENDPOINT = "127.0.0.1:8000"
+    AUTO_START_CELERY_WORKER = True
     
     SECRET_KEY = "test_secret_key"
     JWT_ALGORITHM = "HS256"

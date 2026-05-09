@@ -32,6 +32,7 @@ class Config:
     ENVIRONMENT = settings.ENVIRONMENT
     DEBUG = settings.DEBUG
     API_ENDPOINT = settings.API_ENDPOINT
+    AUTO_START_CELERY_WORKER = settings.AUTO_START_CELERY_WORKER
     # Handle case where API_ENDPOINT may already include http:// or https://
     BASE_API_URL = settings.API_ENDPOINT if settings.API_ENDPOINT.startswith(('http://', 'https://')) else f"http://{settings.API_ENDPOINT}"
     
