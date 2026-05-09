@@ -132,6 +132,12 @@ class WorkflowRunCreate(BaseModel):
     dry_run: bool = True
 
 
+class WorkflowRunRetryCreate(BaseModel):
+    """Request to retry a previous workflow run."""
+
+    dry_run: Optional[bool] = None
+
+
 class WorkflowRunResponse(BaseModel):
     """Workflow run plan or execution record."""
 
@@ -542,6 +548,26 @@ async def cancel_workflow_run(
 ) -> Dict[str, Any]:
     """Cancel a workflow run that has not completed."""
     return _result_or_error(service.cancel_workflow_run(_owner(current_user), run_id))
+
+
+@router.post(
+    "/workflow-runs/{run_id}/retry",
+    response_model=WorkflowRunResponse,
+    status_code=201,
+)
+async def retry_workflow_run(
+    run_id: str,
+    request: WorkflowRunRetryCreate,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Create a new workflow run from a previous run record."""
+    result = service.retry_workflow_run(
+        owner=_owner(current_user),
+        run_id=run_id,
+        dry_run=request.dry_run,
+    )
+    return _result_or_error(result)
 
 
 @router.get("/audit-events", response_model=List[AuditEventResponse])

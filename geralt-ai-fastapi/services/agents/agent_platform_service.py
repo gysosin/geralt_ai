@@ -523,6 +523,68 @@ class AgentPlatformService(BaseService):
         )
         return ServiceResult.ok(self._public_document(updated_doc))
 
+    def retry_workflow_run(
+        self,
+        owner: str,
+        run_id: str,
+        dry_run: Optional[bool] = None,
+    ) -> ServiceResult:
+        """Create a new run from a previous run's recorded step plan."""
+        run_result = self.get_workflow_run(owner, run_id)
+        if not run_result.success:
+            return run_result
+
+        previous_run = run_result.data
+        next_dry_run = previous_run.get("dry_run", True) if dry_run is None else dry_run
+        planned_steps = [
+            {
+                "step_id": step.get("step_id"),
+                "name": step.get("name"),
+                "tool_name": step.get("tool_name"),
+                "arguments": step.get("arguments") or {},
+                "depends_on": step.get("depends_on", []),
+                "approval_required": step.get("approval_required", False),
+                "status": "planned",
+                "output": None,
+                "message": "",
+            }
+            for step in previous_run.get("steps") or []
+        ]
+        validation_error = self._validate_run_steps(planned_steps)
+        if validation_error:
+            return validation_error
+
+        if next_dry_run:
+            status = "planned"
+        else:
+            planned_steps = self._execute_ready_steps(planned_steps)
+            status = self._workflow_run_status(planned_steps)
+
+        now = datetime.utcnow().isoformat()
+        new_run_id = str(uuid4())
+        document = {
+            "run_id": new_run_id,
+            "workflow_id": previous_run.get("workflow_id"),
+            "agent_id": previous_run.get("agent_id"),
+            "retried_from": run_id,
+            "status": status,
+            "dry_run": next_dry_run,
+            "inputs": previous_run.get("inputs", {}),
+            "steps": planned_steps,
+            "created_by": self.extract_username(owner),
+            "created_at": now,
+            "updated_at": now,
+        }
+        self.run_db.insert_one(document)
+        self._record_audit(
+            "workflow.run_retried",
+            owner,
+            "workflow_run",
+            new_run_id,
+            {"retried_from": run_id, "status": status, "dry_run": next_dry_run},
+        )
+        return ServiceResult.ok(self._public_document(document), status_code=201)
+
     def list_audit_events(self, owner: str, limit: int = 50) -> ServiceResult:
         """List recent agent platform audit events."""
         if self.audit_db is None:

@@ -224,6 +224,13 @@ export const agentPlatformService = {
         return response.data
     },
 
+    async retryWorkflowRun(runId: string, dryRun?: boolean): Promise<WorkflowRun> {
+        const response = await api.post(`${BASE_PATH}/workflow-runs/${runId}/retry`, {
+            dry_run: dryRun,
+        })
+        return response.data
+    },
+
     async listAuditEvents(limit = 25): Promise<AuditEvent[]> {
         const response = await api.get(`${BASE_PATH}/audit-events?limit=${limit}`)
         return response.data
