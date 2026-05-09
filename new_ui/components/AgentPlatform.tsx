@@ -416,12 +416,19 @@ const AgentPlatform: React.FC = () => {
                   </div>
                   <div className="mt-3 space-y-2">
                     {run.steps.map((step: any) => (
-                      <div key={step.step_id} className="flex items-center justify-between gap-3 text-xs">
-                        <span className="text-gray-400 truncate">{step.name}</span>
-                        <span className="flex items-center gap-1 text-gray-500">
-                          {step.status === 'completed' ? <CheckCircle2 size={13} className="text-emerald-400" /> : <CircleDashed size={13} />}
-                          {step.tool_name}
-                        </span>
+                      <div key={step.step_id} className="rounded-lg bg-white/[0.02] border border-white/5 px-3 py-2">
+                        <div className="flex items-center justify-between gap-3 text-xs">
+                          <span className="text-gray-400 truncate">{step.name}</span>
+                          <span className="flex items-center gap-1 text-gray-500">
+                            {step.status === 'completed' ? <CheckCircle2 size={13} className="text-emerald-400" /> : <CircleDashed size={13} />}
+                            {step.tool_name}
+                          </span>
+                        </div>
+                        {step.output && (
+                          <pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-gray-500 font-mono">
+                            {JSON.stringify(step.output, null, 2)}
+                          </pre>
+                        )}
                       </div>
                     ))}
                   </div>

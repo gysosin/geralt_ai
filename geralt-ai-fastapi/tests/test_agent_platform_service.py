@@ -370,3 +370,40 @@ def test_start_workflow_run_rejects_wrong_argument_type():
     assert "collection_ids" in result.error
     assert "array" in result.error
     run_db.insert_one.assert_not_called()
+
+
+def test_get_workflow_run_returns_owned_run():
+    run_db = MagicMock()
+    run_db.find_one.return_value = {
+        "run_id": "run-1",
+        "workflow_id": "workflow-1",
+        "created_by": "mehul",
+        "status": "completed",
+        "steps": [],
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.get_workflow_run(owner="mehul", run_id="run-1")
+
+    assert result.success is True
+    assert result.data["run_id"] == "run-1"
+    run_db.find_one.assert_called_once()
+
+
+def test_get_workflow_run_rejects_missing_run():
+    run_db = MagicMock()
+    run_db.find_one.return_value = None
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.get_workflow_run(owner="mehul", run_id="missing")
+
+    assert result.success is False
+    assert result.status_code == 404
