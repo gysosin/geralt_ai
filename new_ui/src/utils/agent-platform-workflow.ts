@@ -1,3 +1,5 @@
+import type { ExternalMcpTool } from '../services/agent-platform.service';
+
 export type WorkflowStepDraft = {
   name: string;
   toolName: string;
@@ -45,6 +47,21 @@ export const workflowStepsToDrafts = (steps: Array<Record<string, unknown>>): Wo
     approvalRequired: Boolean(step.approval_required),
   }));
 };
+
+export const mcpToolToWorkflowStepDraft = (
+  tool: Pick<ExternalMcpTool, 'server_id' | 'tool_name'>,
+  existingStepCount = 0
+): WorkflowStepDraft => ({
+  name: `Call ${tool.tool_name}`,
+  toolName: 'mcp.invoke',
+  argumentsJson: JSON.stringify({
+    server_id: tool.server_id,
+    tool_name: tool.tool_name,
+    arguments: {},
+  }, null, 2),
+  dependsOn: existingStepCount > 0 ? `step-${existingStepCount}` : '',
+  approvalRequired: true,
+});
 
 export const buildWorkflowSteps = (drafts: WorkflowStepDraft[]) => {
   const errors: string[] = [];

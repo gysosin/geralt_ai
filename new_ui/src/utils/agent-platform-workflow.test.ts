@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildWorkflowSteps } from './agent-platform-workflow';
+import { buildWorkflowSteps, mcpToolToWorkflowStepDraft } from './agent-platform-workflow';
 
 describe('agent platform workflow helpers', () => {
   it('builds validated workflow steps from editable drafts', () => {
@@ -66,5 +66,25 @@ describe('agent platform workflow helpers', () => {
       'Step 1 arguments must be a JSON object.',
       'Step 2 arguments are not valid JSON.',
     ]);
+  });
+
+  it('creates an editable mcp.invoke draft from an external MCP tool', () => {
+    expect(mcpToolToWorkflowStepDraft({
+      server_id: 'mcp-1',
+      server_name: 'Filesystem MCP',
+      tool_name: 'read_file',
+      transport: 'stdio',
+      target: 'npx -y @modelcontextprotocol/server-filesystem /tmp',
+    }, 2)).toEqual({
+      name: 'Call read_file',
+      toolName: 'mcp.invoke',
+      argumentsJson: JSON.stringify({
+        server_id: 'mcp-1',
+        tool_name: 'read_file',
+        arguments: {},
+      }, null, 2),
+      dependsOn: 'step-2',
+      approvalRequired: true,
+    });
   });
 });
