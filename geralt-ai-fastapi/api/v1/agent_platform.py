@@ -128,6 +128,9 @@ class McpServerResponse(BaseModel):
     args: List[str] = Field(default_factory=list)
     tool_names: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    last_health_status: Optional[str] = None
+    last_health_message: Optional[str] = None
+    last_health_checked_at: Optional[str] = None
     created_by: str
     created_at: str
     updated_at: str
@@ -507,6 +510,16 @@ async def update_mcp_server(
         metadata=request.metadata,
     )
     return _result_or_error(result)
+
+
+@router.post("/mcp-servers/{server_id}/health-check", response_model=McpServerResponse)
+async def check_mcp_server(
+    server_id: str,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Check an external MCP server target and store the latest status."""
+    return _result_or_error(service.check_mcp_server(_owner(current_user), server_id))
 
 
 @router.delete("/mcp-servers/{server_id}")

@@ -223,6 +223,53 @@ def test_update_mcp_server_endpoint_returns_updated_server():
     assert data["tool_names"] == ["search_docs"]
 
 
+def test_check_mcp_server_endpoint_records_health_status():
+    mcp_server_db = MagicMock()
+    mcp_server_db.find_one.return_value = {
+        "server_id": "mcp-1",
+        "name": "Docs MCP",
+        "description": "",
+        "transport": "streamable_http",
+        "url": "https://docs.example.com/mcp",
+        "command": "",
+        "args": [],
+        "tool_names": ["search_docs"],
+        "metadata": {},
+        "created_by": "anonymous",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+        "deleted": False,
+    }
+    health_response = MagicMock()
+    health_response.status = 200
+    health_response.__enter__.return_value = health_response
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                with patch("services.agents.agent_platform_service.urlopen", return_value=health_response):
+                    from fastapi.testclient import TestClient
+                    from main import app
+                    from services.agents import AgentPlatformService, get_agent_platform_service
+
+                    service = AgentPlatformService(
+                        agent_db=MagicMock(),
+                        workflow_db=MagicMock(),
+                        run_db=MagicMock(),
+                        mcp_server_db=mcp_server_db,
+                    )
+                    app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                    client = TestClient(app)
+                    response = client.post("/api/v1/agent-platform/mcp-servers/mcp-1/health-check")
+                    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["server_id"] == "mcp-1"
+    assert data["last_health_status"] == "reachable"
+
+
 def test_start_agent_run_endpoint_executes_agent_tool_plan():
     agent_db = MagicMock()
     agent_db.find_one.return_value = {
