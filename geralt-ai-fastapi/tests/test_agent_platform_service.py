@@ -415,6 +415,65 @@ def test_create_workflow_definition_validates_step_tools():
     assert inserted["steps"][0]["step_id"]
 
 
+def test_update_workflow_definition_persists_changed_steps_and_triggers():
+    workflow_db = MagicMock()
+    workflow_db.find_one.return_value = {
+        "workflow_id": "workflow-1",
+        "name": "Old Workflow",
+        "description": "",
+        "agent_id": None,
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Plan",
+                "tool_name": "query.plan",
+                "arguments": {"query": "{{input.query}}"},
+                "depends_on": [],
+                "approval_required": False,
+            }
+        ],
+        "triggers": [],
+        "metadata": {},
+        "created_by": "mehul",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+        "deleted": False,
+    }
+    service = AgentPlatformService(agent_db=MagicMock(), workflow_db=workflow_db, run_db=MagicMock())
+
+    result = service.update_workflow(
+        owner="mehul",
+        workflow_id="workflow-1",
+        name="Updated Workflow",
+        triggers=["document.uploaded"],
+        steps=[
+            {
+                "step_id": "step-1",
+                "name": "Plan",
+                "tool_name": "query.plan",
+                "arguments": {"query": "{{input.query}}"},
+            },
+            {
+                "step_id": "step-2",
+                "name": "Aggregate",
+                "tool_name": "rag.aggregate",
+                "arguments": {
+                    "query": "{{input.query}}",
+                    "collection_ids": "{{input.collection_ids}}",
+                },
+                "depends_on": ["step-1"],
+            },
+        ],
+    )
+
+    assert result.success is True
+    assert result.data["name"] == "Updated Workflow"
+    assert result.data["triggers"] == ["document.uploaded"]
+    update = workflow_db.update_one.call_args.args[1]["$set"]
+    assert [step["tool_name"] for step in update["steps"]] == ["query.plan", "rag.aggregate"]
+    assert update["steps"][1]["depends_on"] == ["step-1"]
+
+
 def test_create_workflow_rejects_unknown_dependency():
     service = AgentPlatformService(agent_db=MagicMock(), workflow_db=MagicMock())
 

@@ -239,6 +239,21 @@ export const agentPlatformService = {
         return response.data
     },
 
+    async updateWorkflow(
+        workflowId: string,
+        data: {
+            name?: string
+            description?: string
+            agent_id?: string
+            steps?: Array<Record<string, unknown>>
+            triggers?: string[]
+            metadata?: Record<string, unknown>
+        }
+    ): Promise<WorkflowDefinition> {
+        const response = await api.patch(`${BASE_PATH}/workflows/${workflowId}`, data)
+        return response.data
+    },
+
     async listWorkflowTemplates(): Promise<WorkflowTemplate[]> {
         const response = await api.get(`${BASE_PATH}/workflow-templates`)
         return response.data
