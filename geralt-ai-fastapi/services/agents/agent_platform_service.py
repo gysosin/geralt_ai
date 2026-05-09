@@ -830,6 +830,31 @@ class AgentPlatformService(BaseService):
         docs = self.run_db.find(query, {"_id": 0})
         return ServiceResult.ok([self._public_document(doc) for doc in docs])
 
+    def list_pending_approvals(self, owner: str) -> ServiceResult:
+        """List workflow steps waiting for human approval."""
+        docs = self.run_db.find(
+            {
+                "created_by": self.extract_username(owner),
+                "steps.status": "pending_approval",
+            },
+            {"_id": 0},
+        )
+        approvals = []
+        for doc in docs:
+            for step in doc.get("steps") or []:
+                if step.get("status") != "pending_approval":
+                    continue
+                approvals.append({
+                    "run_id": doc.get("run_id"),
+                    "workflow_id": doc.get("workflow_id"),
+                    "step_id": step.get("step_id"),
+                    "step_name": step.get("name"),
+                    "tool_name": step.get("tool_name"),
+                    "message": step.get("message", ""),
+                    "created_at": doc.get("created_at"),
+                })
+        return ServiceResult.ok(approvals)
+
     def get_workflow_run(self, owner: str, run_id: str) -> ServiceResult:
         """Get one workflow run owned by the current owner."""
         doc = self.run_db.find_one(
