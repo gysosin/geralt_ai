@@ -49,6 +49,8 @@ export interface WorkflowTemplate {
 export interface WorkflowRun {
     run_id: string
     workflow_id: string
+    agent_id?: string
+    retried_from?: string
     status: string
     dry_run: boolean
     inputs: Record<string, unknown>

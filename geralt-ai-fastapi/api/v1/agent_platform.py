@@ -143,6 +143,8 @@ class WorkflowRunResponse(BaseModel):
 
     run_id: str
     workflow_id: str
+    agent_id: Optional[str] = None
+    retried_from: Optional[str] = None
     status: str
     dry_run: bool
     inputs: Dict[str, Any] = Field(default_factory=dict)

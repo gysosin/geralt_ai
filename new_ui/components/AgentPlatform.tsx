@@ -801,6 +801,13 @@ const AgentPlatform: React.FC = () => {
                       </span>
                     </div>
                   </div>
+                  {(run.agent_id || run.retried_from) && (
+                    <p className="mt-2 text-[11px] text-gray-500 font-mono truncate">
+                      {run.agent_id ? `agent:${run.agent_id.slice(0, 8)}` : ''}
+                      {run.agent_id && run.retried_from ? ' / ' : ''}
+                      {run.retried_from ? `retry:${run.retried_from.slice(0, 8)}` : ''}
+                    </p>
+                  )}
                   <div className="mt-3 space-y-2">
                     {run.steps.map((step: any) => (
                       <div key={step.step_id} className="rounded-lg bg-white/[0.02] border border-white/5 px-3 py-2">
