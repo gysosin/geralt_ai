@@ -713,6 +713,53 @@ def test_get_workflow_run_endpoint_returns_run_record():
     assert response.json()["run_id"] == "run-1"
 
 
+def test_get_workflow_run_trace_endpoint_returns_timeline():
+    run_db = MagicMock()
+    run_db.find_one.return_value = {
+        "run_id": "run-1",
+        "workflow_id": "workflow-1",
+        "status": "pending",
+        "dry_run": False,
+        "inputs": {"query": "summary"},
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Plan",
+                "tool_name": "query.plan",
+                "status": "completed",
+                "output": {"query_type": "summary"},
+                "message": "",
+            }
+        ],
+        "created_by": "anonymous",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:01:00",
+    }
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=MagicMock(),
+                    workflow_db=MagicMock(),
+                    run_db=run_db,
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.get("/api/v1/agent-platform/workflow-runs/run-1/trace")
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["run_id"] == "run-1"
+    assert data["steps"][0]["has_output"] is True
+
+
 def test_pending_approvals_endpoint_returns_waiting_steps():
     run_db = MagicMock()
     run_db.find.return_value = [

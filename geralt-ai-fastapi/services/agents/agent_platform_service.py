@@ -889,6 +889,39 @@ class AgentPlatformService(BaseService):
             return ServiceResult.fail("Workflow run not found", 404)
         return ServiceResult.ok(self._public_document(doc))
 
+    def get_workflow_run_trace(self, owner: str, run_id: str) -> ServiceResult:
+        """Return a compact timeline view of one workflow run."""
+        run_result = self.get_workflow_run(owner, run_id)
+        if not run_result.success:
+            return run_result
+
+        run = run_result.data
+        return ServiceResult.ok({
+            "run_id": run.get("run_id"),
+            "workflow_id": run.get("workflow_id"),
+            "status": run.get("status"),
+            "dry_run": run.get("dry_run"),
+            "created_at": run.get("created_at"),
+            "updated_at": run.get("updated_at"),
+            "lineage": {
+                "agent_id": run.get("agent_id"),
+                "retried_from": run.get("retried_from"),
+            },
+            "steps": [
+                {
+                    "step_id": step.get("step_id"),
+                    "name": step.get("name"),
+                    "tool_name": step.get("tool_name"),
+                    "status": step.get("status"),
+                    "depends_on": step.get("depends_on", []),
+                    "approval_required": step.get("approval_required", False),
+                    "message": step.get("message", ""),
+                    "has_output": step.get("output") is not None,
+                }
+                for step in run.get("steps") or []
+            ],
+        })
+
     def approve_workflow_step(self, owner: str, run_id: str, step_id: str) -> ServiceResult:
         """Approve and execute one pending approval step in a workflow run."""
         run_result = self.get_workflow_run(owner, run_id)

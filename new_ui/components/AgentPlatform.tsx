@@ -26,6 +26,7 @@ import {
   type ToolInvocationResult,
   type WorkflowDefinition,
   type WorkflowRun,
+  type WorkflowRunTrace,
   type WorkflowTemplate,
   type WorkflowTrigger,
 } from '../src/services/agent-platform.service';
@@ -55,6 +56,7 @@ const AgentPlatform: React.FC = () => {
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [toolResult, setToolResult] = useState<ToolInvocationResult | null>(null);
+  const [runTrace, setRunTrace] = useState<WorkflowRunTrace | null>(null);
   const [platformStats, setPlatformStats] = useState<PlatformStats | null>(null);
   const [exportSummary, setExportSummary] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -408,6 +410,18 @@ const AgentPlatform: React.FC = () => {
       setAuditEvents(await agentPlatformService.listAuditEvents());
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to retry workflow run');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const loadRunTrace = async (runId: string) => {
+    setIsSubmitting(true);
+    setError('');
+    try {
+      setRunTrace(await agentPlatformService.getWorkflowRunTrace(runId));
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to load run trace');
     } finally {
       setIsSubmitting(false);
     }
@@ -1086,6 +1100,14 @@ const AgentPlatform: React.FC = () => {
                           Retry
                         </button>
                       )}
+                      <button
+                        onClick={() => loadRunTrace(run.run_id)}
+                        disabled={isSubmitting}
+                        className="h-7 px-2 rounded-lg border border-white/10 bg-white/5 text-gray-200 hover:bg-white/10 disabled:opacity-60 flex items-center gap-1"
+                      >
+                        <Route size={13} />
+                        Trace
+                      </button>
                       {run.status !== 'completed' && run.status !== 'canceled' && (
                         <button
                           onClick={() => cancelWorkflowRun(run.run_id)}
@@ -1153,6 +1175,36 @@ const AgentPlatform: React.FC = () => {
               )}
             </div>
           </section>
+
+          {runTrace && (
+            <section className="border border-white/5 bg-surface/30 rounded-2xl p-5">
+              <h2 className="text-lg font-semibold text-white mb-4">Run Trace</h2>
+              <div className="rounded-xl border border-white/5 bg-black/20 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-white font-mono truncate">{runTrace.run_id.slice(0, 8)}</span>
+                  <span className={`text-xs border rounded-full px-2 py-1 ${statusTone[runTrace.status] || 'text-gray-300 bg-white/5 border-white/10'}`}>
+                    {runTrace.status}
+                  </span>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {runTrace.steps.map((step: any) => (
+                    <div key={step.step_id} className="rounded-lg bg-white/[0.02] border border-white/5 px-3 py-2">
+                      <div className="flex items-center justify-between gap-3 text-xs">
+                        <span className="text-gray-400 truncate">{step.name}</span>
+                        <span className={`border rounded-full px-2 py-1 ${statusTone[step.status] || 'text-gray-300 bg-white/5 border-white/10'}`}>
+                          {step.status}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-gray-500 font-mono truncate">{step.tool_name}</p>
+                      {step.message && (
+                        <p className="mt-2 text-[11px] leading-relaxed text-amber-300">{step.message}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
 
           <section className="border border-white/5 bg-surface/30 rounded-2xl p-5">
             <h2 className="text-lg font-semibold text-white mb-4">Audit</h2>

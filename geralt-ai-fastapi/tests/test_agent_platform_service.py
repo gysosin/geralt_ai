@@ -1455,6 +1455,57 @@ def test_get_workflow_run_returns_owned_run():
     run_db.find_one.assert_called_once()
 
 
+def test_get_workflow_run_trace_returns_step_timeline():
+    run_db = MagicMock()
+    run_db.find_one.return_value = {
+        "run_id": "run-1",
+        "workflow_id": "workflow-1",
+        "agent_id": "agent-1",
+        "retried_from": "run-0",
+        "status": "pending",
+        "dry_run": False,
+        "inputs": {"query": "summary"},
+        "created_by": "mehul",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:01:00",
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Plan",
+                "tool_name": "query.plan",
+                "depends_on": [],
+                "approval_required": False,
+                "status": "completed",
+                "output": {"query_type": "summary"},
+                "message": "",
+            },
+            {
+                "step_id": "step-2",
+                "name": "Review",
+                "tool_name": "rag.aggregate",
+                "depends_on": ["step-1"],
+                "approval_required": True,
+                "status": "pending_approval",
+                "output": None,
+                "message": "Approval required before execution",
+            },
+        ],
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.get_workflow_run_trace(owner="mehul", run_id="run-1")
+
+    assert result.success is True
+    assert result.data["run_id"] == "run-1"
+    assert result.data["lineage"] == {"agent_id": "agent-1", "retried_from": "run-0"}
+    assert result.data["steps"][0]["has_output"] is True
+    assert result.data["steps"][1]["status"] == "pending_approval"
+
+
 def test_get_workflow_run_rejects_missing_run():
     run_db = MagicMock()
     run_db.find_one.return_value = None
