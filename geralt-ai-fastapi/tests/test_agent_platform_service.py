@@ -6,6 +6,17 @@ from unittest.mock import MagicMock
 from services.agents.agent_platform_service import AgentPlatformService
 
 
+class FakeToolExecutor:
+    def execute(self, tool_name, arguments):
+        if tool_name == "rag.aggregate":
+            return {
+                "answer": "Found 1 vendor totals across 2 documents.",
+                "data": [{"vendor": "Acme", "total": 200, "count": 2}],
+                "metadata": {"documents_analyzed": 2},
+            }
+        raise NotImplementedError(f"Execution for {tool_name} is not implemented yet")
+
+
 def test_create_agent_definition_stores_valid_tool_contract():
     agent_db = MagicMock()
     workflow_db = MagicMock()
@@ -205,3 +216,45 @@ def test_start_workflow_run_keeps_unsafe_tool_pending():
     assert inserted["status"] == "pending"
     assert inserted["steps"][0]["status"] == "pending"
     assert "not implemented" in inserted["steps"][0]["message"]
+
+
+def test_start_workflow_run_executes_aggregation_step():
+    workflow_db = MagicMock()
+    run_db = MagicMock()
+    workflow_db.find_one.return_value = {
+        "workflow_id": "workflow-1",
+        "created_by": "mehul",
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Aggregate",
+                "tool_name": "rag.aggregate",
+                "arguments": {
+                    "query": "{{input.query}}",
+                    "collection_ids": "{{input.collection_ids}}",
+                },
+                "depends_on": [],
+                "approval_required": False,
+            }
+        ],
+        "deleted": False,
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=workflow_db,
+        run_db=run_db,
+        tool_executor=FakeToolExecutor(),
+    )
+
+    result = service.start_workflow_run(
+        owner="mehul",
+        workflow_id="workflow-1",
+        inputs={"query": "total amount by vendor", "collection_ids": ["collection-1"]},
+        dry_run=False,
+    )
+
+    assert result.success is True
+    inserted = run_db.insert_one.call_args.args[0]
+    assert inserted["status"] == "completed"
+    assert inserted["steps"][0]["status"] == "completed"
+    assert inserted["steps"][0]["output"]["data"][0]["total"] == 200
