@@ -1,12 +1,10 @@
 import React, { Suspense, lazy } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
-import Dashboard from './components/Dashboard';
 import Auth from './components/Auth';
 import { AuthCallback } from './src/pages/AuthCallback';
 import { useAuthStore } from './src/store';
 import { ProtectedRoute, PublicRoute } from './src/components/auth';
-import NotificationProvider from './src/components/NotificationProvider';
 
 const AgentPlatform = lazy(() => import('./components/AgentPlatform'));
 const Analytics = lazy(() => import('./components/Analytics'));
@@ -15,8 +13,10 @@ const Bots = lazy(() => import('./components/Bots'));
 const ChatInterface = lazy(() => import('./components/ChatInterface'));
 const CollectionDetail = lazy(() => import('./components/CollectionDetail'));
 const Collections = lazy(() => import('./components/Collections'));
+const Dashboard = lazy(() => import('./components/Dashboard'));
 const History = lazy(() => import('./components/History'));
 const HistoryDetail = lazy(() => import('./components/HistoryDetail'));
+const NotificationProvider = lazy(() => import('./src/components/NotificationProvider'));
 const Settings = lazy(() => import('./components/Settings'));
 
 const routeFallback = (
@@ -71,31 +71,33 @@ const App: React.FC = () => {
           path="/*"
           element={
             <ProtectedRoute>
-              <NotificationProvider>
-                <Layout onLogout={handleLogout}>
-                  <Suspense fallback={routeFallback}>
-                    <Routes>
-                      <Route path="/" element={<Dashboard />} />
-                      <Route path="chat/:conversationId?" element={<ChatInterface />} />
+              <Suspense fallback={routeFallback}>
+                <NotificationProvider>
+                  <Layout onLogout={handleLogout}>
+                    <Suspense fallback={routeFallback}>
+                      <Routes>
+                        <Route path="/" element={<Dashboard />} />
+                        <Route path="chat/:conversationId?" element={<ChatInterface />} />
 
-                      <Route path="bots" element={<Bots />} />
-                      <Route path="bots/:id" element={<BotDetail />} />
-                      <Route path="agent-platform" element={<AgentPlatform />} />
+                        <Route path="bots" element={<Bots />} />
+                        <Route path="bots/:id" element={<BotDetail />} />
+                        <Route path="agent-platform" element={<AgentPlatform />} />
 
-                      <Route path="collections" element={<Collections />} />
-                      <Route path="collections/:id" element={<CollectionDetail />} />
+                        <Route path="collections" element={<Collections />} />
+                        <Route path="collections/:id" element={<CollectionDetail />} />
 
-                      <Route path="analytics" element={<Analytics />} />
+                        <Route path="analytics" element={<Analytics />} />
 
-                      <Route path="history" element={<History />} />
-                      <Route path="history/:id" element={<HistoryDetail />} />
+                        <Route path="history" element={<History />} />
+                        <Route path="history/:id" element={<HistoryDetail />} />
 
-                      <Route path="settings" element={<Settings />} />
-                      <Route path="*" element={<div className="flex items-center justify-center h-full text-gray-500">Page not found</div>} />
-                    </Routes>
-                  </Suspense>
-                </Layout>
-              </NotificationProvider>
+                        <Route path="settings" element={<Settings />} />
+                        <Route path="*" element={<div className="flex items-center justify-center h-full text-gray-500">Page not found</div>} />
+                      </Routes>
+                    </Suspense>
+                  </Layout>
+                </NotificationProvider>
+              </Suspense>
             </ProtectedRoute>
           }
         />
