@@ -31,6 +31,15 @@ const Layout: React.FC<LayoutProps> = ({ children, onLogout }) => {
       keywords: ['home', 'overview', 'metrics'],
     },
     {
+      id: 'global-search',
+      label: 'Open global search',
+      description: 'Search chats, agents, and knowledge collections.',
+      group: 'Navigation',
+      path: '/search',
+      icon: <Search size={18} />,
+      keywords: ['search', 'find', 'global', 'workspace'],
+    },
+    {
       id: 'new-chat',
       label: 'Start new chat',
       description: 'Ask questions against your document collections.',
