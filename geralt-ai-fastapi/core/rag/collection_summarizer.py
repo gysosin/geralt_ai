@@ -21,12 +21,67 @@ class CollectionSummarizer:
     2. REDUCE: Combine individual summaries into collection summary
     """
 
-    def __init__(self):
-        from models.database import extraction_collection, document_collection
+    def __init__(
+        self,
+        extraction_collection=None,
+        document_collection=None,
+        llm=None,
+        load_llm: bool = True,
+    ):
+        if extraction_collection is None or document_collection is None:
+            from models.database import extraction_collection as default_extractions
+            from models.database import document_collection as default_documents
+            extraction_collection = extraction_collection or default_extractions
+            document_collection = document_collection or default_documents
         self.extraction_collection = extraction_collection
         self.document_collection = document_collection
-        self.llm = AIProviderFactory.get_llm_provider()
+        self.llm = llm if llm is not None else (
+            AIProviderFactory.get_llm_provider() if load_llm else None
+        )
         self.logger = logging.getLogger(f"{self.__class__.__name__}")
+
+    def summarize_deterministic(
+        self,
+        collection_id: str,
+        max_docs: int = 50,
+    ) -> Dict[str, Any]:
+        """Generate a summary without provider calls."""
+        extractions = list(self.extraction_collection.find(
+            {"collection_id": collection_id}
+        ).limit(max_docs))
+
+        if not extractions:
+            docs = list(self.document_collection.find(
+                {"collection_id": collection_id, "status": "processed"}
+            ).limit(max_docs))
+            if not docs:
+                return {
+                    "summary": "No processed documents found in this collection.",
+                    "document_count": 0,
+                    "key_findings": [],
+                    "document_types": [],
+                }
+            file_names = [doc.get("file_name", "Unknown") for doc in docs]
+            return {
+                "summary": self._format_metadata_summary(file_names),
+                "document_count": len(docs),
+                "key_findings": [f"Contains {len(docs)} processed documents"],
+                "document_types": [],
+            }
+
+        doc_types = sorted(set(ext.get("document_type", "unknown") for ext in extractions))
+        summaries = self._collect_summaries(extractions)
+        summary = (
+            " ".join(summaries[:3])
+            if summaries
+            else f"Collection contains {len(extractions)} documents of types: {', '.join(doc_types)}."
+        )
+        return {
+            "summary": summary,
+            "document_count": len(extractions),
+            "key_findings": self._extract_key_findings(extractions),
+            "document_types": doc_types,
+        }
 
     async def summarize(
         self,
@@ -152,6 +207,9 @@ Write a 2-3 paragraph summary that:
 Be specific and informative."""
 
         try:
+            if not self.llm:
+                doc_types = list(set(e.get("document_type", "unknown") for e in extractions))
+                return f"Collection contains {len(extractions)} documents of types: {', '.join(doc_types)}."
             summary = await self.llm.complete(prompt, max_tokens=800, temperature=0.3)
             return summary.strip()
         except Exception as e:
@@ -210,15 +268,18 @@ Write a brief synthesis (2-3 sentences)."""
         """Fallback: summarize from document metadata only."""
         file_names = [d.get("file_name", "Unknown") for d in docs]
 
-        summary = f"This collection contains {len(docs)} documents: {', '.join(file_names[:10])}"
-        if len(file_names) > 10:
-            summary += f" and {len(file_names) - 10} more."
-
         return {
-            "summary": summary,
+            "summary": self._format_metadata_summary(file_names),
             "document_count": len(docs),
             "key_findings": [f"Contains {len(docs)} processed documents"],
         }
+
+    def _format_metadata_summary(self, file_names: List[str]) -> str:
+        """Format a summary from document metadata."""
+        summary = f"This collection contains {len(file_names)} documents: {', '.join(file_names[:10])}"
+        if len(file_names) > 10:
+            summary += f" and {len(file_names) - 10} more."
+        return summary
 
 
 # Singleton

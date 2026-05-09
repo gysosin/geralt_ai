@@ -12,8 +12,9 @@ from core.rag.query_classifier import get_query_classifier
 class AgentToolExecutor:
     """Execute supported registered tools."""
 
-    def __init__(self, aggregation_engine=None) -> None:
+    def __init__(self, aggregation_engine=None, collection_summarizer=None) -> None:
         self.aggregation_engine = aggregation_engine
+        self.collection_summarizer = collection_summarizer
 
     def execute(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a tool synchronously when safe."""
@@ -21,6 +22,8 @@ class AgentToolExecutor:
             return self._execute_query_plan(arguments)
         if tool_name == "rag.aggregate":
             return self._execute_rag_aggregate(arguments)
+        if tool_name == "collection.summarize":
+            return self._execute_collection_summarize(arguments)
         raise NotImplementedError(f"Execution for {tool_name} is not implemented yet")
 
     def _execute_query_plan(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -46,6 +49,19 @@ class AgentToolExecutor:
 
         self.aggregation_engine = AggregationEngine(load_llm=False)
         return self.aggregation_engine
+
+    def _execute_collection_summarize(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        summarizer = self.collection_summarizer or self._get_default_collection_summarizer()
+        return summarizer.summarize_deterministic(
+            collection_id=arguments.get("collection_id", ""),
+            max_docs=arguments.get("max_docs", 50),
+        )
+
+    def _get_default_collection_summarizer(self):
+        from core.rag.collection_summarizer import CollectionSummarizer
+
+        self.collection_summarizer = CollectionSummarizer(load_llm=False)
+        return self.collection_summarizer
 
 
 _executor_instance: Optional[AgentToolExecutor] = None
