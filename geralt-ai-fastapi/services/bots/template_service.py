@@ -4,13 +4,12 @@ Bot Template Service
 Handles bot template management (create, list, apply).
 Extracted from bot_management_service.py for single responsibility.
 """
-import os
 import uuid
 import base64
 from datetime import datetime
 from typing import Dict, Optional, Any
 
-from helpers.utils import get_utility_service
+from helpers.upload_validation import validate_image_upload
 from config import Config
 from clients import minio_client
 from models.database import templates_collection
@@ -28,13 +27,6 @@ class TemplateService(BaseService):
     """
     
     ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif"}
-    ALLOWED_IMAGE_CONTENT_TYPES = {"image/png", "image/jpeg", "image/gif"}
-    IMAGE_CONTENT_TYPES_BY_EXTENSION = {
-        "png": "image/png",
-        "jpg": "image/jpeg",
-        "jpeg": "image/jpeg",
-        "gif": "image/gif",
-    }
     MAX_TEMPLATE_IMAGE_SIZE = 5 * 1024 * 1024
     
     def __init__(self):
@@ -75,54 +67,28 @@ class TemplateService(BaseService):
             if self.db.find_one({"template_name": template_name}):
                 return ServiceResult.fail("Template already exists", 409)
             
-            # Validate and upload image
-            filename = get_utility_service().secure_filename(image.filename)
-            if "." not in filename:
-                return ServiceResult.fail("Invalid image format", 400)
-            
-            file_extension = filename.rsplit(".", 1)[1].lower()
-            if file_extension not in self.ALLOWED_IMAGE_EXTENSIONS:
-                return ServiceResult.fail(
-                    f"Invalid image format. Allowed: {', '.join(self.ALLOWED_IMAGE_EXTENSIONS)}",
-                    400
-                )
-
-            content_type = (getattr(image, "content_type", "") or "").split(";")[0].strip().lower()
-            if content_type and content_type not in self.ALLOWED_IMAGE_CONTENT_TYPES:
-                return ServiceResult.fail(
-                    "Invalid image content type. Allowed: image/png, image/jpeg, image/gif",
-                    400
-                )
-            if content_type and content_type != self.IMAGE_CONTENT_TYPES_BY_EXTENSION[file_extension]:
-                return ServiceResult.fail(
-                    f"Invalid image content type for .{file_extension} file",
-                    400
-                )
+            validation = validate_image_upload(
+                image,
+                allowed_extensions=self.ALLOWED_IMAGE_EXTENSIONS,
+                max_size_bytes=self.MAX_TEMPLATE_IMAGE_SIZE,
+                resource_label="Template image",
+                missing_extension_message="Invalid image format",
+                invalid_extension_message=(
+                    f"Invalid image format. Allowed: {', '.join(self.ALLOWED_IMAGE_EXTENSIONS)}"
+                ),
+            )
+            if not validation.success:
+                return ServiceResult.fail(validation.error or "Invalid image", validation.status_code)
             
             # Upload to storage
-            icon_filename = f"{uuid.uuid4()}.{file_extension}"
+            icon_filename = f"{uuid.uuid4()}.{validation.extension}"
             icon_file_path = f"templates/{icon_filename}"
-            stream = getattr(image, "file", image)
-            
-            stream.seek(0, os.SEEK_END)
-            file_size = stream.tell()
-            stream.seek(0)
-
-            if file_size <= 0:
-                return ServiceResult.fail("Template image cannot be empty", 400)
-            if file_size > self.MAX_TEMPLATE_IMAGE_SIZE:
-                return ServiceResult.fail("Template image is too large", 413)
-
-            header = stream.read(16)
-            stream.seek(0)
-            if not self._matches_image_signature(file_extension, header):
-                return ServiceResult.fail("Invalid image content", 400)
             
             self.storage.put_object(
                 Config.BUCKET_NAME,
                 icon_file_path,
-                stream,
-                length=file_size
+                validation.stream,
+                length=validation.file_size
             )
             
             image_url = f"{Config.MINIO_ENDPOINT}/{Config.BUCKET_NAME}/{icon_file_path}"
@@ -152,16 +118,6 @@ class TemplateService(BaseService):
         except Exception as e:
             self.logger.error(f"Error creating template: {e}")
             return ServiceResult.fail(f"An unexpected error occurred: {str(e)}", 500)
-
-    def _matches_image_signature(self, extension: str, header: bytes) -> bool:
-        """Validate template image content against the declared extension."""
-        if extension == "png":
-            return header.startswith(b"\x89PNG\r\n\x1a\n")
-        if extension in {"jpg", "jpeg"}:
-            return header.startswith(b"\xff\xd8\xff")
-        if extension == "gif":
-            return header.startswith((b"GIF87a", b"GIF89a"))
-        return False
     
     def list(self, include_images: bool = True) -> ServiceResult:
         """
