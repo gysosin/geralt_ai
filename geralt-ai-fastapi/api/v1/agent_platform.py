@@ -797,11 +797,18 @@ async def start_workflow_run(
 @router.get("/workflow-runs", response_model=List[WorkflowRunResponse])
 async def list_workflow_runs(
     workflow_id: Optional[str] = None,
+    include_archived: bool = False,
     current_user: str | None = Depends(get_optional_user),
     service: AgentPlatformService = Depends(get_agent_platform_service),
 ) -> List[Dict[str, Any]]:
     """List workflow run records for the current owner."""
-    return _result_or_error(service.list_workflow_runs(_owner(current_user), workflow_id))
+    return _result_or_error(
+        service.list_workflow_runs(
+            _owner(current_user),
+            workflow_id,
+            include_archived=include_archived,
+        )
+    )
 
 
 @router.get("/workflow-runs/pending-approvals", response_model=List[Dict[str, Any]])

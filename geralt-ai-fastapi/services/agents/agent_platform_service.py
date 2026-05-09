@@ -904,12 +904,16 @@ class AgentPlatformService(BaseService):
         )
         return ServiceResult.ok(self._public_document(document), status_code=201)
 
-    def list_workflow_runs(self, owner: str, workflow_id: Optional[str] = None) -> ServiceResult:
+    def list_workflow_runs(
+        self,
+        owner: str,
+        workflow_id: Optional[str] = None,
+        include_archived: bool = False,
+    ) -> ServiceResult:
         """List workflow runs for the current owner."""
-        query = {
-            "created_by": self.extract_username(owner),
-            "archived": {"$ne": True},
-        }
+        query = {"created_by": self.extract_username(owner)}
+        if not include_archived:
+            query["archived"] = {"$ne": True}
         if workflow_id:
             query["workflow_id"] = workflow_id
         docs = self.run_db.find(query, {"_id": 0})

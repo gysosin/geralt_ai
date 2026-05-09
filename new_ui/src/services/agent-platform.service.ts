@@ -445,9 +445,12 @@ export const agentPlatformService = {
         return response.data
     },
 
-    async listWorkflowRuns(workflowId?: string): Promise<WorkflowRun[]> {
-        const params = workflowId ? `?workflow_id=${encodeURIComponent(workflowId)}` : ''
-        const response = await api.get(`${BASE_PATH}/workflow-runs${params}`)
+    async listWorkflowRuns(workflowId?: string, includeArchived = false): Promise<WorkflowRun[]> {
+        const params = new URLSearchParams()
+        if (workflowId) params.set('workflow_id', workflowId)
+        if (includeArchived) params.set('include_archived', 'true')
+        const query = params.toString() ? `?${params.toString()}` : ''
+        const response = await api.get(`${BASE_PATH}/workflow-runs${query}`)
         return response.data
     },
 

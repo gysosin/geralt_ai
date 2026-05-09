@@ -875,6 +875,22 @@ def test_archive_workflow_runs_marks_terminal_runs_archived():
     assert "archived_at" in update["$set"]
 
 
+def test_list_workflow_runs_can_include_archived_records():
+    run_db = MagicMock()
+    run_db.find.return_value = []
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.list_workflow_runs(owner="mehul", include_archived=True)
+
+    assert result.success is True
+    query = run_db.find.call_args.args[0]
+    assert query == {"created_by": "mehul"}
+
+
 def test_run_workflow_trigger_starts_matching_workflows():
     workflow_db = MagicMock()
     run_db = MagicMock()
