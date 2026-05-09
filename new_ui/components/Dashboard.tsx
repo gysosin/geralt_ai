@@ -7,7 +7,7 @@ import {
 import {
   MessageSquare, Bot, Files, ArrowUpRight, ArrowRight, Zap,
   MoreHorizontal, Calendar, Activity, Cpu, Sparkles, TrendingUp,
-  Loader2, RefreshCw
+  Loader2, RefreshCw, Boxes
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '@/src/store/auth.store';
@@ -15,6 +15,7 @@ import { useDashboardStore } from '@/src/store/dashboard.store';
 import { healthService, type WorkspaceHealthSnapshot } from '@/src/services';
 import { WorkspaceHealthSummary } from '@/src/components/WorkspaceHealthSummary';
 import { UsageAnalyticsCards } from '@/src/components/UsageAnalyticsCards';
+import { buildRecentActivityItems } from '@/src/utils/activity-feed';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -94,6 +95,7 @@ const Dashboard: React.FC = () => {
     analytics,
     recentConversations,
     bots,
+    collections,
     isLoading,
     isStatsLoading,
     isAnalyticsLoading,
@@ -160,6 +162,20 @@ const Dashboard: React.FC = () => {
       };
     });
   }, [analytics]);
+
+  const recentActivity = useMemo(() => buildRecentActivityItems({
+    conversations: recentConversations,
+    bots,
+    collections,
+  }), [recentConversations, bots, collections]);
+
+  const isActivityLoading = isConversationsLoading || isStatsLoading;
+
+  const activityIcon = (type: string) => {
+    if (type === 'agent') return Bot;
+    if (type === 'collection') return Boxes;
+    return MessageSquare;
+  };
 
   // Format numbers
   const formatNumber = (num: number): string => {
@@ -377,14 +393,17 @@ const Dashboard: React.FC = () => {
           className="bg-surface/30 backdrop-blur-xl border border-white/5 rounded-3xl p-8 flex flex-col relative overflow-hidden"
         >
           <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-bold text-white">Recent Conversations</h3>
+            <div>
+              <h3 className="text-lg font-bold text-white">Recent Activity</h3>
+              <p className="text-sm text-gray-500">Chats, agents, and knowledge changes</p>
+            </div>
             <button className="text-gray-500 hover:text-white transition-colors">
               <MoreHorizontal size={18} />
             </button>
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-4 pr-2 -mr-2 scrollbar-thin">
-            {isConversationsLoading ? (
+            {isActivityLoading ? (
               // Loading skeletons
               Array.from({ length: 4 }).map((_, idx) => (
                 <div key={idx} className="p-4 rounded-2xl bg-white/5 animate-pulse">
@@ -398,49 +417,45 @@ const Dashboard: React.FC = () => {
                   <div className="w-2/3 h-3 bg-gray-700 rounded" />
                 </div>
               ))
-            ) : recentConversations.length === 0 ? (
+            ) : recentActivity.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center py-8">
-                <MessageSquare size={48} className="text-gray-600 mb-4" />
-                <p className="text-gray-400 font-medium">No conversations yet</p>
-                <p className="text-gray-500 text-sm mt-1">Start a chat to see your history here</p>
+                <Activity size={48} className="text-gray-600 mb-4" />
+                <p className="text-gray-400 font-medium">No activity yet</p>
+                <p className="text-gray-500 text-sm mt-1">Create an agent, upload knowledge, or start a chat</p>
                 <button
                   onClick={() => navigate('/chat')}
                   className="mt-4 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium rounded-lg transition-colors"
                 >
-                  Start Chatting
+                  Start Chat
                 </button>
               </div>
             ) : (
-              recentConversations.map((chat) => {
-                const bot = bots.find(b => b.bot_token === chat.botId);
+              recentActivity.map((activity) => {
+                const Icon = activityIcon(activity.type);
                 return (
                   <div
-                    key={chat.id}
+                    key={activity.id}
                     className="group p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/[0.07] hover:border-violet-500/20 transition-all cursor-pointer"
-                    onClick={() => navigate(`/chat?conversation=${chat.id}`)}
+                    onClick={() => navigate(activity.path)}
                   >
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-gray-800 overflow-hidden flex items-center justify-center">
-                          {bot?.icon_url ? (
-                            <img src={bot.icon_url} alt="Bot" className="w-full h-full object-cover opacity-80" />
-                          ) : (
-                            <MessageSquare size={16} className="text-gray-400" />
-                          )}
+                          <Icon size={16} className="text-gray-400" />
                         </div>
                         <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-                          {bot?.name || bot?.bot_name || 'Assistant'}
+                          {activity.type}
                         </span>
                       </div>
                       <span className="text-[10px] text-gray-500 font-medium bg-black/20 px-2 py-1 rounded-md">
-                        {formatTimeAgo(chat.timestamp || chat.created_at || '')}
+                        {formatTimeAgo(activity.timestamp)}
                       </span>
                     </div>
                     <h4 className="text-sm font-medium text-gray-200 mb-1 line-clamp-1 group-hover:text-violet-300 transition-colors">
-                      {chat.title}
+                      {activity.title}
                     </h4>
                     <p className="text-xs text-gray-500 line-clamp-1">
-                      {chat.lastMessage || chat.first_message || 'No messages yet'}
+                      {activity.description}
                     </p>
                   </div>
                 );
@@ -452,7 +467,7 @@ const Dashboard: React.FC = () => {
             onClick={() => navigate('/history')}
             className="w-full mt-6 py-3 text-xs font-medium text-gray-400 hover:text-white border border-dashed border-white/10 rounded-xl hover:bg-white/5 transition-all"
           >
-            View All History
+            View Chat History
           </button>
         </motion.div>
       </div>
