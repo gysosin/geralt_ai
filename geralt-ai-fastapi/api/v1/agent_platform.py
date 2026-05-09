@@ -822,6 +822,15 @@ async def approve_pending_workflow_steps(
     return _result_or_error(service.approve_pending_workflow_steps(_owner(current_user)))
 
 
+@router.post("/workflow-runs/archive", response_model=Dict[str, Any])
+async def archive_workflow_runs(
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Archive terminal workflow runs from the default run list."""
+    return _result_or_error(service.archive_workflow_runs(_owner(current_user)))
+
+
 @router.get("/workflow-runs/{run_id}", response_model=WorkflowRunResponse)
 async def get_workflow_run(
     run_id: str,
