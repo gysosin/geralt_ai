@@ -165,8 +165,7 @@ class Settings(BaseSettings):
             raise ValueError(f"Reranker must be one of: {allowed}")
         return v.lower()
 
-    def validate_required_keys(self) -> None:
-        """Validate that required API keys are set based on selected models."""
+    def _required_key_errors(self) -> List[str]:
         errors = []
 
         if self.DEFAULT_AI_MODEL == "gemini" and not self.GEMINI_API_KEY:
@@ -179,6 +178,12 @@ class Settings(BaseSettings):
             errors.append("COHERE_API_KEY required when using Cohere reranker")
         if self.DEFAULT_RERANKER == "jina" and not self.JINAAI_API_KEY:
             errors.append("JINAAI_API_KEY required when using Jina reranker")
+
+        return errors
+
+    def validate_required_keys(self) -> None:
+        """Validate that required API keys are set based on selected models."""
+        errors = self._required_key_errors()
 
         if errors:
             raise ValueError("Configuration errors: " + "; ".join(errors))
@@ -194,6 +199,9 @@ class Settings(BaseSettings):
             errors.append("SECRET_KEY must be a strong production secret")
         if "*" in self.CORS_ORIGINS:
             errors.append("CORS_ORIGINS must not include '*' in production")
+        if self.MINIO_ACCESS_KEY == "minioadmin" or self.MINIO_SECRET_KEY == "minioadmin":
+            errors.append("MINIO credentials must not use public defaults in production")
+        errors.extend(self._required_key_errors())
 
         if errors:
             raise ValueError("Startup configuration errors: " + "; ".join(errors))

@@ -159,6 +159,57 @@ class TestCoreSettings:
 
         settings.validate_startup_configuration()
 
+    def test_startup_configuration_rejects_missing_ai_keys_in_production(self):
+        """Production startup should reject missing active AI provider keys."""
+        from core.config import Settings
+
+        settings = Settings(
+            ENVIRONMENT="production",
+            SECRET_KEY="a-production-secret-with-enough-entropy",
+            CORS_ORIGINS=["https://app.example.com"],
+            MINIO_ACCESS_KEY="prod-access",
+            MINIO_SECRET_KEY="prod-secret",
+            DEFAULT_AI_MODEL="gemini",
+            DEFAULT_RERANKER="none",
+            GEMINI_API_KEY="",
+        )
+
+        with pytest.raises(ValueError, match="GEMINI_API_KEY"):
+            settings.validate_startup_configuration()
+
+    def test_startup_configuration_rejects_default_minio_credentials_in_production(self):
+        """Production startup should reject public MinIO defaults."""
+        from core.config import Settings
+
+        settings = Settings(
+            ENVIRONMENT="production",
+            SECRET_KEY="a-production-secret-with-enough-entropy",
+            CORS_ORIGINS=["https://app.example.com"],
+            GEMINI_API_KEY="gemini-key",
+            DEFAULT_RERANKER="none",
+            MINIO_ACCESS_KEY="minioadmin",
+            MINIO_SECRET_KEY="minioadmin",
+        )
+
+        with pytest.raises(ValueError, match="MINIO"):
+            settings.validate_startup_configuration()
+
+    def test_startup_configuration_allows_secure_production_config(self):
+        """Production startup accepts explicit non-default security settings."""
+        from core.config import Settings
+
+        settings = Settings(
+            ENVIRONMENT="production",
+            SECRET_KEY="a-production-secret-with-enough-entropy",
+            CORS_ORIGINS=["https://app.example.com"],
+            MINIO_ACCESS_KEY="prod-access",
+            MINIO_SECRET_KEY="prod-secret",
+            GEMINI_API_KEY="gemini-key",
+            DEFAULT_RERANKER="none",
+        )
+
+        settings.validate_startup_configuration()
+
 
 class TestAPIRouterStructure:
     """Test suite for API router structure."""
