@@ -27,6 +27,11 @@ import {
   removeRecentPrompt,
   type RecentPrompt,
 } from '../src/utils/recent-prompts';
+import {
+  applyChatResponseMode,
+  chatResponseModes,
+  type ChatResponseModeId,
+} from '../src/utils/chat-response-modes';
 
 const SUGGESTIONS = [
   { title: "Analyze Financials", desc: "Review Q3 profit margins vs Q2" },
@@ -78,6 +83,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
   const [showRecentPrompts, setShowRecentPrompts] = useState(false);
   const [promptTemplateQuery, setPromptTemplateQuery] = useState('');
   const [promptTemplateFilter, setPromptTemplateFilter] = useState<ChatPromptTemplateFilter>('all');
+  const [responseModeId, setResponseModeId] = useState<ChatResponseModeId>('direct');
   const [recentPrompts, setRecentPrompts] = useState<RecentPrompt[]>(() => {
     if (typeof window === 'undefined') return [];
     return parseRecentPrompts(window.localStorage.getItem(RECENT_PROMPTS_STORAGE_KEY));
@@ -166,7 +172,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
     setInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
-    await sendMessage(query);
+    await sendMessage(applyChatResponseMode(query, responseModeId));
   };
 
   const handleSelectConversation = useCallback((id: string) => {
@@ -652,6 +658,23 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                 rows={1}
                 disabled={isSending}
               />
+              <div className="flex gap-1 overflow-x-auto border-t border-white/5 px-3 py-2 scrollbar-hide">
+                {chatResponseModes.map((mode) => (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => setResponseModeId(mode.id)}
+                    className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${responseModeId === mode.id
+                      ? 'border-violet-400/30 bg-violet-400/10 text-white'
+                      : 'border-white/10 bg-white/[0.03] text-gray-500 hover:text-white'
+                      }`}
+                    title={mode.description}
+                    aria-pressed={responseModeId === mode.id}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+              </div>
               <div className="flex justify-between items-center px-3 pb-3 pt-1">
                 <div className="flex gap-1">
                   <button
