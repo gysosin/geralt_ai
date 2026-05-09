@@ -1318,6 +1318,39 @@ def test_list_workflow_runs_endpoint_passes_limit():
     cursor.limit.assert_called_once_with(25)
 
 
+def test_list_workflow_runs_endpoint_passes_offset():
+    run_db = MagicMock()
+    cursor = MagicMock()
+    cursor.sort.return_value = cursor
+    cursor.skip.return_value = cursor
+    cursor.limit.return_value = []
+    run_db.find.return_value = cursor
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=MagicMock(),
+                    workflow_db=MagicMock(),
+                    run_db=run_db,
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.get(
+                    "/api/v1/agent-platform/workflow-runs?limit=25&offset=25"
+                )
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    cursor.skip.assert_called_once_with(25)
+    cursor.limit.assert_called_once_with(25)
+
+
 def test_list_workflow_runs_endpoint_rejects_oversized_limit():
     run_db = MagicMock()
 
@@ -1338,6 +1371,33 @@ def test_list_workflow_runs_endpoint_rejects_oversized_limit():
                 client = TestClient(app)
                 response = client.get(
                     "/api/v1/agent-platform/workflow-runs?limit=101"
+                )
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+    run_db.find.assert_not_called()
+
+
+def test_list_workflow_runs_endpoint_rejects_oversized_offset():
+    run_db = MagicMock()
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=MagicMock(),
+                    workflow_db=MagicMock(),
+                    run_db=run_db,
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.get(
+                    "/api/v1/agent-platform/workflow-runs?offset=10001"
                 )
                 app.dependency_overrides.clear()
 
