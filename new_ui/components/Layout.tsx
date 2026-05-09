@@ -85,6 +85,15 @@ const Layout: React.FC<LayoutProps> = ({ children, onLogout }) => {
       keywords: ['review', 'documents', 'processing', 'queue'],
     },
     {
+      id: 'collection-health',
+      label: 'Open collection health',
+      description: 'Find empty, stale, and healthy knowledge collections.',
+      group: 'Documents',
+      path: '/collections/health',
+      icon: <Files size={18} />,
+      keywords: ['health', 'collections', 'knowledge', 'stale', 'empty'],
+    },
+    {
       id: 'analytics',
       label: 'Open analytics',
       description: 'Inspect usage, cost, and workspace trends.',
