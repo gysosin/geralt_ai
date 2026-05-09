@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bot, Files, History, Loader2, Search, SearchX } from 'lucide-react';
+import { Bookmark, Bot, Files, History, Loader2, Search, SearchX, Trash2 } from 'lucide-react';
 import { botService, collectionService, conversationService } from '../services';
 import { useAuthStore } from '../store/auth.store';
 import {
@@ -9,6 +9,14 @@ import {
     type GlobalSearchFilter,
     type GlobalSearchResult,
 } from '../utils/global-search';
+import {
+    addSavedSearchView,
+    createSavedSearchView,
+    parseSavedSearchViews,
+    removeSavedSearchView,
+    SAVED_SEARCHES_STORAGE_KEY,
+    type SavedSearchView,
+} from '../utils/saved-searches';
 
 const filterOptions: Array<{ id: GlobalSearchFilter; label: string }> = [
     { id: 'all', label: 'All' },
@@ -38,6 +46,16 @@ const GlobalSearch: React.FC = () => {
     const [index, setIndex] = useState<GlobalSearchResult[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [savedSearchError, setSavedSearchError] = useState<string | null>(null);
+    const [savedViews, setSavedViews] = useState<SavedSearchView[]>(() => {
+        if (typeof window === 'undefined') return [];
+
+        try {
+            return parseSavedSearchViews(window.localStorage.getItem(SAVED_SEARCHES_STORAGE_KEY));
+        } catch {
+            return [];
+        }
+    });
 
     const loadSearchIndex = useCallback(async () => {
         setIsLoading(true);
@@ -71,6 +89,32 @@ const GlobalSearch: React.FC = () => {
         if (query.trim()) return searchGlobalIndex(index, query, activeFilter);
         return index.filter((item) => activeFilter === 'all' || item.type === activeFilter).slice(0, 12);
     }, [activeFilter, index, query]);
+
+    const persistSavedViews = (views: SavedSearchView[]) => {
+        setSavedViews(views);
+        if (typeof window === 'undefined') return;
+
+        try {
+            window.localStorage.setItem(SAVED_SEARCHES_STORAGE_KEY, JSON.stringify(views));
+            setSavedSearchError(null);
+        } catch {
+            setSavedSearchError('Saved searches could not be stored in this browser.');
+        }
+    };
+
+    const saveCurrentSearch = () => {
+        if (!query.trim()) return;
+        persistSavedViews(addSavedSearchView(savedViews, createSavedSearchView(query, activeFilter)));
+    };
+
+    const applySavedSearch = (view: SavedSearchView) => {
+        setQuery(view.query);
+        setActiveFilter(view.filter);
+    };
+
+    const deleteSavedSearch = (id: string) => {
+        persistSavedViews(removeSavedSearchView(savedViews, id));
+    };
 
     return (
         <div className="mx-auto max-w-[1200px] space-y-6 pb-10">
@@ -124,6 +168,57 @@ const GlobalSearch: React.FC = () => {
                             </button>
                         );
                     })}
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-white/5 bg-black/20 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-center gap-2">
+                            <Bookmark size={16} className="text-cyan-300" />
+                            <div>
+                                <h2 className="text-sm font-semibold text-white">Saved search views</h2>
+                                <p className="text-xs text-gray-500">Save a query and filter for repeated workflows.</p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={saveCurrentSearch}
+                            disabled={!query.trim()}
+                            className="h-9 rounded-xl border border-white/10 px-3 text-xs font-semibold text-gray-300 transition-colors hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                            Save current
+                        </button>
+                    </div>
+                    {savedSearchError && <p className="mt-3 text-xs text-amber-300">{savedSearchError}</p>}
+
+                    {savedViews.length === 0 ? (
+                        <p className="mt-4 text-xs text-gray-600">No saved views yet.</p>
+                    ) : (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                            {savedViews.map((view) => (
+                                <div
+                                    key={view.id}
+                                    className="flex items-center overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]"
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={() => applySavedSearch(view)}
+                                        className="px-3 py-2 text-left text-xs text-gray-300 transition-colors hover:bg-white/5 hover:text-white"
+                                    >
+                                        <span className="block font-semibold">{view.label}</span>
+                                        <span className="block capitalize text-gray-500">{view.filter}</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => deleteSavedSearch(view.id)}
+                                        className="self-stretch border-l border-white/10 px-2 text-gray-500 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                                        aria-label={`Delete saved search ${view.label}`}
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </section>
 
