@@ -272,13 +272,19 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex-1 w-full min-h-[300px]">
+          <div className="h-[300px] w-full min-w-0">
             {isAnalyticsLoading ? (
               <div className="flex items-center justify-center h-full">
                 <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+                minWidth={0}
+                minHeight={300}
+                initialDimension={{ width: 800, height: 300 }}
+              >
                 <AreaChart data={chartData}>
                   <defs>
                     <linearGradient id="colorTokens" x1="0" y1="0" x2="0" y2="1">
