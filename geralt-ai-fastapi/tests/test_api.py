@@ -25,6 +25,23 @@ class TestHealthEndpoints:
                     data = response.json()
                     assert data["status"] == "healthy"
                     assert "version" in data
+                    assert response.headers["x-request-id"]
+                    assert float(response.headers["x-process-time"]) >= 0
+
+    def test_observability_headers_preserve_request_id(self):
+        """Test response headers expose request correlation data."""
+        with patch('models.database.MongoClient'):
+            with patch('core.clients.redis_client.redis.StrictRedis'):
+                with patch('core.clients.minio_client.Minio'):
+                    from fastapi.testclient import TestClient
+                    from main import app
+
+                    client = TestClient(app)
+                    response = client.get("/health", headers={"X-Request-ID": "request-123"})
+
+                    assert response.status_code == 200
+                    assert response.headers["x-request-id"] == "request-123"
+                    assert float(response.headers["x-process-time"]) >= 0
 
     def test_ready_check_returns_ready_when_dependencies_are_available(self, monkeypatch):
         """Test /ready returns readiness details for healthy dependencies."""

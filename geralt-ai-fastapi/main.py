@@ -6,10 +6,12 @@ Main application entry point using AppFactory pattern.
 import logging
 import subprocess
 import sys
+import time
+import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, Response, status
+from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import settings
@@ -131,6 +133,7 @@ class AppFactory:
         )
         
         self._configure_middleware(app)
+        self._configure_observability(app)
         self._configure_routes(app)
         
         # Mount SocketIO app
@@ -153,6 +156,17 @@ class AppFactory:
             allow_methods=["*"],
             allow_headers=["*"],
         )
+
+    def _configure_observability(self, app: FastAPI) -> None:
+        """Attach lightweight request correlation and timing headers."""
+        @app.middleware("http")
+        async def add_observability_headers(request: Request, call_next):
+            request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+            started_at = time.perf_counter()
+            response = await call_next(request)
+            response.headers["X-Request-ID"] = request_id
+            response.headers["X-Process-Time"] = f"{time.perf_counter() - started_at:.6f}"
+            return response
 
     def _configure_routes(self, app: FastAPI) -> None:
         """Configure API routes."""
