@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Source } from '@/types';
-import { buildSourceExportSummary } from './source-export';
+import { buildSingleSourceExportSummary, buildSourceExportSummary } from './source-export';
 
 const source = (title: string, score: number, metadata: Source['metadata'] = {}): Source => ({
     id: title.toLowerCase().replace(/\s+/g, '-'),
@@ -41,6 +41,16 @@ describe('source export', () => {
             '',
             '1. Policy.pdf - 88%',
             '   - Note: Confirm renewal owner before approval.',
+        ].join('\n'));
+    });
+
+    it('builds a single-source citation export', () => {
+        expect(buildSingleSourceExportSummary(source('Memo.pdf', 0.7, {
+            page_numbers: [3],
+        }))).toBe([
+            'Citation summary',
+            '',
+            '1. Memo.pdf - 70% - Page 3',
         ].join('\n'));
     });
 });
