@@ -149,6 +149,10 @@ class AgentPlatformService(BaseService):
                 "approval_required": bool(step.get("approval_required", False)),
             })
 
+        dependency_error = self._validate_workflow_dependencies(normalized_steps)
+        if dependency_error:
+            return dependency_error
+
         now = datetime.utcnow().isoformat()
         workflow_id = str(uuid4())
         document = {
@@ -415,6 +419,11 @@ class AgentPlatformService(BaseService):
         }
 
     def _execute_run_step(self, planned: Dict[str, Any]) -> Dict[str, Any]:
+        if planned.get("approval_required"):
+            planned["status"] = "pending_approval"
+            planned["message"] = "Approval required before execution"
+            return planned
+
         try:
             planned["output"] = self.tool_executor.execute(
                 planned["tool_name"],
@@ -467,6 +476,20 @@ class AgentPlatformService(BaseService):
                         400,
                     )
 
+        return None
+
+    def _validate_workflow_dependencies(
+        self,
+        steps: List[Dict[str, Any]],
+    ) -> Optional[ServiceResult]:
+        step_ids = {step["step_id"] for step in steps}
+        for step in steps:
+            missing = [dep for dep in step.get("depends_on", []) if dep not in step_ids]
+            if missing:
+                return ServiceResult.fail(
+                    f"Step {step['step_id']} depends on unknown step(s): {', '.join(missing)}",
+                    400,
+                )
         return None
 
     def _resolve_arguments(self, value: Any, inputs: Dict[str, Any]) -> Any:
