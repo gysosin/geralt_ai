@@ -17,6 +17,13 @@ import { WorkspaceHealthSummary } from '@/src/components/WorkspaceHealthSummary'
 import { UsageAnalyticsCards } from '@/src/components/UsageAnalyticsCards';
 import { buildRecentActivityItems } from '@/src/utils/activity-feed';
 import { OnboardingChecklist } from '@/src/components/OnboardingChecklist';
+import { DashboardLayoutControls } from '@/src/components/DashboardLayoutControls';
+import {
+  DASHBOARD_LAYOUT_STORAGE_KEY,
+  createDefaultDashboardLayoutPreferences,
+  parseDashboardLayoutPreferences,
+  type DashboardLayoutPreferences,
+} from '@/src/utils/dashboard-layout-preferences';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -108,6 +115,16 @@ const Dashboard: React.FC = () => {
   const [workspaceHealth, setWorkspaceHealth] = useState<WorkspaceHealthSnapshot | null>(null);
   const [isWorkspaceHealthLoading, setIsWorkspaceHealthLoading] = useState(true);
   const [workspaceHealthError, setWorkspaceHealthError] = useState<string | null>(null);
+  const [dashboardLayoutSaveError, setDashboardLayoutSaveError] = useState<string | null>(null);
+  const [dashboardLayout, setDashboardLayout] = useState<DashboardLayoutPreferences>(() => {
+    if (typeof window === 'undefined') return createDefaultDashboardLayoutPreferences();
+
+    try {
+      return parseDashboardLayoutPreferences(window.localStorage.getItem(DASHBOARD_LAYOUT_STORAGE_KEY));
+    } catch {
+      return createDefaultDashboardLayoutPreferences();
+    }
+  });
 
   const fetchWorkspaceHealth = useCallback(async () => {
     setIsWorkspaceHealthLoading(true);
@@ -122,6 +139,18 @@ const Dashboard: React.FC = () => {
       setWorkspaceHealthError('Unable to load workspace health right now.');
     } finally {
       setIsWorkspaceHealthLoading(false);
+    }
+  }, []);
+
+  const saveDashboardLayout = useCallback((preferences: DashboardLayoutPreferences) => {
+    setDashboardLayout(preferences);
+    if (typeof window === 'undefined') return;
+
+    try {
+      window.localStorage.setItem(DASHBOARD_LAYOUT_STORAGE_KEY, JSON.stringify(preferences));
+      setDashboardLayoutSaveError(null);
+    } catch {
+      setDashboardLayoutSaveError('Layout preference could not be saved in this browser.');
     }
   }, []);
 
@@ -171,6 +200,10 @@ const Dashboard: React.FC = () => {
   }), [recentConversations, bots, collections]);
 
   const isActivityLoading = isConversationsLoading || isStatsLoading;
+  const visibleSections = dashboardLayout.visibleSections;
+  const isCompactDashboard = dashboardLayout.density === 'compact';
+  const pageSpacingClass = isCompactDashboard ? 'space-y-5' : 'space-y-8';
+  const panelPaddingClass = isCompactDashboard ? 'p-6' : 'p-8';
 
   const activityIcon = (type: string) => {
     if (type === 'agent') return Bot;
@@ -205,7 +238,7 @@ const Dashboard: React.FC = () => {
       variants={containerVariants}
       initial="hidden"
       animate="visible"
-      className="max-w-[1600px] mx-auto pb-10 space-y-8"
+      className={`max-w-[1600px] mx-auto pb-10 ${pageSpacingClass}`}
     >
       {/* Header Section */}
       <div className="flex flex-col md:flex-row justify-between items-end gap-6 border-b border-white/5 pb-8">
@@ -251,65 +284,79 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      <WorkspaceHealthSummary
-        snapshot={workspaceHealth}
-        isLoading={isWorkspaceHealthLoading}
-        error={workspaceHealthError}
-        onRefresh={fetchWorkspaceHealth}
+      <DashboardLayoutControls
+        preferences={dashboardLayout}
+        saveError={dashboardLayoutSaveError}
+        onChange={saveDashboardLayout}
       />
 
-      <UsageAnalyticsCards
-        analytics={analytics}
-        isLoading={isAnalyticsLoading}
-      />
+      {visibleSections.health && (
+        <WorkspaceHealthSummary
+          snapshot={workspaceHealth}
+          isLoading={isWorkspaceHealthLoading}
+          error={workspaceHealthError}
+          onRefresh={fetchWorkspaceHealth}
+        />
+      )}
 
-      <OnboardingChecklist onNavigate={navigate} />
+      {visibleSections.analytics && (
+        <UsageAnalyticsCards
+          analytics={analytics}
+          isLoading={isAnalyticsLoading}
+        />
+      )}
+
+      {visibleSections.onboarding && <OnboardingChecklist onNavigate={navigate} />}
 
       {/* KPI Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard
-          title="Conversations"
-          value={formatNumber(stats.conversations)}
-          sub="Total chat sessions"
-          icon={MessageSquare}
-          color="bg-violet-500"
-          trend={stats.conversations > 0 ? '+12%' : undefined}
-          isLoading={isStatsLoading}
-        />
-        <StatCard
-          title="AI Bots"
-          value={formatNumber(stats.bots)}
-          sub="Active agents"
-          icon={Bot}
-          color="bg-emerald-500"
-          trend={stats.bots > 0 ? `${stats.bots} active` : undefined}
-          isLoading={isStatsLoading}
-        />
-        <StatCard
-          title="Collections"
-          value={formatNumber(stats.collections)}
-          sub="Knowledge bases"
-          icon={Files}
-          color="bg-orange-500"
-          isLoading={isStatsLoading}
-        />
-        <StatCard
-          title="Documents"
-          value={formatNumber(stats.documents)}
-          sub="Indexed files"
-          icon={Zap}
-          color="bg-blue-500"
-          isLoading={isStatsLoading}
-        />
-      </div>
+      {visibleSections.kpis && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <StatCard
+            title="Conversations"
+            value={formatNumber(stats.conversations)}
+            sub="Total chat sessions"
+            icon={MessageSquare}
+            color="bg-violet-500"
+            trend={stats.conversations > 0 ? '+12%' : undefined}
+            isLoading={isStatsLoading}
+          />
+          <StatCard
+            title="AI Bots"
+            value={formatNumber(stats.bots)}
+            sub="Active agents"
+            icon={Bot}
+            color="bg-emerald-500"
+            trend={stats.bots > 0 ? `${stats.bots} active` : undefined}
+            isLoading={isStatsLoading}
+          />
+          <StatCard
+            title="Collections"
+            value={formatNumber(stats.collections)}
+            sub="Knowledge bases"
+            icon={Files}
+            color="bg-orange-500"
+            isLoading={isStatsLoading}
+          />
+          <StatCard
+            title="Documents"
+            value={formatNumber(stats.documents)}
+            sub="Indexed files"
+            icon={Zap}
+            color="bg-blue-500"
+            isLoading={isStatsLoading}
+          />
+        </div>
+      )}
 
       {/* Main Content Split */}
+      {(visibleSections.usageChart || visibleSections.activity) && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full min-h-[400px]">
 
         {/* Analytics Chart */}
+        {visibleSections.usageChart && (
         <motion.div
           variants={itemVariants}
-          className="lg:col-span-2 bg-surface/30 backdrop-blur-xl border border-white/5 rounded-3xl p-8 flex flex-col relative overflow-hidden"
+          className={`${visibleSections.activity ? 'lg:col-span-2' : 'lg:col-span-3'} bg-surface/30 backdrop-blur-xl border border-white/5 rounded-3xl ${panelPaddingClass} flex flex-col relative overflow-hidden`}
         >
           <div className="flex justify-between items-center mb-8">
             <div>
@@ -389,11 +436,13 @@ const Dashboard: React.FC = () => {
             )}
           </div>
         </motion.div>
+        )}
 
         {/* Live Feed / Recent Activity */}
+        {visibleSections.activity && (
         <motion.div
           variants={itemVariants}
-          className="bg-surface/30 backdrop-blur-xl border border-white/5 rounded-3xl p-8 flex flex-col relative overflow-hidden"
+          className={`${visibleSections.usageChart ? '' : 'lg:col-span-3'} bg-surface/30 backdrop-blur-xl border border-white/5 rounded-3xl ${panelPaddingClass} flex flex-col relative overflow-hidden`}
         >
           <div className="flex justify-between items-center mb-6">
             <div>
@@ -473,37 +522,42 @@ const Dashboard: React.FC = () => {
             View Chat History
           </button>
         </motion.div>
+        )}
       </div>
+      )}
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <QuickAction
-          title="Create New Agent"
-          desc="Deploy a specialized GPT with custom instructions and tools."
-          icon={Bot}
-          color="from-violet-600 to-indigo-600"
-          onClick={() => navigate('/bots')}
-        />
-        <QuickAction
-          title="Upload Knowledge"
-          desc="Ingest PDF, DOCX, or CSV files for semantic search."
-          icon={Files}
-          color="from-emerald-600 to-teal-600"
-          onClick={() => navigate('/collections')}
-        />
-        <QuickAction
-          title="API Configuration"
-          desc="Manage API keys, rate limits, and webhook endpoints."
-          icon={Cpu}
-          color="from-orange-600 to-red-600"
-          onClick={() => navigate('/settings?tab=api')}
-        />
-      </div>
+      {visibleSections.quickActions && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <QuickAction
+            title="Create New Agent"
+            desc="Deploy a specialized GPT with custom instructions and tools."
+            icon={Bot}
+            color="from-violet-600 to-indigo-600"
+            onClick={() => navigate('/bots')}
+          />
+          <QuickAction
+            title="Upload Knowledge"
+            desc="Ingest PDF, DOCX, or CSV files for semantic search."
+            icon={Files}
+            color="from-emerald-600 to-teal-600"
+            onClick={() => navigate('/collections')}
+          />
+          <QuickAction
+            title="API Configuration"
+            desc="Manage API keys, rate limits, and webhook endpoints."
+            icon={Cpu}
+            color="from-orange-600 to-red-600"
+            onClick={() => navigate('/settings?tab=api')}
+          />
+        </div>
+      )}
 
       {/* AI Tips Section */}
+      {visibleSections.tips && (
       <motion.div
         variants={itemVariants}
-        className="bg-gradient-to-br from-violet-600/10 to-indigo-600/10 border border-violet-500/20 rounded-3xl p-8"
+        className={`bg-gradient-to-br from-violet-600/10 to-indigo-600/10 border border-violet-500/20 rounded-3xl ${panelPaddingClass}`}
       >
         <div className="flex items-center gap-3 mb-6">
           <div className="p-3 rounded-2xl bg-violet-500/20 text-violet-400">
@@ -530,6 +584,7 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
       </motion.div>
+      )}
     </motion.div>
   );
 };
