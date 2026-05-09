@@ -249,6 +249,16 @@ class AgentPlatformService(BaseService):
         docs = self.run_db.find(query, {"_id": 0})
         return ServiceResult.ok([self._public_document(doc) for doc in docs])
 
+    def get_workflow_run(self, owner: str, run_id: str) -> ServiceResult:
+        """Get one workflow run owned by the current owner."""
+        doc = self.run_db.find_one(
+            {"created_by": self.extract_username(owner), "run_id": run_id},
+            {"_id": 0},
+        )
+        if not doc:
+            return ServiceResult.fail("Workflow run not found", 404)
+        return ServiceResult.ok(self._public_document(doc))
+
     def _validate_tools(self, tool_names: List[Optional[str]]) -> Optional[ServiceResult]:
         missing = [
             tool_name

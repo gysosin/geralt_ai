@@ -315,3 +315,13 @@ async def list_workflow_runs(
 ) -> List[Dict[str, Any]]:
     """List workflow run records for the current owner."""
     return _result_or_error(service.list_workflow_runs(_owner(current_user), workflow_id))
+
+
+@router.get("/workflow-runs/{run_id}", response_model=WorkflowRunResponse)
+async def get_workflow_run(
+    run_id: str,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Get one workflow run record."""
+    return _result_or_error(service.get_workflow_run(_owner(current_user), run_id))
