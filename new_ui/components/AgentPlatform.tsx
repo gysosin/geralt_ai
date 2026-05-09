@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Archive,
   Bot,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   CircleDashed,
   Copy,
@@ -65,6 +67,9 @@ const statusTone: Record<string, string> = {
   failed: 'text-red-300 bg-red-500/10 border-red-500/20',
 };
 
+const RUN_PAGE_SIZE = 8;
+const RUN_FETCH_SIZE = RUN_PAGE_SIZE + 1;
+
 const AgentPlatform: React.FC = () => {
   const [tools, setTools] = useState<AgentTool[]>([]);
   const [agentTemplates, setAgentTemplates] = useState<AgentTemplate[]>([]);
@@ -77,6 +82,8 @@ const AgentPlatform: React.FC = () => {
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [showArchivedRuns, setShowArchivedRuns] = useState(false);
   const [runStatusFilter, setRunStatusFilter] = useState('all');
+  const [runPage, setRunPage] = useState(0);
+  const [hasMoreRuns, setHasMoreRuns] = useState(false);
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
   const [approvalRejectionReasons, setApprovalRejectionReasons] = useState<Record<string, string>>({});
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
@@ -119,6 +126,27 @@ const AgentPlatform: React.FC = () => {
   const [invokeToolName, setInvokeToolName] = useState('query.plan');
   const [invokeQuery, setInvokeQuery] = useState('list all vendors');
 
+  const applyRunPageResult = (pageRuns: WorkflowRun[]) => {
+    setHasMoreRuns(pageRuns.length > RUN_PAGE_SIZE);
+    setRuns(pageRuns.slice(0, RUN_PAGE_SIZE));
+  };
+
+  const loadRunsPage = async (
+    page = runPage,
+    includeArchived = showArchivedRuns,
+    status = runStatusFilter
+  ) => {
+    const pageRuns = await agentPlatformService.listWorkflowRuns(
+      undefined,
+      includeArchived,
+      status,
+      RUN_FETCH_SIZE,
+      page * RUN_PAGE_SIZE
+    );
+    setRunPage(page);
+    applyRunPageResult(pageRuns || []);
+  };
+
   const loadData = async () => {
     setIsLoading(true);
     setError('');
@@ -132,7 +160,13 @@ const AgentPlatform: React.FC = () => {
         agentPlatformService.listWorkflows(),
         agentPlatformService.listWorkflowTemplates(),
         agentPlatformService.listWorkflowTriggers(),
-        agentPlatformService.listWorkflowRuns(undefined, showArchivedRuns, runStatusFilter),
+        agentPlatformService.listWorkflowRuns(
+          undefined,
+          showArchivedRuns,
+          runStatusFilter,
+          RUN_FETCH_SIZE,
+          runPage * RUN_PAGE_SIZE
+        ),
         agentPlatformService.listPendingApprovals(),
         agentPlatformService.listAuditEvents(),
         agentPlatformService.getStats(),
@@ -151,7 +185,7 @@ const AgentPlatform: React.FC = () => {
         setSelectedTemplateId(loadedTemplates[0].template_id);
       }
       setAutomationTriggers(triggerResult.status === 'fulfilled' ? triggerResult.value || [] : []);
-      setRuns(runResult.status === 'fulfilled' ? runResult.value || [] : []);
+      applyRunPageResult(runResult.status === 'fulfilled' ? runResult.value || [] : []);
       setPendingApprovals(approvalResult.status === 'fulfilled' ? approvalResult.value || [] : []);
       setAuditEvents(auditResult.status === 'fulfilled' ? auditResult.value || [] : []);
       setPlatformStats(statsResult.status === 'fulfilled' ? statsResult.value : null);
@@ -446,12 +480,12 @@ const AgentPlatform: React.FC = () => {
     setError('');
     try {
       const collectionIds = splitIds(runCollections);
-      const created = await agentPlatformService.startAgentRun(runAgentId, {
+      await agentPlatformService.startAgentRun(runAgentId, {
         dry_run: dryRun,
         query: runQuery,
         collection_ids: collectionIds.length > 0 ? collectionIds : undefined,
       });
-      setRuns((current) => [created, ...current]);
+      await loadRunsPage(0);
       setPendingApprovals(await agentPlatformService.listPendingApprovals());
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to start agent run');
@@ -465,14 +499,14 @@ const AgentPlatform: React.FC = () => {
     setIsSubmitting(true);
     setError('');
     try {
-      const created = await agentPlatformService.startWorkflowRun(runWorkflowId, {
+      await agentPlatformService.startWorkflowRun(runWorkflowId, {
         dry_run: dryRun,
         inputs: {
           query: runQuery,
           collection_ids: splitIds(runCollections),
         },
       });
-      setRuns((current) => [created, ...current]);
+      await loadRunsPage(0);
       setPendingApprovals(await agentPlatformService.listPendingApprovals());
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to start workflow run');
@@ -488,14 +522,14 @@ const AgentPlatform: React.FC = () => {
     setError('');
     try {
       setTriggerName(nextTrigger);
-      const created = await agentPlatformService.startTriggerRuns(nextTrigger, {
+      await agentPlatformService.startTriggerRuns(nextTrigger, {
         dry_run: dryRun,
         inputs: {
           query: runQuery,
           collection_ids: splitIds(runCollections),
         },
       });
-      setRuns((current) => [...created, ...current]);
+      await loadRunsPage(0);
       setPendingApprovals(await agentPlatformService.listPendingApprovals());
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to start trigger runs');
@@ -575,8 +609,8 @@ const AgentPlatform: React.FC = () => {
     setIsSubmitting(true);
     setError('');
     try {
-      const updated = await agentPlatformService.cancelWorkflowRun(runId);
-      setRuns((current) => current.map((run) => (run.run_id === updated.run_id ? updated : run)));
+      await agentPlatformService.cancelWorkflowRun(runId);
+      await loadRunsPage(runPage);
       setAuditEvents(await agentPlatformService.listAuditEvents());
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to cancel workflow run');
@@ -590,7 +624,7 @@ const AgentPlatform: React.FC = () => {
     setError('');
     try {
       const result = await agentPlatformService.archiveWorkflowRuns();
-      setRuns(await agentPlatformService.listWorkflowRuns(undefined, showArchivedRuns, runStatusFilter));
+      await loadRunsPage(0);
       setPlatformStats(await agentPlatformService.getStats());
       setAuditEvents(await agentPlatformService.listAuditEvents());
       setExportSummary(`${result.archived_count} run${result.archived_count === 1 ? '' : 's'} archived`);
@@ -606,7 +640,7 @@ const AgentPlatform: React.FC = () => {
     setIsSubmitting(true);
     setError('');
     try {
-      setRuns(await agentPlatformService.listWorkflowRuns(undefined, checked, runStatusFilter));
+      await loadRunsPage(0, checked, runStatusFilter);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to load workflow runs');
     } finally {
@@ -619,7 +653,20 @@ const AgentPlatform: React.FC = () => {
     setIsSubmitting(true);
     setError('');
     try {
-      setRuns(await agentPlatformService.listWorkflowRuns(undefined, showArchivedRuns, status));
+      await loadRunsPage(0, showArchivedRuns, status);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to load workflow runs');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const changeRunPage = async (page: number) => {
+    if (page < 0) return;
+    setIsSubmitting(true);
+    setError('');
+    try {
+      await loadRunsPage(page);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to load workflow runs');
     } finally {
@@ -631,8 +678,8 @@ const AgentPlatform: React.FC = () => {
     setIsSubmitting(true);
     setError('');
     try {
-      const created = await agentPlatformService.retryWorkflowRun(runId, dryRun);
-      setRuns((current) => [created, ...current]);
+      await agentPlatformService.retryWorkflowRun(runId, dryRun);
+      await loadRunsPage(0);
       const [approvalResult, auditResult, statsResult] = await Promise.all([
         agentPlatformService.listPendingApprovals(),
         agentPlatformService.listAuditEvents(),
@@ -1639,9 +1686,9 @@ const AgentPlatform: React.FC = () => {
           </section>
 
           <section className="border border-white/5 bg-surface/30 rounded-2xl p-5">
-            <div className="flex items-center justify-between gap-3 mb-4">
+            <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-lg font-semibold text-white">Runs</h2>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <select
                   value={runStatusFilter}
                   onChange={(event) => changeRunStatusFilter(event.target.value)}
@@ -1672,10 +1719,29 @@ const AgentPlatform: React.FC = () => {
                   {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />}
                   Archive Done
                 </button>
+                <div className="h-8 rounded-lg border border-white/10 bg-white/5 text-gray-200 flex items-center overflow-hidden text-xs">
+                  <button
+                    onClick={() => changeRunPage(runPage - 1)}
+                    disabled={isSubmitting || runPage === 0}
+                    title="Previous page"
+                    className="h-full w-8 flex items-center justify-center hover:bg-white/10 disabled:opacity-40"
+                  >
+                    <ChevronLeft size={14} />
+                  </button>
+                  <span className="min-w-14 px-2 text-center border-x border-white/10">Page {runPage + 1}</span>
+                  <button
+                    onClick={() => changeRunPage(runPage + 1)}
+                    disabled={isSubmitting || !hasMoreRuns}
+                    title="Next page"
+                    className="h-full w-8 flex items-center justify-center hover:bg-white/10 disabled:opacity-40"
+                  >
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
               </div>
             </div>
             <div className="space-y-3">
-              {visibleRuns.slice(0, 8).map((run) => (
+              {visibleRuns.map((run) => (
                 <div key={run.run_id} className="rounded-xl border border-white/5 bg-black/20 p-4">
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-sm text-white font-mono truncate">{run.run_id.slice(0, 8)}</span>
