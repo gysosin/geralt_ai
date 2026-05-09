@@ -111,6 +111,65 @@ class AgentPlatformService(BaseService):
             return ServiceResult.fail("Agent not found", 404)
         return ServiceResult.ok(self._public_document(doc))
 
+    def update_agent(
+        self,
+        owner: str,
+        agent_id: str,
+        name: Optional[str] = None,
+        instruction: Optional[str] = None,
+        tool_names: Optional[List[str]] = None,
+        description: Optional[str] = None,
+        model: Optional[str] = None,
+        collection_ids: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> ServiceResult:
+        """Update an owned reusable agent definition."""
+        current_result = self.get_agent(owner, agent_id)
+        if not current_result.success:
+            return current_result
+
+        updates: Dict[str, Any] = {}
+        if name is not None:
+            if not name.strip():
+                return ServiceResult.fail("Agent name is required", 400)
+            updates["name"] = name.strip()
+        if instruction is not None:
+            if not instruction.strip():
+                return ServiceResult.fail("Agent instruction is required", 400)
+            updates["instruction"] = instruction.strip()
+        if tool_names is not None:
+            validation_error = self._validate_tools(tool_names)
+            if validation_error:
+                return validation_error
+            updates["tool_names"] = tool_names
+        if description is not None:
+            updates["description"] = description
+        if model is not None:
+            updates["model"] = model or "default"
+        if collection_ids is not None:
+            updates["collection_ids"] = collection_ids
+        if metadata is not None:
+            updates["metadata"] = metadata
+
+        if not updates:
+            return ServiceResult.ok(current_result.data)
+
+        updates["updated_at"] = datetime.utcnow().isoformat()
+        self.agent_db.update_one(
+            {
+                "agent_id": agent_id,
+                "created_by": self.extract_username(owner),
+                "deleted": {"$ne": True},
+            },
+            {"$set": updates},
+        )
+        updated_doc = {
+            **current_result.data,
+            **updates,
+        }
+        self._record_audit("agent.updated", owner, "agent", agent_id)
+        return ServiceResult.ok(self._public_document(updated_doc))
+
     def delete_agent(self, owner: str, agent_id: str) -> ServiceResult:
         """Soft-delete an owned agent definition."""
         result = self.agent_db.update_one(

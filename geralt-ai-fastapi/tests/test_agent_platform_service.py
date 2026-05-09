@@ -56,6 +56,41 @@ def test_create_agent_definition_rejects_unknown_tool():
     assert "missing.tool" in result.error
 
 
+def test_update_agent_definition_persists_changed_fields():
+    agent_db = MagicMock()
+    agent_db.find_one.return_value = {
+        "agent_id": "agent-1",
+        "name": "Old Agent",
+        "description": "",
+        "instruction": "Old instruction.",
+        "tool_names": ["query.plan"],
+        "model": "default",
+        "collection_ids": [],
+        "metadata": {},
+        "created_by": "mehul",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+        "deleted": False,
+    }
+    service = AgentPlatformService(agent_db=agent_db, workflow_db=MagicMock(), run_db=MagicMock())
+
+    result = service.update_agent(
+        owner="mehul",
+        agent_id="agent-1",
+        name="Updated Agent",
+        instruction="Use planning and aggregation.",
+        tool_names=["query.plan", "rag.aggregate"],
+        collection_ids=["collection-1"],
+    )
+
+    assert result.success is True
+    assert result.data["name"] == "Updated Agent"
+    assert result.data["tool_names"] == ["query.plan", "rag.aggregate"]
+    update = agent_db.update_one.call_args.args[1]["$set"]
+    assert update["instruction"] == "Use planning and aggregation."
+    assert update["collection_ids"] == ["collection-1"]
+
+
 def test_create_mcp_server_records_transport_contract():
     mcp_server_db = MagicMock()
     service = AgentPlatformService(

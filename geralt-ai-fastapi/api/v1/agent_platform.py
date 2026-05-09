@@ -54,6 +54,18 @@ class AgentDefinitionCreate(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+class AgentDefinitionUpdate(BaseModel):
+    """Request to update a reusable agent."""
+
+    name: Optional[str] = None
+    instruction: Optional[str] = None
+    tool_names: Optional[List[str]] = None
+    description: Optional[str] = None
+    model: Optional[str] = None
+    collection_ids: Optional[List[str]] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
 class AgentDefinitionResponse(BaseModel):
     """Stored agent definition."""
 
@@ -468,6 +480,28 @@ async def get_agent_definition(
 ) -> Dict[str, Any]:
     """Get a reusable agent definition."""
     return _result_or_error(service.get_agent(_owner(current_user), agent_id))
+
+
+@router.patch("/agents/{agent_id}", response_model=AgentDefinitionResponse)
+async def update_agent_definition(
+    agent_id: str,
+    request: AgentDefinitionUpdate,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Update a reusable agent definition."""
+    result = service.update_agent(
+        owner=_owner(current_user),
+        agent_id=agent_id,
+        name=request.name,
+        instruction=request.instruction,
+        tool_names=request.tool_names,
+        description=request.description,
+        model=request.model,
+        collection_ids=request.collection_ids,
+        metadata=request.metadata,
+    )
+    return _result_or_error(result)
 
 
 @router.delete("/agents/{agent_id}")

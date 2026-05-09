@@ -88,6 +88,54 @@ def test_create_agent_definition_endpoint_uses_registered_tools():
     assert data["tool_names"] == ["rag.search", "rag.aggregate"]
 
 
+def test_update_agent_definition_endpoint_returns_updated_agent():
+    agent_db = MagicMock()
+    agent_db.find_one.return_value = {
+        "agent_id": "agent-1",
+        "name": "Old Agent",
+        "description": "",
+        "instruction": "Old instruction.",
+        "tool_names": ["query.plan"],
+        "model": "default",
+        "collection_ids": [],
+        "metadata": {},
+        "created_by": "anonymous",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+        "deleted": False,
+    }
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=agent_db,
+                    workflow_db=MagicMock(),
+                    run_db=MagicMock(),
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.patch(
+                    "/api/v1/agent-platform/agents/agent-1",
+                    json={
+                        "name": "Updated Agent",
+                        "instruction": "Use planning and aggregation.",
+                        "tool_names": ["query.plan", "rag.aggregate"],
+                    },
+                )
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Updated Agent"
+    assert data["tool_names"] == ["query.plan", "rag.aggregate"]
+
+
 def test_create_mcp_server_endpoint_records_external_tool_source():
     mcp_server_db = MagicMock()
 
