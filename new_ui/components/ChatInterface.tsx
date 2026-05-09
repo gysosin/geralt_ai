@@ -4,7 +4,8 @@ import {
   Send, Paperclip, Mic, Bot, User, Sparkles,
   MoreHorizontal, ChevronDown, X,
   Maximize2, Share, ThumbsUp, ThumbsDown, Copy,
-  ArrowRight, Menu, Loader2, Edit, BookOpenText, Search, Clock3, Trash2
+  ArrowRight, Menu, Loader2, Edit, BookOpenText, Search, Clock3, Trash2,
+  Database, FolderOpen, Check, AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../src/store/auth.store';
@@ -38,6 +39,10 @@ import {
   readChatDraft,
   writeChatDraft,
 } from '../src/utils/chat-drafts';
+import {
+  buildChatAttachmentOptions,
+  getSelectedAttachmentLabel,
+} from '../src/utils/chat-attachments';
 
 const SUGGESTIONS = [
   { title: "Analyze Financials", desc: "Review Q3 profit margins vs Q2" },
@@ -79,7 +84,15 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
     setBotToken,
   } = useChatStore();
 
-  const { bots, fetchBots, updateBot, collections, fetchCollections } = useBotStore();
+  const {
+    bots,
+    fetchBots,
+    updateBot,
+    collections,
+    fetchCollections,
+    isLoading: isKnowledgeLoading,
+    error: knowledgeError,
+  } = useBotStore();
 
   const [input, setInput] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(!minimal);
@@ -87,6 +100,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
   const [showBotMenu, setShowBotMenu] = useState(false);
   const [showPromptTemplates, setShowPromptTemplates] = useState(false);
   const [showRecentPrompts, setShowRecentPrompts] = useState(false);
+  const [showAttachmentTray, setShowAttachmentTray] = useState(false);
   const [promptTemplateQuery, setPromptTemplateQuery] = useState('');
   const [promptTemplateFilter, setPromptTemplateFilter] = useState<ChatPromptTemplateFilter>('all');
   const [responseModeId, setResponseModeId] = useState<ChatResponseModeId>('direct');
@@ -109,6 +123,14 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
   const visiblePromptTemplates = useMemo(
     () => filterChatPromptTemplates(promptTemplateQuery, promptTemplateFilter),
     [promptTemplateFilter, promptTemplateQuery],
+  );
+  const attachmentOptions = useMemo(
+    () => buildChatAttachmentOptions(collections),
+    [collections],
+  );
+  const selectedAttachmentLabel = useMemo(
+    () => getSelectedAttachmentLabel(attachmentOptions, currentCollectionId),
+    [attachmentOptions, currentCollectionId],
   );
 
   const draftKey = useMemo(
@@ -134,6 +156,12 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
       fetchCollections();
     }
   }, [activeBot, collections.length, fetchCollections]);
+
+  useEffect(() => {
+    if (showAttachmentTray && collections.length === 0) {
+      fetchCollections();
+    }
+  }, [collections.length, fetchCollections, showAttachmentTray]);
 
   // Handle URL params for conversation or bot
   useEffect(() => {
@@ -257,6 +285,12 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
       }
       return nextPrompts;
     });
+  };
+
+  const handleAttachmentSelect = (collectionId: string | null) => {
+    setCollectionId(collectionId);
+    setShowAttachmentTray(false);
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
   const handleCopyMessage = async (content: string) => {
@@ -553,6 +587,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                   onClick={() => {
                     setShowPromptTemplates(false);
                     setShowRecentPrompts(false);
+                    setShowAttachmentTray(false);
                   }}
                 />
                 <div className="absolute bottom-full left-0 z-40 mb-3 w-full max-w-xl rounded-2xl border border-white/10 bg-[#18181b] p-4 shadow-2xl">
@@ -629,6 +664,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                   onClick={() => {
                     setShowPromptTemplates(false);
                     setShowRecentPrompts(false);
+                    setShowAttachmentTray(false);
                   }}
                 />
                 <div className="absolute bottom-full left-0 z-40 mb-3 w-full max-w-xl rounded-2xl border border-white/10 bg-[#18181b] p-4 shadow-2xl">
@@ -675,6 +711,110 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                 </div>
               </>
             )}
+            {showAttachmentTray && (
+              <>
+                <button
+                  type="button"
+                  className="fixed inset-0 z-30 cursor-default"
+                  aria-label="Close attachments"
+                  onClick={() => {
+                    setShowPromptTemplates(false);
+                    setShowRecentPrompts(false);
+                    setShowAttachmentTray(false);
+                  }}
+                />
+                <div className="absolute bottom-full left-0 z-40 mb-3 w-full max-w-xl rounded-2xl border border-white/10 bg-[#18181b] p-4 shadow-2xl">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-white">Attach knowledge context</h3>
+                      <p className="text-xs text-gray-500">Choose the collection used by the next retrieval answer.</p>
+                    </div>
+                    <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-semibold text-gray-500">
+                      {attachmentOptions.length} collections
+                    </span>
+                  </div>
+
+                  <div className="max-h-80 space-y-2 overflow-y-auto pr-1 custom-scrollbar">
+                    <button
+                      type="button"
+                      onClick={() => handleAttachmentSelect(null)}
+                      className={`w-full rounded-xl border p-3 text-left transition-colors ${!currentCollectionId
+                        ? 'border-violet-400/30 bg-violet-400/10'
+                        : 'border-white/5 bg-white/[0.03] hover:border-white/10 hover:bg-white/[0.06]'
+                        }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`rounded-lg p-2 ${!currentCollectionId ? 'bg-violet-400/15 text-violet-200' : 'bg-white/5 text-gray-400'}`}>
+                          <Database size={16} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-white">All collections</p>
+                          <p className="text-xs text-gray-500">Search every available knowledge base.</p>
+                        </div>
+                        {!currentCollectionId && <Check size={16} className="text-violet-300" />}
+                      </div>
+                    </button>
+
+                    {isKnowledgeLoading && attachmentOptions.length === 0 && (
+                      <div className="flex items-center justify-center gap-2 rounded-xl border border-white/5 bg-black/20 p-4 text-xs text-gray-500">
+                        <Loader2 size={15} className="animate-spin text-violet-300" />
+                        Loading collections...
+                      </div>
+                    )}
+
+                    {knowledgeError && attachmentOptions.length === 0 && (
+                      <div className="flex items-start gap-2 rounded-xl border border-red-400/20 bg-red-400/10 p-4 text-xs text-red-200">
+                        <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                        Unable to load collections right now.
+                      </div>
+                    )}
+
+                    {!isKnowledgeLoading && !knowledgeError && attachmentOptions.length === 0 && (
+                      <div className="rounded-xl border border-white/5 bg-black/20 p-4 text-center">
+                        <FolderOpen size={24} className="mx-auto mb-2 text-gray-600" />
+                        <p className="text-sm font-medium text-gray-400">No collections available</p>
+                        <p className="mt-1 text-xs text-gray-600">Upload documents from Knowledge to attach retrieval context.</p>
+                      </div>
+                    )}
+
+                    {attachmentOptions.map((option) => {
+                      const isSelected = currentCollectionId === option.id;
+
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => handleAttachmentSelect(option.id)}
+                          className={`w-full rounded-xl border p-3 text-left transition-colors ${isSelected
+                            ? 'border-violet-400/30 bg-violet-400/10'
+                            : 'border-white/5 bg-white/[0.03] hover:border-violet-400/30 hover:bg-white/[0.06]'
+                            }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`rounded-lg p-2 ${isSelected ? 'bg-violet-400/15 text-violet-200' : 'bg-white/5 text-gray-400'}`}>
+                              <FolderOpen size={16} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <p className="truncate text-sm font-semibold text-white">{option.label}</p>
+                                <span className="shrink-0 rounded-md border border-white/10 px-1.5 py-0.5 text-[10px] uppercase text-gray-500">
+                                  {option.type}
+                                </span>
+                              </div>
+                              <p className="mt-1 truncate text-xs text-gray-500">
+                                {option.documentCount} {option.documentCount === 1 ? 'document' : 'documents'}
+                                {option.description ? ` / ${option.description}` : ''}
+                              </p>
+                            </div>
+                            {isSelected && <Check size={16} className="shrink-0 text-violet-300" />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
             <div className="relative bg-[#121215] border border-white/10 rounded-xl shadow-2xl flex flex-col overflow-hidden">
               <textarea
                 ref={textareaRef}
@@ -691,6 +831,22 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                 rows={1}
                 disabled={isSending}
               />
+              {currentCollectionId && (
+                <div className="flex items-center gap-2 border-t border-white/5 px-3 py-2">
+                  <span className="inline-flex min-w-0 items-center gap-2 rounded-lg border border-violet-400/20 bg-violet-400/10 px-2.5 py-1.5 text-xs text-violet-100">
+                    <Database size={14} className="shrink-0 text-violet-200" />
+                    <span className="truncate">Attached: {selectedAttachmentLabel}</span>
+                    <button
+                      type="button"
+                      onClick={() => setCollectionId(null)}
+                      className="rounded-full p-0.5 text-violet-200 transition-colors hover:bg-violet-300/20 hover:text-white"
+                      aria-label="Clear attached collection"
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                </div>
+              )}
               <div className="flex gap-1 overflow-x-auto border-t border-white/5 px-3 py-2 scrollbar-hide">
                 {chatResponseModes.map((mode) => (
                   <button
@@ -714,6 +870,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                     type="button"
                     onClick={() => {
                       setShowRecentPrompts(false);
+                      setShowAttachmentTray(false);
                       setShowPromptTemplates((open) => !open);
                     }}
                     className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors ${showPromptTemplates
@@ -729,6 +886,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                     type="button"
                     onClick={() => {
                       setShowPromptTemplates(false);
+                      setShowAttachmentTray(false);
                       setShowRecentPrompts((open) => !open);
                     }}
                     className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors ${showRecentPrompts
@@ -740,7 +898,24 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                     <Clock3 size={16} />
                     <span className="hidden sm:inline">Recent</span>
                   </button>
-                  <TooltipBtn icon={Paperclip} tooltip="Attach" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPromptTemplates(false);
+                      setShowRecentPrompts(false);
+                      setShowAttachmentTray((open) => !open);
+                    }}
+                    className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors ${showAttachmentTray || currentCollectionId
+                      ? 'bg-emerald-500/15 text-emerald-200'
+                      : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                      }`}
+                    aria-expanded={showAttachmentTray}
+                  >
+                    <Paperclip size={16} />
+                    <span className="hidden sm:inline">
+                      {currentCollectionId ? 'Attached' : 'Attach'}
+                    </span>
+                  </button>
                   <TooltipBtn icon={Mic} tooltip="Voice Mode" />
                 </div>
                 <div className="flex items-center gap-3">
