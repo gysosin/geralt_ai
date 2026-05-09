@@ -1207,6 +1207,25 @@ def test_list_workflow_runs_sorts_newest_updated_first():
     assert [run["run_id"] for run in result.data] == ["newer", "older"]
 
 
+def test_list_workflow_runs_filters_by_status():
+    run_db = MagicMock()
+    run_db.find.return_value = []
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.list_workflow_runs(owner="mehul", status="blocked")
+
+    assert result.success is True
+    assert run_db.find.call_args.args[0] == {
+        "created_by": "mehul",
+        "archived": {"$ne": True},
+        "status": "blocked",
+    }
+
+
 def test_run_workflow_trigger_starts_matching_workflows():
     workflow_db = MagicMock()
     run_db = MagicMock()
