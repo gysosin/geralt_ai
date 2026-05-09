@@ -137,6 +137,52 @@ def test_update_agent_definition_endpoint_returns_updated_agent():
     assert data["tool_names"] == ["query.plan", "rag.aggregate"]
 
 
+def test_clone_agent_definition_endpoint_returns_cloned_agent():
+    agent_db = MagicMock()
+    agent_db.find_one.return_value = {
+        "agent_id": "agent-1",
+        "name": "Research Agent",
+        "description": "Find answers in uploaded files.",
+        "instruction": "Plan then search.",
+        "tool_names": ["query.plan", "rag.search"],
+        "model": "default",
+        "collection_ids": ["collection-1"],
+        "metadata": {},
+        "created_by": "anonymous",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+        "deleted": False,
+    }
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=agent_db,
+                    workflow_db=MagicMock(),
+                    run_db=MagicMock(),
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.post(
+                    "/api/v1/agent-platform/agents/agent-1/clone",
+                    json={"name": "Research Agent Copy"},
+                )
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["agent_id"] != "agent-1"
+    assert data["name"] == "Research Agent Copy"
+    assert data["metadata"]["cloned_from"] == "agent-1"
+    assert data["collection_ids"] == ["collection-1"]
+
+
 def test_agent_templates_endpoint_returns_built_ins():
     with patch("models.database.MongoClient"):
         with patch("core.clients.redis_client.redis.StrictRedis"):

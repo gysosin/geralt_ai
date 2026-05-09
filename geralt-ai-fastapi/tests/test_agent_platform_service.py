@@ -91,6 +91,46 @@ def test_update_agent_definition_persists_changed_fields():
     assert update["collection_ids"] == ["collection-1"]
 
 
+def test_clone_agent_copies_tools_collections_and_metadata():
+    agent_db = MagicMock()
+    audit_db = MagicMock()
+    agent_db.find_one.return_value = {
+        "agent_id": "agent-1",
+        "name": "Research Agent",
+        "description": "Find answers in uploaded files.",
+        "instruction": "Plan then search.",
+        "tool_names": ["query.plan", "rag.search"],
+        "model": "default",
+        "collection_ids": ["collection-1"],
+        "metadata": {"template_id": "document_research"},
+        "created_by": "mehul",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+        "deleted": False,
+    }
+    service = AgentPlatformService(
+        agent_db=agent_db,
+        workflow_db=MagicMock(),
+        audit_db=audit_db,
+    )
+
+    result = service.clone_agent(owner="mehul", agent_id="agent-1", name="Research Agent v2")
+
+    assert result.success is True
+    assert result.status_code == 201
+    inserted = agent_db.insert_one.call_args.args[0]
+    assert inserted["agent_id"] != "agent-1"
+    assert inserted["name"] == "Research Agent v2"
+    assert inserted["instruction"] == "Plan then search."
+    assert inserted["tool_names"] == ["query.plan", "rag.search"]
+    assert inserted["collection_ids"] == ["collection-1"]
+    assert inserted["metadata"] == {
+        "template_id": "document_research",
+        "cloned_from": "agent-1",
+    }
+    assert audit_db.insert_one.call_args_list[-1].args[0]["event"] == "agent.cloned"
+
+
 def test_create_agent_from_template_stores_template_metadata():
     agent_db = MagicMock()
     service = AgentPlatformService(agent_db=agent_db, workflow_db=MagicMock(), run_db=MagicMock())

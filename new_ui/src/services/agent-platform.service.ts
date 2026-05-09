@@ -299,6 +299,11 @@ export const agentPlatformService = {
         return response.data
     },
 
+    async cloneAgent(agentId: string, data: { name?: string }): Promise<AgentDefinition> {
+        const response = await api.post(`${BASE_PATH}/agents/${agentId}/clone`, data)
+        return response.data
+    },
+
     async listAgents(): Promise<AgentDefinition[]> {
         const response = await api.get(`${BASE_PATH}/agents`)
         return response.data
