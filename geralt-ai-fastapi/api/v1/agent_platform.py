@@ -372,6 +372,27 @@ async def list_workflow_templates(
 
 
 @router.post(
+    "/triggers/{trigger_name}/runs",
+    response_model=List[WorkflowRunResponse],
+    status_code=201,
+)
+async def run_workflow_trigger(
+    trigger_name: str,
+    request: WorkflowRunCreate,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> List[Dict[str, Any]]:
+    """Start all owned workflows that match a named automation trigger."""
+    result = service.run_workflow_trigger(
+        owner=_owner(current_user),
+        trigger_name=trigger_name,
+        inputs=request.inputs,
+        dry_run=request.dry_run,
+    )
+    return _result_or_error(result)
+
+
+@router.post(
     "/workflows/from-template",
     response_model=WorkflowDefinitionResponse,
     status_code=201,

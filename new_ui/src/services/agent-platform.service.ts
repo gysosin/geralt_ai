@@ -188,6 +188,14 @@ export const agentPlatformService = {
         return response.data
     },
 
+    async startTriggerRuns(
+        triggerName: string,
+        data: { inputs: Record<string, unknown>; dry_run: boolean }
+    ): Promise<WorkflowRun[]> {
+        const response = await api.post(`${BASE_PATH}/triggers/${encodeURIComponent(triggerName)}/runs`, data)
+        return response.data
+    },
+
     async listWorkflowRuns(workflowId?: string): Promise<WorkflowRun[]> {
         const params = workflowId ? `?workflow_id=${encodeURIComponent(workflowId)}` : ''
         const response = await api.get(`${BASE_PATH}/workflow-runs${params}`)
