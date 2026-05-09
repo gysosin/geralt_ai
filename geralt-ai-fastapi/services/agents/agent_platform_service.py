@@ -652,6 +652,103 @@ class AgentPlatformService(BaseService):
             "audit_events": audit_events,
         })
 
+    def import_platform(self, owner: str, payload: Dict[str, Any]) -> ServiceResult:
+        """Import agent and workflow definitions from a platform export."""
+        username = self.extract_username(owner)
+        agents = payload.get("agents") or []
+        workflows = payload.get("workflows") or []
+        agent_id_map: Dict[str, str] = {}
+        workflow_id_map: Dict[str, str] = {}
+
+        for agent in agents:
+            tool_names = agent.get("tool_names") or agent.get("tools") or []
+            validation_error = self._validate_tools(tool_names)
+            if validation_error:
+                return validation_error
+            if not str(agent.get("name", "")).strip():
+                return ServiceResult.fail("Imported agent name is required", 400)
+            if not str(agent.get("instruction", "")).strip():
+                return ServiceResult.fail("Imported agent instruction is required", 400)
+
+        normalized_workflows = []
+        for workflow in workflows:
+            if not str(workflow.get("name", "")).strip():
+                return ServiceResult.fail("Imported workflow name is required", 400)
+            steps = []
+            for index, step in enumerate(workflow.get("steps") or [], start=1):
+                tool_name = step.get("tool_name")
+                validation_error = self._validate_tools([tool_name])
+                if validation_error:
+                    return validation_error
+                steps.append({
+                    "step_id": step.get("step_id") or f"step-{index}",
+                    "name": step.get("name") or f"Step {index}",
+                    "tool_name": tool_name,
+                    "arguments": step.get("arguments") or {},
+                    "depends_on": step.get("depends_on") or [],
+                    "approval_required": bool(step.get("approval_required", False)),
+                })
+            dependency_error = self._validate_workflow_dependencies(steps)
+            if dependency_error:
+                return dependency_error
+            normalized_workflows.append((workflow, steps))
+
+        now = datetime.utcnow().isoformat()
+        for agent in agents:
+            old_agent_id = agent.get("agent_id") or str(uuid4())
+            new_agent_id = str(uuid4())
+            agent_id_map[old_agent_id] = new_agent_id
+            self.agent_db.insert_one({
+                "agent_id": new_agent_id,
+                "name": str(agent.get("name", "")).strip(),
+                "description": agent.get("description", ""),
+                "instruction": str(agent.get("instruction", "")).strip(),
+                "tool_names": agent.get("tool_names") or agent.get("tools") or [],
+                "model": agent.get("model") or "default",
+                "collection_ids": agent.get("collection_ids", []),
+                "metadata": agent.get("metadata", {}),
+                "created_by": username,
+                "created_at": now,
+                "updated_at": now,
+                "deleted": False,
+            })
+
+        for workflow, steps in normalized_workflows:
+            old_workflow_id = workflow.get("workflow_id") or str(uuid4())
+            new_workflow_id = str(uuid4())
+            workflow_id_map[old_workflow_id] = new_workflow_id
+            old_agent_id = workflow.get("agent_id")
+            self.workflow_db.insert_one({
+                "workflow_id": new_workflow_id,
+                "name": str(workflow.get("name", "")).strip(),
+                "description": workflow.get("description", ""),
+                "agent_id": agent_id_map.get(old_agent_id, old_agent_id),
+                "steps": steps,
+                "triggers": workflow.get("triggers", []),
+                "metadata": workflow.get("metadata", {}),
+                "created_by": username,
+                "created_at": now,
+                "updated_at": now,
+                "deleted": False,
+            })
+
+        self._record_audit(
+            "platform.imported",
+            owner,
+            "platform",
+            username,
+            {
+                "agents_imported": len(agents),
+                "workflows_imported": len(workflows),
+            },
+        )
+        return ServiceResult.ok({
+            "agents_imported": len(agents),
+            "workflows_imported": len(workflows),
+            "agent_id_map": agent_id_map,
+            "workflow_id_map": workflow_id_map,
+        }, status_code=201)
+
     def _validate_tools(self, tool_names: List[Optional[str]]) -> Optional[ServiceResult]:
         missing = [
             tool_name

@@ -96,6 +96,83 @@ def test_adk_manifest_exports_agents_workflows_and_mcp_pointer():
     assert result.data["workflows"][0]["triggers"] == ["document.uploaded"]
 
 
+def test_import_platform_creates_fresh_agents_and_workflows():
+    agent_db = MagicMock()
+    workflow_db = MagicMock()
+    service = AgentPlatformService(
+        agent_db=agent_db,
+        workflow_db=workflow_db,
+        run_db=MagicMock(),
+    )
+    payload = {
+        "agents": [
+            {
+                "agent_id": "old-agent",
+                "name": "Imported Planner",
+                "instruction": "Plan document work.",
+                "tool_names": ["query.plan"],
+                "model": "default",
+                "collection_ids": ["collection-1"],
+            }
+        ],
+        "workflows": [
+            {
+                "workflow_id": "old-workflow",
+                "name": "Imported Flow",
+                "description": "Imported workflow",
+                "agent_id": "old-agent",
+                "triggers": ["document.uploaded"],
+                "steps": [
+                    {
+                        "step_id": "step-1",
+                        "name": "Plan",
+                        "tool_name": "query.plan",
+                        "arguments": {"query": "{{input.query}}"},
+                    }
+                ],
+            }
+        ],
+    }
+
+    result = service.import_platform(owner="mehul", payload=payload)
+
+    assert result.success is True
+    assert result.data["agents_imported"] == 1
+    assert result.data["workflows_imported"] == 1
+    new_agent_id = result.data["agent_id_map"]["old-agent"]
+    new_workflow_id = result.data["workflow_id_map"]["old-workflow"]
+    assert new_agent_id != "old-agent"
+    assert new_workflow_id != "old-workflow"
+    assert agent_db.insert_one.call_args.args[0]["agent_id"] == new_agent_id
+    inserted_workflow = workflow_db.insert_one.call_args.args[0]
+    assert inserted_workflow["agent_id"] == new_agent_id
+    assert inserted_workflow["triggers"] == ["document.uploaded"]
+
+
+def test_import_platform_rejects_unknown_agent_tool():
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=MagicMock(),
+    )
+
+    result = service.import_platform(
+        owner="mehul",
+        payload={
+            "agents": [
+                {
+                    "name": "Broken Import",
+                    "instruction": "Use missing tools.",
+                    "tool_names": ["missing.tool"],
+                }
+            ]
+        },
+    )
+
+    assert result.success is False
+    assert result.status_code == 400
+
+
 def test_start_agent_run_executes_agent_tool_plan():
     agent_db = MagicMock()
     run_db = MagicMock()

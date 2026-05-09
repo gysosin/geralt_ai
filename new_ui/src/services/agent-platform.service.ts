@@ -90,6 +90,13 @@ export interface PlatformExport {
     audit_events: AuditEvent[]
 }
 
+export interface PlatformImportSummary {
+    agents_imported: number
+    workflows_imported: number
+    agent_id_map: Record<string, string>
+    workflow_id_map: Record<string, string>
+}
+
 const BASE_PATH = '/api/v1/agent-platform'
 
 export const agentPlatformService = {
@@ -224,6 +231,14 @@ export const agentPlatformService = {
 
     async exportPlatform(): Promise<PlatformExport> {
         const response = await api.get(`${BASE_PATH}/export`)
+        return response.data
+    },
+
+    async importPlatform(data: {
+        agents?: Array<Record<string, unknown>>
+        workflows?: Array<Record<string, unknown>>
+    }): Promise<PlatformImportSummary> {
+        const response = await api.post(`${BASE_PATH}/import`, data)
         return response.data
     },
 }
