@@ -1570,6 +1570,10 @@ class AgentPlatformService(BaseService):
                 if planned["status"] != "completed":
                     planned["message"] = f"Agent run {planned['status']}"
                 return planned
+            if planned["tool_name"] == "mcp.invoke":
+                planned["output"] = self._execute_mcp_invoke_tool(owner, planned["arguments"])
+                planned["status"] = "completed"
+                return planned
             else:
                 planned["output"] = self.tool_executor.execute(
                     planned["tool_name"],
@@ -1625,6 +1629,46 @@ class AgentPlatformService(BaseService):
             "agent_name": agent.get("name", ""),
             "status": self._workflow_run_status(executed_steps),
             "steps": executed_steps,
+        }
+
+    def _execute_mcp_invoke_tool(self, owner: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        server_id = str(arguments.get("server_id") or "").strip()
+        tool_name = str(arguments.get("tool_name") or "").strip()
+        tool_arguments = arguments.get("arguments") or {}
+
+        if not server_id:
+            raise ValueError("server_id is required")
+        if not tool_name:
+            raise ValueError("tool_name is required")
+        if not isinstance(tool_arguments, dict):
+            raise ValueError("arguments must be an object")
+
+        username = self.extract_username(owner)
+        server = self.mcp_server_db.find_one(
+            {
+                "server_id": server_id,
+                "created_by": username,
+                "deleted": {"$ne": True},
+            },
+            {"_id": 0},
+        )
+        if not server:
+            raise ValueError(f"MCP server {server_id} was not found")
+
+        declared_tools = server.get("tool_names") or []
+        if declared_tools and tool_name not in declared_tools:
+            raise ValueError(f"MCP tool {tool_name} is not registered on server {server_id}")
+
+        toolset = self._adk_toolset_manifest(server)
+        return {
+            "status": "planned",
+            "server_id": server_id,
+            "server_name": server.get("name", ""),
+            "transport": server.get("transport", ""),
+            "tool_name": tool_name,
+            "arguments": tool_arguments,
+            "tool_filter": toolset.get("tool_filter", []),
+            "connection_params": toolset.get("connection_params", {}),
         }
 
     def _execute_ready_steps(self, steps: List[Dict[str, Any]], owner: str) -> List[Dict[str, Any]]:

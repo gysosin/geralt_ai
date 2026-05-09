@@ -34,6 +34,7 @@ def test_agent_tools_endpoint_returns_mcp_ready_specs():
         "rag.aggregate",
         "collection.summarize",
         "query.plan",
+        "mcp.invoke",
     }
     assert all("inputSchema" in tool for tool in data["mcp_tools"])
 

@@ -893,6 +893,70 @@ def test_run_workflow_trigger_starts_matching_workflows():
     workflow_db.find.assert_called_once()
 
 
+def test_mcp_invoke_workflow_step_returns_adk_connection_plan():
+    workflow_db = MagicMock()
+    run_db = MagicMock()
+    mcp_server_db = MagicMock()
+    workflow_db.find_one.return_value = {
+        "workflow_id": "workflow-1",
+        "created_by": "mehul",
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Read workspace file",
+                "tool_name": "mcp.invoke",
+                "arguments": {
+                    "server_id": "mcp-1",
+                    "tool_name": "read_file",
+                    "arguments": {"path": "/tmp/report.txt"},
+                },
+                "depends_on": [],
+                "approval_required": False,
+            }
+        ],
+        "deleted": False,
+    }
+    mcp_server_db.find_one.return_value = {
+        "server_id": "mcp-1",
+        "name": "Filesystem MCP",
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+        "tool_names": ["read_file"],
+        "created_by": "mehul",
+        "deleted": False,
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=workflow_db,
+        run_db=run_db,
+        mcp_server_db=mcp_server_db,
+    )
+
+    result = service.start_workflow_run(
+        owner="mehul",
+        workflow_id="workflow-1",
+        inputs={},
+        dry_run=False,
+    )
+
+    assert result.success is True
+    inserted = run_db.insert_one.call_args.args[0]
+    output = inserted["steps"][0]["output"]
+    assert inserted["status"] == "completed"
+    assert output["status"] == "planned"
+    assert output["server_name"] == "Filesystem MCP"
+    assert output["tool_name"] == "read_file"
+    assert output["arguments"] == {"path": "/tmp/report.txt"}
+    assert output["connection_params"] == {
+        "type": "StdioConnectionParams",
+        "server_params": {
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+        },
+    }
+
+
 def test_list_workflow_triggers_counts_matching_workflows():
     workflow_db = MagicMock()
     workflow_db.find.return_value = [

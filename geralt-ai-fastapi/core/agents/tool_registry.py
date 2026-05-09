@@ -213,6 +213,41 @@ class AgentToolRegistry:
                 },
             ),
             AgentToolSpec(
+                name="mcp.invoke",
+                title="Plan MCP Tool Call",
+                description="Create an ADK-ready invocation plan for a registered external MCP tool.",
+                category="mcp",
+                required=["server_id", "tool_name", "arguments"],
+                parameters={
+                    "server_id": {
+                        "type": "string",
+                        "description": "Registered MCP server ID.",
+                        "minLength": 1,
+                    },
+                    "tool_name": {
+                        "type": "string",
+                        "description": "External MCP tool name to call.",
+                        "minLength": 1,
+                    },
+                    "arguments": {
+                        "type": "object",
+                        "description": "Arguments that should be passed to the MCP tool.",
+                    },
+                },
+                output_schema={
+                    "type": "object",
+                    "properties": {
+                        "status": {"type": "string"},
+                        "server_id": {"type": "string"},
+                        "server_name": {"type": "string"},
+                        "transport": {"type": "string"},
+                        "tool_name": {"type": "string"},
+                        "arguments": {"type": "object"},
+                        "connection_params": {"type": "object"},
+                    },
+                },
+            ),
+            AgentToolSpec(
                 name="query.plan",
                 title="Plan Query Route",
                 description="Classify a user query and return deterministic retrieval or workflow hints.",
