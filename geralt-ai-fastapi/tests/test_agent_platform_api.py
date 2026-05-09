@@ -270,6 +270,41 @@ def test_create_mcp_server_endpoint_records_external_tool_source():
     assert data["tool_names"] == ["search_docs"]
 
 
+def test_create_mcp_server_endpoint_rejects_local_streamable_http_url():
+    mcp_server_db = MagicMock()
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=MagicMock(),
+                    workflow_db=MagicMock(),
+                    run_db=MagicMock(),
+                    mcp_server_db=mcp_server_db,
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.post(
+                    "/api/v1/agent-platform/mcp-servers",
+                    json={
+                        "name": "Local MCP",
+                        "transport": "streamable_http",
+                        "url": "http://localhost:8000/mcp",
+                        "tool_names": ["search_docs"],
+                    },
+                )
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 400
+    assert "local or private" in response.json()["detail"]
+    mcp_server_db.insert_one.assert_not_called()
+
+
 def test_update_mcp_server_endpoint_returns_updated_server():
     mcp_server_db = MagicMock()
     mcp_server_db.find_one.return_value = {
