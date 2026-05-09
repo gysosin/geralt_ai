@@ -70,6 +70,14 @@ class AgentDefinitionResponse(BaseModel):
     updated_at: str
 
 
+class AgentRunCreate(BaseModel):
+    """Request to run a reusable agent directly."""
+
+    query: str = Field(min_length=1)
+    collection_ids: Optional[List[str]] = None
+    dry_run: bool = True
+
+
 class WorkflowStepDefinition(BaseModel):
     """A workflow step that invokes one registered tool."""
 
@@ -291,6 +299,28 @@ async def list_agent_definitions(
 ) -> List[Dict[str, Any]]:
     """List reusable agent definitions for the current owner."""
     return _result_or_error(service.list_agents(_owner(current_user)))
+
+
+@router.post(
+    "/agents/{agent_id}/runs",
+    response_model=WorkflowRunResponse,
+    status_code=201,
+)
+async def start_agent_run(
+    agent_id: str,
+    request: AgentRunCreate,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Create a workflow-style run directly from an agent definition."""
+    result = service.start_agent_run(
+        owner=_owner(current_user),
+        agent_id=agent_id,
+        query=request.query,
+        collection_ids=request.collection_ids,
+        dry_run=request.dry_run,
+    )
+    return _result_or_error(result)
 
 
 @router.get("/agents/{agent_id}", response_model=AgentDefinitionResponse)

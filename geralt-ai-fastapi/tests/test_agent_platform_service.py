@@ -56,6 +56,78 @@ def test_create_agent_definition_rejects_unknown_tool():
     assert "missing.tool" in result.error
 
 
+def test_start_agent_run_executes_agent_tool_plan():
+    agent_db = MagicMock()
+    run_db = MagicMock()
+    agent_db.find_one.return_value = {
+        "agent_id": "agent-1",
+        "name": "Planner",
+        "instruction": "Plan document questions.",
+        "tool_names": ["query.plan"],
+        "collection_ids": [],
+        "created_by": "mehul",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+        "deleted": False,
+    }
+    service = AgentPlatformService(
+        agent_db=agent_db,
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.start_agent_run(
+        owner="mehul",
+        agent_id="agent-1",
+        query="summarize these documents",
+        dry_run=False,
+    )
+
+    assert result.success is True
+    inserted = run_db.insert_one.call_args.args[0]
+    assert inserted["workflow_id"] == "agent:agent-1"
+    assert inserted["agent_id"] == "agent-1"
+    assert inserted["status"] == "completed"
+    assert inserted["steps"][0]["tool_name"] == "query.plan"
+    assert inserted["steps"][0]["output"]["query_type"] == "summary"
+
+
+def test_start_agent_run_uses_agent_collection_defaults():
+    agent_db = MagicMock()
+    run_db = MagicMock()
+    agent_db.find_one.return_value = {
+        "agent_id": "agent-1",
+        "name": "Aggregator",
+        "instruction": "Aggregate documents.",
+        "tool_names": ["rag.aggregate"],
+        "collection_ids": ["collection-1"],
+        "created_by": "mehul",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+        "deleted": False,
+    }
+    service = AgentPlatformService(
+        agent_db=agent_db,
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.start_agent_run(
+        owner="mehul",
+        agent_id="agent-1",
+        query="total amount by vendor",
+        dry_run=True,
+    )
+
+    assert result.success is True
+    inserted = run_db.insert_one.call_args.args[0]
+    assert inserted["status"] == "planned"
+    assert inserted["steps"][0]["arguments"] == {
+        "query": "total amount by vendor",
+        "collection_ids": ["collection-1"],
+    }
+
+
 def test_create_workflow_definition_validates_step_tools():
     workflow_db = MagicMock()
     service = AgentPlatformService(agent_db=MagicMock(), workflow_db=workflow_db)
