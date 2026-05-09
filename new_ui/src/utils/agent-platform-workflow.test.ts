@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildWorkflowSteps, mcpToolToWorkflowStepDraft } from './agent-platform-workflow';
+import { buildWorkflowSteps, canRunWorkflowAgain, mcpToolToWorkflowStepDraft } from './agent-platform-workflow';
 
 describe('agent platform workflow helpers', () => {
   it('builds validated workflow steps from editable drafts', () => {
@@ -86,5 +86,14 @@ describe('agent platform workflow helpers', () => {
       dependsOn: 'step-2',
       approvalRequired: true,
     });
+  });
+
+  it('allows safe run-again actions for historical workflow run statuses only', () => {
+    expect(canRunWorkflowAgain('planned')).toBe(true);
+    expect(canRunWorkflowAgain('completed')).toBe(true);
+    expect(canRunWorkflowAgain('failed')).toBe(true);
+    expect(canRunWorkflowAgain('canceled')).toBe(true);
+    expect(canRunWorkflowAgain('pending')).toBe(false);
+    expect(canRunWorkflowAgain('pending_approval')).toBe(false);
   });
 });
