@@ -12,6 +12,7 @@ import {
   History,
   Search,
   BrainCircuit,
+  WandSparkles,
   ShieldCheck,
   Zap,
   Workflow
@@ -25,6 +26,7 @@ export const MENU_ITEMS = [
   { label: 'Chat', icon: <MessageSquare size={20} />, path: '/chat' },
   { label: 'Agents', icon: <BotIcon size={20} />, path: '/bots' },
   { label: 'Agent Compare', icon: <GitCompareArrows size={20} />, path: '/agents/compare' },
+  { label: 'Agent Templates', icon: <WandSparkles size={20} />, path: '/agents/templates' },
   { label: 'Agent Platform', icon: <Workflow size={20} />, path: '/agent-platform' },
   { label: 'Knowledge', icon: <Files size={20} />, path: '/collections' },
   { label: 'Collection Health', icon: <DatabaseZap size={20} />, path: '/collections/health' },

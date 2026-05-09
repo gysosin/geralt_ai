@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Menu, Bell, Search, LogOut, ChevronLeft, Plus, Command, MessageSquare, Bot, Files, PieChart, History, Settings, Workflow, BarChart3, Sparkles, GitCompareArrows } from 'lucide-react';
+import { Menu, Bell, Search, LogOut, ChevronLeft, Plus, Command, MessageSquare, Bot, Files, PieChart, History, Settings, Workflow, BarChart3, Sparkles, GitCompareArrows, WandSparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MENU_ITEMS, APP_NAME } from '../constants';
 import CommandPalette, { type CommandPaletteItem } from '../src/components/CommandPalette';
@@ -65,6 +65,15 @@ const Layout: React.FC<LayoutProps> = ({ children, onLogout }) => {
       path: '/agents/compare',
       icon: <GitCompareArrows size={18} />,
       keywords: ['compare', 'catalog', 'readiness', 'agents', 'bots'],
+    },
+    {
+      id: 'agent-templates',
+      label: 'Open agent templates',
+      description: 'Start new agents from curated workflow blueprints.',
+      group: 'Agents',
+      path: '/agents/templates',
+      icon: <WandSparkles size={18} />,
+      keywords: ['templates', 'blueprints', 'starter', 'agents', 'bots'],
     },
     {
       id: 'agent-platform',
