@@ -210,6 +210,23 @@ export const agentPlatformService = {
         return response.data
     },
 
+    async updateMcpServer(
+        serverId: string,
+        data: {
+            name?: string
+            transport?: string
+            url?: string
+            command?: string
+            args?: string[]
+            tool_names?: string[]
+            description?: string
+            metadata?: Record<string, unknown>
+        }
+    ): Promise<McpServer> {
+        const response = await api.patch(`${BASE_PATH}/mcp-servers/${serverId}`, data)
+        return response.data
+    },
+
     async listMcpServers(): Promise<McpServer[]> {
         const response = await api.get(`${BASE_PATH}/mcp-servers`)
         return response.data

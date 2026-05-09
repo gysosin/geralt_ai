@@ -103,6 +103,19 @@ class McpServerCreate(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+class McpServerUpdate(BaseModel):
+    """Request to update an external MCP server."""
+
+    name: Optional[str] = None
+    transport: Optional[str] = None
+    url: Optional[str] = None
+    command: Optional[str] = None
+    args: Optional[List[str]] = None
+    tool_names: Optional[List[str]] = None
+    description: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
 class McpServerResponse(BaseModel):
     """Stored external MCP server registration."""
 
@@ -471,6 +484,29 @@ async def list_mcp_servers(
 ) -> List[Dict[str, Any]]:
     """List external MCP servers."""
     return _result_or_error(service.list_mcp_servers(_owner(current_user)))
+
+
+@router.patch("/mcp-servers/{server_id}", response_model=McpServerResponse)
+async def update_mcp_server(
+    server_id: str,
+    request: McpServerUpdate,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Update an external MCP server."""
+    result = service.update_mcp_server(
+        owner=_owner(current_user),
+        server_id=server_id,
+        name=request.name,
+        transport=request.transport,
+        url=request.url,
+        command=request.command,
+        args=request.args,
+        tool_names=request.tool_names,
+        description=request.description,
+        metadata=request.metadata,
+    )
+    return _result_or_error(result)
 
 
 @router.delete("/mcp-servers/{server_id}")

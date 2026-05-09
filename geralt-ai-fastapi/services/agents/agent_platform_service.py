@@ -236,6 +236,81 @@ class AgentPlatformService(BaseService):
         )
         return ServiceResult.ok([self._public_document(doc) for doc in docs])
 
+    def update_mcp_server(
+        self,
+        owner: str,
+        server_id: str,
+        name: Optional[str] = None,
+        transport: Optional[str] = None,
+        url: Optional[str] = None,
+        command: Optional[str] = None,
+        args: Optional[List[str]] = None,
+        tool_names: Optional[List[str]] = None,
+        description: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> ServiceResult:
+        """Update an external MCP server registration."""
+        current = self.mcp_server_db.find_one(
+            {
+                "server_id": server_id,
+                "created_by": self.extract_username(owner),
+                "deleted": {"$ne": True},
+            },
+            {"_id": 0},
+        )
+        if not current:
+            return ServiceResult.fail("MCP server not found", 404)
+
+        updates: Dict[str, Any] = {}
+        if name is not None:
+            if not name.strip():
+                return ServiceResult.fail("MCP server name is required", 400)
+            updates["name"] = name.strip()
+        if transport is not None:
+            if transport not in {"streamable_http", "stdio"}:
+                return ServiceResult.fail("Unsupported MCP transport", 400)
+            updates["transport"] = transport
+        if url is not None:
+            updates["url"] = url.strip()
+        if command is not None:
+            updates["command"] = command.strip()
+        if args is not None:
+            updates["args"] = args
+        if tool_names is not None:
+            updates["tool_names"] = tool_names
+        if description is not None:
+            updates["description"] = description
+        if metadata is not None:
+            updates["metadata"] = metadata
+
+        merged = {
+            **current,
+            **updates,
+        }
+        if merged.get("transport") == "streamable_http" and not merged.get("url"):
+            return ServiceResult.fail("MCP server URL is required for streamable_http", 400)
+        if merged.get("transport") == "stdio" and not merged.get("command"):
+            return ServiceResult.fail("MCP server command is required for stdio", 400)
+
+        if not updates:
+            return ServiceResult.ok(self._public_document(current))
+
+        updates["updated_at"] = datetime.utcnow().isoformat()
+        self.mcp_server_db.update_one(
+            {
+                "server_id": server_id,
+                "created_by": self.extract_username(owner),
+                "deleted": {"$ne": True},
+            },
+            {"$set": updates},
+        )
+        updated_doc = {
+            **current,
+            **updates,
+        }
+        self._record_audit("mcp_server.updated", owner, "mcp_server", server_id)
+        return ServiceResult.ok(self._public_document(updated_doc))
+
     def delete_mcp_server(self, owner: str, server_id: str) -> ServiceResult:
         """Soft-delete an external MCP server registration."""
         result = self.mcp_server_db.update_one(

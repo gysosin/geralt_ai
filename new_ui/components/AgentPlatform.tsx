@@ -63,6 +63,7 @@ const AgentPlatform: React.FC = () => {
   const [mcpName, setMcpName] = useState('Docs MCP');
   const [mcpUrl, setMcpUrl] = useState('');
   const [mcpToolNames, setMcpToolNames] = useState('');
+  const [editingMcpServerId, setEditingMcpServerId] = useState('');
 
   const [workflowName, setWorkflowName] = useState('Document Aggregation Workflow');
   const [workflowAgentId, setWorkflowAgentId] = useState('');
@@ -248,18 +249,34 @@ const AgentPlatform: React.FC = () => {
     setIsSubmitting(true);
     setError('');
     try {
-      const created = await agentPlatformService.createMcpServer({
+      const payload = {
         name: mcpName,
         transport: 'streamable_http',
         url: mcpUrl,
         tool_names: splitIds(mcpToolNames),
-      });
-      setMcpServers((current) => [created, ...current]);
+      };
+      if (editingMcpServerId) {
+        const updated = await agentPlatformService.updateMcpServer(editingMcpServerId, payload);
+        setMcpServers((current) => current.map((server) => (
+          server.server_id === updated.server_id ? updated : server
+        )));
+        setEditingMcpServerId('');
+      } else {
+        const created = await agentPlatformService.createMcpServer(payload);
+        setMcpServers((current) => [created, ...current]);
+      }
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'Unable to register MCP server');
+      setError(submitError instanceof Error ? submitError.message : 'Unable to save MCP server');
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const editMcpServer = (server: McpServer) => {
+    setEditingMcpServerId(server.server_id);
+    setMcpName(server.name);
+    setMcpUrl(server.url);
+    setMcpToolNames(server.tool_names.join(', '));
   };
 
   const selectedTemplate = templates.find((template) => template.template_id === selectedTemplateId);
@@ -422,6 +439,7 @@ const AgentPlatform: React.FC = () => {
     try {
       await agentPlatformService.deleteMcpServer(serverId);
       setMcpServers((current) => current.filter((server) => server.server_id !== serverId));
+      if (editingMcpServerId === serverId) setEditingMcpServerId('');
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to delete MCP server');
     } finally {
@@ -783,7 +801,7 @@ const AgentPlatform: React.FC = () => {
                 className="h-11 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-medium flex items-center justify-center gap-2"
               >
                 {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Settings2 size={18} />}
-                Register
+                {editingMcpServerId ? 'Save' : 'Register'}
               </button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -793,12 +811,20 @@ const AgentPlatform: React.FC = () => {
                     <p className="text-sm text-white truncate">{server.name}</p>
                     <p className="text-xs text-gray-500 font-mono truncate">{server.url || server.command}</p>
                   </div>
-                  <button
-                    onClick={() => deleteMcpServer(server.server_id)}
-                    className="p-2 rounded-lg text-gray-500 hover:text-red-300 hover:bg-red-500/10"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => editMcpServer(server)}
+                      className="p-2 rounded-lg text-gray-500 hover:text-emerald-300 hover:bg-emerald-500/10"
+                    >
+                      <Settings2 size={16} />
+                    </button>
+                    <button
+                      onClick={() => deleteMcpServer(server.server_id)}
+                      className="p-2 rounded-lg text-gray-500 hover:text-red-300 hover:bg-red-500/10"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
                 </div>
               ))}
               {mcpServers.length === 0 && <p className="text-sm text-gray-500">No external MCP servers</p>}
