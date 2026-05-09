@@ -129,6 +129,7 @@ def test_start_agent_run_endpoint_executes_agent_tool_plan():
     assert response.status_code == 201
     data = response.json()
     assert data["workflow_id"] == "agent:agent-1"
+    assert data["agent_id"] == "agent-1"
     assert data["status"] == "completed"
     assert data["steps"][0]["output"]["query_type"] == "summary"
 
@@ -547,6 +548,7 @@ def test_retry_workflow_run_endpoint_creates_new_run():
     assert response.status_code == 201
     data = response.json()
     assert data["run_id"] != "run-1"
+    assert data["retried_from"] == "run-1"
     assert data["status"] == "completed"
     assert data["steps"][0]["output"]["query_type"] == "summary"
 
