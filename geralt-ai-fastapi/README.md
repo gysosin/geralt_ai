@@ -135,6 +135,8 @@ uvicorn main:app --reload --port 8000
 ```
 *   **API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
 *   **Root**: [http://localhost:8000](http://localhost:8000)
+*   **Liveness**: [http://localhost:8000/health](http://localhost:8000/health)
+*   **Readiness**: [http://localhost:8000/ready](http://localhost:8000/ready) returns `503` if MongoDB, Redis, or MinIO is unavailable.
 
 ### 3. Start the Celery Worker
 This processes background tasks like document ingestion, embedding generation, and OCR.

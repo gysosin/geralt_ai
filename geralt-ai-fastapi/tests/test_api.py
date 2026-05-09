@@ -25,6 +25,58 @@ class TestHealthEndpoints:
                     data = response.json()
                     assert data["status"] == "healthy"
                     assert "version" in data
+
+    def test_ready_check_returns_ready_when_dependencies_are_available(self, monkeypatch):
+        """Test /ready returns readiness details for healthy dependencies."""
+        with patch('models.database.MongoClient'):
+            with patch('core.clients.redis_client.redis.StrictRedis'):
+                with patch('core.clients.minio_client.Minio'):
+                    from fastapi.testclient import TestClient
+                    import main
+
+                    monkeypatch.setattr(
+                        main.app_factory,
+                        "_readiness_checks",
+                        lambda: {
+                            "mongodb": {"status": "ok"},
+                            "redis": {"status": "ok"},
+                            "minio": {"status": "ok"},
+                        },
+                    )
+
+                    client = TestClient(main.app)
+                    response = client.get("/ready")
+
+                    assert response.status_code == 200
+                    data = response.json()
+                    assert data["status"] == "ready"
+                    assert data["checks"]["mongodb"]["status"] == "ok"
+
+    def test_ready_check_returns_503_when_dependency_fails(self, monkeypatch):
+        """Test /ready reports not_ready when any dependency fails."""
+        with patch('models.database.MongoClient'):
+            with patch('core.clients.redis_client.redis.StrictRedis'):
+                with patch('core.clients.minio_client.Minio'):
+                    from fastapi.testclient import TestClient
+                    import main
+
+                    monkeypatch.setattr(
+                        main.app_factory,
+                        "_readiness_checks",
+                        lambda: {
+                            "mongodb": {"status": "ok"},
+                            "redis": {"status": "unavailable", "error_type": "ConnectionError"},
+                            "minio": {"status": "ok"},
+                        },
+                    )
+
+                    client = TestClient(main.app)
+                    response = client.get("/ready")
+
+                    assert response.status_code == 503
+                    data = response.json()
+                    assert data["status"] == "not_ready"
+                    assert data["checks"]["redis"]["error_type"] == "ConnectionError"
     
     def test_root_endpoint(self):
         """Test root endpoint returns API info."""
@@ -42,6 +94,7 @@ class TestHealthEndpoints:
                     assert data["name"] == "GeraltAI API"
                     assert "version" in data
                     assert "docs" in data
+                    assert data["ready"] == "/ready"
 
 
 class TestConfigModule:
