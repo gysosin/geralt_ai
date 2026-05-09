@@ -281,6 +281,26 @@ class AgentPlatformService(BaseService):
         )
         return ServiceResult.ok([self._public_document(doc) for doc in docs])
 
+    def list_external_mcp_tools(self, owner: str) -> ServiceResult:
+        """List tool names exposed by registered external MCP servers."""
+        docs = self.mcp_server_db.find(
+            {"created_by": self.extract_username(owner), "deleted": {"$ne": True}},
+            {"_id": 0},
+        )
+        tools = []
+        for server in docs:
+            target = server.get("url") or server.get("command", "")
+            for tool_name in sorted(server.get("tool_names") or []):
+                tools.append({
+                    "server_id": server.get("server_id"),
+                    "server_name": server.get("name"),
+                    "tool_name": tool_name,
+                    "transport": server.get("transport"),
+                    "target": target,
+                    "health_status": server.get("last_health_status"),
+                })
+        return ServiceResult.ok(tools)
+
     def update_mcp_server(
         self,
         owner: str,

@@ -20,6 +20,7 @@ import {
   type AgentDefinition,
   type AgentTemplate,
   type AgentTool,
+  type ExternalMcpTool,
   type McpServer,
   type PendingApproval,
   type PlatformStats,
@@ -49,6 +50,7 @@ const AgentPlatform: React.FC = () => {
   const [agentTemplates, setAgentTemplates] = useState<AgentTemplate[]>([]);
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
+  const [externalMcpTools, setExternalMcpTools] = useState<ExternalMcpTool[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([]);
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
   const [automationTriggers, setAutomationTriggers] = useState<WorkflowTrigger[]>([]);
@@ -92,11 +94,12 @@ const AgentPlatform: React.FC = () => {
     setIsLoading(true);
     setError('');
     try {
-      const [toolResult, agentTemplateResult, agentResult, mcpServerResult, workflowResult, templateResult, triggerResult, runResult, approvalResult, auditResult, statsResult] = await Promise.allSettled([
+      const [toolResult, agentTemplateResult, agentResult, mcpServerResult, externalMcpToolResult, workflowResult, templateResult, triggerResult, runResult, approvalResult, auditResult, statsResult] = await Promise.allSettled([
         agentPlatformService.getTools(),
         agentPlatformService.listAgentTemplates(),
         agentPlatformService.listAgents(),
         agentPlatformService.listMcpServers(),
+        agentPlatformService.listExternalMcpTools(),
         agentPlatformService.listWorkflows(),
         agentPlatformService.listWorkflowTemplates(),
         agentPlatformService.listWorkflowTriggers(),
@@ -110,6 +113,7 @@ const AgentPlatform: React.FC = () => {
       const loadedAgents = agentResult.status === 'fulfilled' ? agentResult.value || [] : [];
       setAgents(loadedAgents);
       setMcpServers(mcpServerResult.status === 'fulfilled' ? mcpServerResult.value || [] : []);
+      setExternalMcpTools(externalMcpToolResult.status === 'fulfilled' ? externalMcpToolResult.value || [] : []);
       const loadedWorkflows = workflowResult.status === 'fulfilled' ? workflowResult.value || [] : [];
       setWorkflows(loadedWorkflows);
       const loadedTemplates = templateResult.status === 'fulfilled' ? templateResult.value || [] : [];
@@ -128,7 +132,7 @@ const AgentPlatform: React.FC = () => {
       if (!runAgentId && loadedAgents?.[0]?.agent_id) {
         setRunAgentId(loadedAgents[0].agent_id);
       }
-      if ([toolResult, agentTemplateResult, agentResult, mcpServerResult, workflowResult, templateResult, triggerResult, runResult, approvalResult, auditResult, statsResult].some((result) => result.status === 'rejected')) {
+      if ([toolResult, agentTemplateResult, agentResult, mcpServerResult, externalMcpToolResult, workflowResult, templateResult, triggerResult, runResult, approvalResult, auditResult, statsResult].some((result) => result.status === 'rejected')) {
         setError('Some platform records are unavailable. Tool registry is still loaded when the API is reachable.');
       }
     } catch (loadError) {
@@ -885,6 +889,21 @@ const AgentPlatform: React.FC = () => {
                 {editingMcpServerId ? 'Save' : 'Register'}
               </button>
             </div>
+            {externalMcpTools.length > 0 && (
+              <div className="rounded-xl border border-white/5 bg-black/20 p-4">
+                <p className="text-xs text-gray-500 uppercase tracking-widest mb-3">External Tools</p>
+                <div className="flex flex-wrap gap-2">
+                  {externalMcpTools.slice(0, 12).map((tool) => (
+                    <span
+                      key={`${tool.server_id}-${tool.tool_name}`}
+                      className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-gray-300"
+                    >
+                      {tool.tool_name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {mcpServers.map((server) => (
                 <div key={server.server_id} className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-black/20 px-4 py-3">

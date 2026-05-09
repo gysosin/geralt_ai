@@ -536,6 +536,15 @@ async def list_mcp_servers(
     return _result_or_error(service.list_mcp_servers(_owner(current_user)))
 
 
+@router.get("/mcp-servers/tools", response_model=List[Dict[str, Any]])
+async def list_external_mcp_tools(
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> List[Dict[str, Any]]:
+    """List flattened tools declared by registered external MCP servers."""
+    return _result_or_error(service.list_external_mcp_tools(_owner(current_user)))
+
+
 @router.patch("/mcp-servers/{server_id}", response_model=McpServerResponse)
 async def update_mcp_server(
     server_id: str,

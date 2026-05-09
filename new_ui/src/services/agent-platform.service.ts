@@ -52,6 +52,15 @@ export interface McpServer {
     updated_at: string
 }
 
+export interface ExternalMcpTool {
+    server_id: string
+    server_name: string
+    tool_name: string
+    transport: string
+    target: string
+    health_status?: string
+}
+
 export interface WorkflowDefinition {
     workflow_id: string
     name: string
@@ -287,6 +296,11 @@ export const agentPlatformService = {
 
     async listMcpServers(): Promise<McpServer[]> {
         const response = await api.get(`${BASE_PATH}/mcp-servers`)
+        return response.data
+    },
+
+    async listExternalMcpTools(): Promise<ExternalMcpTool[]> {
+        const response = await api.get(`${BASE_PATH}/mcp-servers/tools`)
         return response.data
     },
 
