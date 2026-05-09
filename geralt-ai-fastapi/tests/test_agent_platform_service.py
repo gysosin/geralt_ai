@@ -263,6 +263,57 @@ def test_check_mcp_server_records_missing_stdio_command():
     assert "not found" in result.data["last_health_message"]
 
 
+def test_check_all_mcp_servers_updates_each_registered_server():
+    mcp_server_db = MagicMock()
+    mcp_server_db.find.return_value = [
+        {
+            "server_id": "mcp-1",
+            "name": "Docs MCP",
+            "transport": "streamable_http",
+            "url": "https://docs.example.com/mcp",
+            "command": "",
+            "args": [],
+            "tool_names": ["search_docs"],
+            "metadata": {},
+            "created_by": "mehul",
+            "created_at": "2026-05-09T00:00:00",
+            "updated_at": "2026-05-09T00:00:00",
+            "deleted": False,
+        },
+        {
+            "server_id": "mcp-2",
+            "name": "Filesystem MCP",
+            "transport": "stdio",
+            "url": "",
+            "command": "npx",
+            "args": ["-y", "server"],
+            "tool_names": ["read_file"],
+            "metadata": {},
+            "created_by": "mehul",
+            "created_at": "2026-05-09T00:00:00",
+            "updated_at": "2026-05-09T00:00:00",
+            "deleted": False,
+        },
+    ]
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=MagicMock(),
+        mcp_server_db=mcp_server_db,
+    )
+    service._probe_mcp_server = MagicMock(side_effect=[
+        ("reachable", "HTTP 200 response received from MCP endpoint"),
+        ("reachable", "Command available at /usr/bin/npx"),
+    ])
+
+    result = service.check_all_mcp_servers(owner="mehul")
+
+    assert result.success is True
+    assert [server["server_id"] for server in result.data] == ["mcp-1", "mcp-2"]
+    assert [server["last_health_status"] for server in result.data] == ["reachable", "reachable"]
+    assert mcp_server_db.update_one.call_count == 2
+
+
 def test_list_external_mcp_tools_flattens_registered_servers():
     mcp_server_db = MagicMock()
     mcp_server_db.find.return_value = [

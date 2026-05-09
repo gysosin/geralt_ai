@@ -316,6 +316,11 @@ export const agentPlatformService = {
         return response.data
     },
 
+    async checkAllMcpServers(): Promise<McpServer[]> {
+        const response = await api.post(`${BASE_PATH}/mcp-servers/health-checks`)
+        return response.data
+    },
+
     async startAgentRun(
         agentId: string,
         data: { query: string; collection_ids?: string[]; dry_run: boolean }

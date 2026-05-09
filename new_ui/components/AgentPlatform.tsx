@@ -536,6 +536,19 @@ const AgentPlatform: React.FC = () => {
     }
   };
 
+  const checkAllMcpServers = async () => {
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const updated = await agentPlatformService.checkAllMcpServers();
+      setMcpServers(updated);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to check MCP servers');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const exportPlatform = async () => {
     setIsSubmitting(true);
     setError('');
@@ -893,7 +906,17 @@ const AgentPlatform: React.FC = () => {
           </section>
 
           <section className="border border-white/5 bg-surface/30 rounded-2xl p-5 space-y-4">
-            <h2 className="text-lg font-semibold text-white">External MCP Servers</h2>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold text-white">External MCP Servers</h2>
+              <button
+                onClick={checkAllMcpServers}
+                disabled={isSubmitting || mcpServers.length === 0}
+                className="h-9 px-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 disabled:opacity-60 text-xs text-white flex items-center gap-2"
+              >
+                <RefreshCw size={14} className={isSubmitting ? 'animate-spin' : ''} />
+                Check All
+              </button>
+            </div>
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_0.9fr_1.4fr_1fr_auto] gap-3">
               <input
                 value={mcpName}

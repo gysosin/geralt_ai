@@ -414,6 +414,41 @@ class AgentPlatformService(BaseService):
         )
         return ServiceResult.ok(self._public_document({**current, **updates}))
 
+    def check_all_mcp_servers(self, owner: str) -> ServiceResult:
+        """Check every registered MCP server for the current owner."""
+        docs = self.mcp_server_db.find(
+            {"created_by": self.extract_username(owner), "deleted": {"$ne": True}},
+            {"_id": 0},
+        )
+        checked_servers = []
+        for server in docs:
+            status, message = self._probe_mcp_server(server)
+            now = datetime.utcnow().isoformat()
+            updates = {
+                "last_health_status": status,
+                "last_health_message": message,
+                "last_health_checked_at": now,
+                "updated_at": now,
+            }
+            server_id = server.get("server_id")
+            self.mcp_server_db.update_one(
+                {
+                    "server_id": server_id,
+                    "created_by": self.extract_username(owner),
+                    "deleted": {"$ne": True},
+                },
+                {"$set": updates},
+            )
+            self._record_audit(
+                "mcp_server.health_checked",
+                owner,
+                "mcp_server",
+                server_id,
+                {"status": status},
+            )
+            checked_servers.append(self._public_document({**server, **updates}))
+        return ServiceResult.ok(checked_servers)
+
     def _probe_mcp_server(self, server: Dict[str, Any]) -> tuple[str, str]:
         transport = server.get("transport")
         if transport == "streamable_http":

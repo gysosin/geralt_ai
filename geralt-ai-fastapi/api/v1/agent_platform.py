@@ -548,6 +548,15 @@ async def list_external_mcp_tools(
     return _result_or_error(service.list_external_mcp_tools(_owner(current_user)))
 
 
+@router.post("/mcp-servers/health-checks", response_model=List[McpServerResponse])
+def check_all_mcp_servers(
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> List[Dict[str, Any]]:
+    """Check every registered external MCP server target."""
+    return _result_or_error(service.check_all_mcp_servers(_owner(current_user)))
+
+
 @router.patch("/mcp-servers/{server_id}", response_model=McpServerResponse)
 async def update_mcp_server(
     server_id: str,
