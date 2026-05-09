@@ -802,6 +802,16 @@ async def get_workflow_run(
     return _result_or_error(service.get_workflow_run(_owner(current_user), run_id))
 
 
+@router.get("/workflow-runs/{run_id}/trace", response_model=Dict[str, Any])
+async def get_workflow_run_trace(
+    run_id: str,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Get a compact execution timeline for one workflow run."""
+    return _result_or_error(service.get_workflow_run_trace(_owner(current_user), run_id))
+
+
 @router.post(
     "/workflow-runs/{run_id}/steps/{step_id}/approve",
     response_model=WorkflowRunResponse,

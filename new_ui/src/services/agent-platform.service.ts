@@ -103,6 +103,17 @@ export interface PendingApproval {
     created_at: string
 }
 
+export interface WorkflowRunTrace {
+    run_id: string
+    workflow_id: string
+    status: string
+    dry_run: boolean
+    created_at: string
+    updated_at: string
+    lineage: Record<string, string | null>
+    steps: Array<Record<string, unknown>>
+}
+
 export interface AuditEvent {
     event: string
     subject_type: string
@@ -378,6 +389,11 @@ export const agentPlatformService = {
 
     async listPendingApprovals(): Promise<PendingApproval[]> {
         const response = await api.get(`${BASE_PATH}/workflow-runs/pending-approvals`)
+        return response.data
+    },
+
+    async getWorkflowRunTrace(runId: string): Promise<WorkflowRunTrace> {
+        const response = await api.get(`${BASE_PATH}/workflow-runs/${runId}/trace`)
         return response.data
     },
 
