@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
@@ -11,12 +11,13 @@ import Analytics from './components/Analytics';
 import History from './components/History';
 import HistoryDetail from './components/HistoryDetail';
 import Settings from './components/Settings';
-import AgentPlatform from './components/AgentPlatform';
 import Auth from './components/Auth';
 import { AuthCallback } from './src/pages/AuthCallback';
 import { useAuthStore } from './src/store';
 import { ProtectedRoute, PublicRoute } from './src/components/auth';
 import NotificationProvider from './src/components/NotificationProvider';
+
+const AgentPlatform = lazy(() => import('./components/AgentPlatform'));
 
 const App: React.FC = () => {
   const { isAuthenticated, logout } = useAuthStore();
@@ -72,7 +73,14 @@ const App: React.FC = () => {
 
                     <Route path="bots" element={<Bots />} />
                     <Route path="bots/:id" element={<BotDetail />} />
-                    <Route path="agent-platform" element={<AgentPlatform />} />
+                    <Route
+                      path="agent-platform"
+                      element={
+                        <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-gray-500">Loading workspace</div>}>
+                          <AgentPlatform />
+                        </Suspense>
+                      }
+                    />
 
                     <Route path="collections" element={<Collections />} />
                     <Route path="collections/:id" element={<CollectionDetail />} />
