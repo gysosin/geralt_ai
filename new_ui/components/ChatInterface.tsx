@@ -5,7 +5,7 @@ import {
   MoreHorizontal, ChevronDown, X,
   Maximize2, Share, ThumbsUp, ThumbsDown, Copy,
   ArrowRight, Menu, Loader2, Edit, BookOpenText, Search, Clock3, Trash2,
-  Database, FolderOpen, Check, AlertCircle, AlertTriangle, Keyboard
+  Database, FolderOpen, Check, AlertCircle, AlertTriangle, Keyboard, Bookmark, Save
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../src/store/auth.store';
@@ -49,6 +49,13 @@ import { buildChatPreflightSummary } from '../src/utils/chat-preflight';
 import { evaluateChatPromptQuality } from '../src/utils/chat-prompt-quality';
 import { evaluateChatSendGuard } from '../src/utils/chat-send-guard';
 import { chatComposerShortcuts } from '../src/utils/chat-shortcuts';
+import {
+  addChatSnippet,
+  CHAT_SNIPPETS_STORAGE_KEY,
+  parseChatSnippets,
+  removeChatSnippet,
+  type ChatSnippet,
+} from '../src/utils/chat-snippets';
 
 const SUGGESTIONS = [
   { title: "Analyze Financials", desc: "Review Q3 profit margins vs Q2" },
@@ -108,6 +115,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
   const [showRecentPrompts, setShowRecentPrompts] = useState(false);
   const [showAttachmentTray, setShowAttachmentTray] = useState(false);
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
+  const [showSnippets, setShowSnippets] = useState(false);
   const [promptTemplateQuery, setPromptTemplateQuery] = useState('');
   const [promptTemplateFilter, setPromptTemplateFilter] = useState<ChatPromptTemplateFilter>('all');
   const [responseModeId, setResponseModeId] = useState<ChatResponseModeId>(() => readStoredChatResponseMode());
@@ -117,6 +125,10 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
   const [recentPrompts, setRecentPrompts] = useState<RecentPrompt[]>(() => {
     if (typeof window === 'undefined') return [];
     return parseRecentPrompts(window.localStorage.getItem(RECENT_PROMPTS_STORAGE_KEY));
+  });
+  const [chatSnippets, setChatSnippets] = useState<ChatSnippet[]>(() => {
+    if (typeof window === 'undefined') return [];
+    return parseChatSnippets(window.localStorage.getItem(CHAT_SNIPPETS_STORAGE_KEY));
   });
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -262,6 +274,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
       setShowRecentPrompts(false);
       setShowAttachmentTray(false);
       setShowShortcutHelp(false);
+      setShowSnippets(false);
       setShowBotMenu(false);
     };
 
@@ -345,6 +358,38 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
         return current;
       }
       return nextPrompts;
+    });
+  };
+
+  const handleSaveSnippet = () => {
+    if (!input.trim()) return;
+
+    setChatSnippets((current) => {
+      const nextSnippets = addChatSnippet(current, input);
+      try {
+        window.localStorage.setItem(CHAT_SNIPPETS_STORAGE_KEY, JSON.stringify(nextSnippets));
+      } catch {
+        return current;
+      }
+      return nextSnippets;
+    });
+  };
+
+  const handleSnippetSelect = (snippet: ChatSnippet) => {
+    setInput(snippet.text);
+    setShowSnippets(false);
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  const handleRemoveSnippet = (snippetId: string) => {
+    setChatSnippets((current) => {
+      const nextSnippets = removeChatSnippet(current, snippetId);
+      try {
+        window.localStorage.setItem(CHAT_SNIPPETS_STORAGE_KEY, JSON.stringify(nextSnippets));
+      } catch {
+        return current;
+      }
+      return nextSnippets;
     });
   };
 
@@ -650,6 +695,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                     setShowRecentPrompts(false);
                     setShowAttachmentTray(false);
                     setShowShortcutHelp(false);
+                    setShowSnippets(false);
                   }}
                 />
                 <div className="absolute bottom-full left-0 z-40 mb-3 w-full max-w-xl rounded-2xl border border-white/10 bg-[#18181b] p-4 shadow-2xl">
@@ -728,6 +774,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                     setShowRecentPrompts(false);
                     setShowAttachmentTray(false);
                     setShowShortcutHelp(false);
+                    setShowSnippets(false);
                   }}
                 />
                 <div className="absolute bottom-full left-0 z-40 mb-3 w-full max-w-xl rounded-2xl border border-white/10 bg-[#18181b] p-4 shadow-2xl">
@@ -774,6 +821,83 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                 </div>
               </>
             )}
+            {showSnippets && (
+              <>
+                <button
+                  type="button"
+                  className="fixed inset-0 z-30 cursor-default"
+                  aria-label="Close quick snippets"
+                  onClick={() => {
+                    setShowPromptTemplates(false);
+                    setShowRecentPrompts(false);
+                    setShowAttachmentTray(false);
+                    setShowShortcutHelp(false);
+                    setShowSnippets(false);
+                  }}
+                />
+                <div className="absolute bottom-full left-0 z-40 mb-3 w-full max-w-xl rounded-2xl border border-white/10 bg-[#18181b] p-4 shadow-2xl">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-white">Quick snippets</h3>
+                      <p className="text-xs text-gray-500">Save prompts you reuse often and insert them without sending.</p>
+                    </div>
+                    <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-semibold text-gray-500">
+                      {chatSnippets.length} saved
+                    </span>
+                  </div>
+
+                  {input.trim() ? (
+                    <button
+                      type="button"
+                      onClick={handleSaveSnippet}
+                      className="mb-3 flex w-full items-start gap-3 rounded-xl border border-violet-400/20 bg-violet-400/10 p-3 text-left transition-colors hover:border-violet-300/40 hover:bg-violet-400/15"
+                    >
+                      <Save size={16} className="mt-0.5 shrink-0 text-violet-200" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-semibold text-white">Save current draft</span>
+                        <span className="mt-1 line-clamp-2 block text-xs text-violet-100/70">{input}</span>
+                      </span>
+                    </button>
+                  ) : (
+                    <div className="mb-3 rounded-xl border border-white/5 bg-black/20 p-3 text-xs text-gray-500">
+                      Type a reusable prompt first, then save it here as a snippet.
+                    </div>
+                  )}
+
+                  <div className="max-h-72 space-y-2 overflow-y-auto pr-1 custom-scrollbar">
+                    {chatSnippets.length === 0 ? (
+                      <div className="rounded-xl border border-white/5 bg-black/20 p-4 text-center text-xs text-gray-500">
+                        Saved snippets will appear here.
+                      </div>
+                    ) : (
+                      chatSnippets.map((snippet) => (
+                        <div key={snippet.id} className="flex overflow-hidden rounded-xl border border-white/5 bg-white/[0.03]">
+                          <button
+                            type="button"
+                            onClick={() => handleSnippetSelect(snippet)}
+                            className="min-w-0 flex-1 p-3 text-left transition-colors hover:bg-white/[0.05]"
+                          >
+                            <span className="block truncate text-sm font-semibold text-white">{snippet.title}</span>
+                            <span className="mt-1 line-clamp-2 block text-xs text-gray-500">{snippet.text}</span>
+                            <span className="mt-1 block text-[10px] text-gray-600">
+                              Saved {new Date(snippet.createdAt).toLocaleString()}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSnippet(snippet.id)}
+                            className="border-l border-white/5 px-3 text-gray-500 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                            aria-label="Remove quick snippet"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
             {showAttachmentTray && (
               <>
                 <button
@@ -785,6 +909,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                     setShowRecentPrompts(false);
                     setShowAttachmentTray(false);
                     setShowShortcutHelp(false);
+                    setShowSnippets(false);
                   }}
                 />
                 <div className="absolute bottom-full left-0 z-40 mb-3 w-full max-w-xl rounded-2xl border border-white/10 bg-[#18181b] p-4 shadow-2xl">
@@ -890,6 +1015,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                     setShowRecentPrompts(false);
                     setShowAttachmentTray(false);
                     setShowShortcutHelp(false);
+                    setShowSnippets(false);
                   }}
                 />
                 <div className="absolute bottom-full left-0 z-40 mb-3 w-full max-w-md rounded-2xl border border-white/10 bg-[#18181b] p-4 shadow-2xl">
@@ -1004,6 +1130,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                       setShowRecentPrompts(false);
                       setShowAttachmentTray(false);
                       setShowShortcutHelp(false);
+                      setShowSnippets(false);
                       setShowPromptTemplates((open) => !open);
                     }}
                     className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors ${showPromptTemplates
@@ -1021,6 +1148,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                       setShowPromptTemplates(false);
                       setShowAttachmentTray(false);
                       setShowShortcutHelp(false);
+                      setShowSnippets(false);
                       setShowRecentPrompts((open) => !open);
                     }}
                     className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors ${showRecentPrompts
@@ -1038,6 +1166,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                       setShowPromptTemplates(false);
                       setShowRecentPrompts(false);
                       setShowAttachmentTray(false);
+                      setShowSnippets(false);
                       setShowShortcutHelp((open) => !open);
                     }}
                     className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors ${showShortcutHelp
@@ -1054,7 +1183,26 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                     onClick={() => {
                       setShowPromptTemplates(false);
                       setShowRecentPrompts(false);
+                      setShowAttachmentTray(false);
                       setShowShortcutHelp(false);
+                      setShowSnippets((open) => !open);
+                    }}
+                    className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors ${showSnippets
+                      ? 'bg-fuchsia-500/20 text-fuchsia-200'
+                      : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                      }`}
+                    aria-expanded={showSnippets}
+                  >
+                    <Bookmark size={16} />
+                    <span className="hidden sm:inline">Snippets</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPromptTemplates(false);
+                      setShowRecentPrompts(false);
+                      setShowShortcutHelp(false);
+                      setShowSnippets(false);
                       setShowAttachmentTray((open) => !open);
                     }}
                     className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors ${showAttachmentTray || currentCollectionId
