@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { FolderOpen, Check, ChevronDown, X, Loader2, Database } from 'lucide-react';
 import { collectionService } from '../../services';
 import type { Collection } from '@/types';
-import { useAuthStore } from '../../store';
+import { useAuthStore } from '../../store/auth.store';
 
 interface CollectionPickerProps {
     selectedId: string | null;

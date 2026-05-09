@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { documentService, socketService } from '../src/services';
-import { useAuthStore } from '../src/store';
+import { useAuthStore } from '../src/store/auth.store';
 import { DocumentList, UploadDocumentDialog, ShareCollectionDialog } from './collections';
 import Modal from './Modal';
 import type { Document, CollectionDetail as CollectionDetailType } from '../types';
