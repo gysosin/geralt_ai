@@ -24,6 +24,10 @@ class Settings(BaseSettings):
         default=True,
         description="Start a local Celery worker with the API process for development only.",
     )
+    ALLOW_ANONYMOUS_AGENT_PLATFORM: bool = Field(
+        default=True,
+        description="Allow unauthenticated agent platform access for local development only.",
+    )
 
     # ==========================================================================
     # Security
@@ -205,6 +209,8 @@ class Settings(BaseSettings):
             errors.append("CORS_ORIGINS must not include '*' in production")
         if self.AUTO_START_CELERY_WORKER:
             errors.append("AUTO_START_CELERY_WORKER must be false in production")
+        if self.ALLOW_ANONYMOUS_AGENT_PLATFORM:
+            errors.append("ALLOW_ANONYMOUS_AGENT_PLATFORM must be false in production")
         if self.MINIO_ACCESS_KEY == "minioadmin" or self.MINIO_SECRET_KEY == "minioadmin":
             errors.append("MINIO credentials must not use public defaults in production")
         errors.extend(self._required_key_errors())

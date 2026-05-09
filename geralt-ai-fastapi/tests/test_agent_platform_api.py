@@ -3,6 +3,9 @@ Tests for agent platform API endpoints.
 """
 from unittest.mock import MagicMock, patch
 
+import pytest
+from fastapi import HTTPException
+
 
 class FakeToolExecutor:
     def execute(self, tool_name, arguments):
@@ -37,6 +40,17 @@ def test_agent_tools_endpoint_returns_mcp_ready_specs():
         "mcp.invoke",
     }
     assert all("inputSchema" in tool for tool in data["mcp_tools"])
+
+
+def test_agent_platform_owner_rejects_anonymous_when_disabled(monkeypatch):
+    from api.v1 import agent_platform
+
+    monkeypatch.setattr(agent_platform.settings, "ALLOW_ANONYMOUS_AGENT_PLATFORM", False)
+
+    with pytest.raises(HTTPException) as exc_info:
+        agent_platform._owner(None)
+
+    assert exc_info.value.status_code == 401
 
 
 def test_agent_query_plan_endpoint_returns_deterministic_route():
