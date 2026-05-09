@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from core.agents.tool_registry import get_agent_tool_registry
+from core.config import settings
 from core.rag.query_classifier import get_query_classifier
 from core.security.jwt import get_optional_user
 from services.agents import AgentPlatformService, get_agent_platform_service
@@ -343,7 +344,11 @@ class PlatformImportResponse(BaseModel):
 
 
 def _owner(current_user: str | None) -> str:
-    return current_user or "anonymous"
+    if current_user:
+        return current_user
+    if settings.ALLOW_ANONYMOUS_AGENT_PLATFORM:
+        return "anonymous"
+    raise HTTPException(status_code=401, detail="Authentication required")
 
 
 def _result_or_error(result):

@@ -33,6 +33,7 @@ class Config:
     DEBUG = settings.DEBUG
     API_ENDPOINT = settings.API_ENDPOINT
     AUTO_START_CELERY_WORKER = settings.AUTO_START_CELERY_WORKER
+    ALLOW_ANONYMOUS_AGENT_PLATFORM = settings.ALLOW_ANONYMOUS_AGENT_PLATFORM
     # Handle case where API_ENDPOINT may already include http:// or https://
     BASE_API_URL = settings.API_ENDPOINT if settings.API_ENDPOINT.startswith(('http://', 'https://')) else f"http://{settings.API_ENDPOINT}"
     

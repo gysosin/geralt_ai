@@ -165,6 +165,7 @@ class TestCoreSettings:
         assert settings.API_VERSION == "v1"
         assert settings.JWT_ALGORITHM == "HS256"
         assert settings.AUTO_START_CELERY_WORKER is True
+        assert settings.ALLOW_ANONYMOUS_AGENT_PLATFORM is True
         assert settings.CHUNK_SIZE >= 100
         assert settings.CHUNK_SIZE <= 2000
     
@@ -222,6 +223,7 @@ class TestCoreSettings:
             SECRET_KEY="a-production-secret-with-enough-entropy",
             CORS_ORIGINS=["https://app.example.com"],
             AUTO_START_CELERY_WORKER=False,
+            ALLOW_ANONYMOUS_AGENT_PLATFORM=False,
             MINIO_ACCESS_KEY="prod-access",
             MINIO_SECRET_KEY="prod-secret",
             DEFAULT_AI_MODEL="gemini",
@@ -241,6 +243,7 @@ class TestCoreSettings:
             SECRET_KEY="a-production-secret-with-enough-entropy",
             CORS_ORIGINS=["https://app.example.com"],
             AUTO_START_CELERY_WORKER=False,
+            ALLOW_ANONYMOUS_AGENT_PLATFORM=False,
             GEMINI_API_KEY="gemini-key",
             DEFAULT_RERANKER="none",
             MINIO_ACCESS_KEY="minioadmin",
@@ -259,6 +262,7 @@ class TestCoreSettings:
             SECRET_KEY="a-production-secret-with-enough-entropy",
             CORS_ORIGINS=["https://app.example.com"],
             AUTO_START_CELERY_WORKER=False,
+            ALLOW_ANONYMOUS_AGENT_PLATFORM=False,
             MINIO_ACCESS_KEY="prod-access",
             MINIO_SECRET_KEY="prod-secret",
             GEMINI_API_KEY="gemini-key",
@@ -276,6 +280,7 @@ class TestCoreSettings:
             SECRET_KEY="a-production-secret-with-enough-entropy",
             CORS_ORIGINS=["https://app.example.com"],
             AUTO_START_CELERY_WORKER=True,
+            ALLOW_ANONYMOUS_AGENT_PLATFORM=False,
             MINIO_ACCESS_KEY="prod-access",
             MINIO_SECRET_KEY="prod-secret",
             GEMINI_API_KEY="gemini-key",
@@ -283,6 +288,25 @@ class TestCoreSettings:
         )
 
         with pytest.raises(ValueError, match="AUTO_START_CELERY_WORKER"):
+            settings.validate_startup_configuration()
+
+    def test_startup_configuration_rejects_anonymous_agent_platform_in_production(self):
+        """Production startup should require authenticated agent platform access."""
+        from core.config import Settings
+
+        settings = Settings(
+            ENVIRONMENT="production",
+            SECRET_KEY="a-production-secret-with-enough-entropy",
+            CORS_ORIGINS=["https://app.example.com"],
+            AUTO_START_CELERY_WORKER=False,
+            ALLOW_ANONYMOUS_AGENT_PLATFORM=True,
+            MINIO_ACCESS_KEY="prod-access",
+            MINIO_SECRET_KEY="prod-secret",
+            GEMINI_API_KEY="gemini-key",
+            DEFAULT_RERANKER="none",
+        )
+
+        with pytest.raises(ValueError, match="ALLOW_ANONYMOUS_AGENT_PLATFORM"):
             settings.validate_startup_configuration()
 
 

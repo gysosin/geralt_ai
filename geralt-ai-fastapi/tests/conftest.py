@@ -24,6 +24,7 @@ class MockSettings:
     DEBUG = True
     API_ENDPOINT = "127.0.0.1:8000"
     AUTO_START_CELERY_WORKER = True
+    ALLOW_ANONYMOUS_AGENT_PLATFORM = True
     
     SECRET_KEY = "test_secret_key"
     JWT_ALGORITHM = "HS256"

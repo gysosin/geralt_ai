@@ -90,6 +90,7 @@ brew install --cask libreoffice
     SECRET_KEY=your_secure_jwt_secret_here
     DEBUG=True
     AUTO_START_CELERY_WORKER=True
+    ALLOW_ANONYMOUS_AGENT_PLATFORM=True
     
     # --- Databases ---
     MONGO_URI=mongodb://localhost:27017
@@ -116,7 +117,9 @@ brew install --cask libreoffice
     explicit `CORS_ORIGINS` instead of `*`. Also replace the default MinIO
     credentials, provide API keys for the selected AI model/reranker, and set
     `AUTO_START_CELERY_WORKER=False` so the worker is supervised separately.
-    Startup validation rejects unsafe production defaults.
+    Set `ALLOW_ANONYMOUS_AGENT_PLATFORM=False` to require authentication for
+    agent, workflow, MCP, and automation endpoints. Startup validation rejects
+    unsafe production defaults.
 
 ## 🏃 Running the Application
 
