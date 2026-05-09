@@ -9,7 +9,12 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from core.agents.tool_registry import get_agent_tool_registry
-from models.database import agent_definitions_collection, workflow_definitions_collection
+from core.rag.query_classifier import get_query_classifier
+from models.database import (
+    agent_definitions_collection,
+    workflow_definitions_collection,
+    workflow_runs_collection,
+)
 from services.collections import BaseService, ServiceResult
 
 
@@ -20,10 +25,12 @@ class AgentPlatformService(BaseService):
         self,
         agent_db=None,
         workflow_db=None,
+        run_db=None,
     ) -> None:
         super().__init__()
         self.agent_db = agent_db or agent_definitions_collection
         self.workflow_db = workflow_db or workflow_definitions_collection
+        self.run_db = run_db or workflow_runs_collection
         self.registry = get_agent_tool_registry()
 
     def create_agent(
@@ -149,6 +156,55 @@ class AgentPlatformService(BaseService):
             return ServiceResult.fail("Workflow not found", 404)
         return ServiceResult.ok(self._public_document(doc))
 
+    def start_workflow_run(
+        self,
+        owner: str,
+        workflow_id: str,
+        inputs: Optional[Dict[str, Any]] = None,
+        dry_run: bool = True,
+    ) -> ServiceResult:
+        """Create a workflow run record and execute safe deterministic steps."""
+        workflow_result = self.get_workflow(owner, workflow_id)
+        if not workflow_result.success:
+            return workflow_result
+
+        inputs = inputs or {}
+        now = datetime.utcnow().isoformat()
+        run_id = str(uuid4())
+        planned_steps = [
+            self._plan_run_step(step, inputs, dry_run=dry_run)
+            for step in workflow_result.data.get("steps", [])
+        ]
+
+        if dry_run:
+            status = "planned"
+        elif all(step["status"] == "completed" for step in planned_steps):
+            status = "completed"
+        else:
+            status = "pending"
+
+        document = {
+            "run_id": run_id,
+            "workflow_id": workflow_id,
+            "status": status,
+            "dry_run": dry_run,
+            "inputs": inputs,
+            "steps": planned_steps,
+            "created_by": self.extract_username(owner),
+            "created_at": now,
+            "updated_at": now,
+        }
+        self.run_db.insert_one(document)
+        return ServiceResult.ok(self._public_document(document), status_code=201)
+
+    def list_workflow_runs(self, owner: str, workflow_id: Optional[str] = None) -> ServiceResult:
+        """List workflow runs for the current owner."""
+        query = {"created_by": self.extract_username(owner)}
+        if workflow_id:
+            query["workflow_id"] = workflow_id
+        docs = self.run_db.find(query, {"_id": 0})
+        return ServiceResult.ok([self._public_document(doc) for doc in docs])
+
     def _validate_tools(self, tool_names: List[Optional[str]]) -> Optional[ServiceResult]:
         missing = [
             tool_name
@@ -163,6 +219,54 @@ class AgentPlatformService(BaseService):
         public = dict(document)
         public.pop("_id", None)
         return public
+
+    def _plan_run_step(
+        self,
+        step: Dict[str, Any],
+        inputs: Dict[str, Any],
+        dry_run: bool,
+    ) -> Dict[str, Any]:
+        arguments = self._resolve_arguments(step.get("arguments") or {}, inputs)
+        planned = {
+            "step_id": step["step_id"],
+            "name": step["name"],
+            "tool_name": step["tool_name"],
+            "arguments": arguments,
+            "depends_on": step.get("depends_on", []),
+            "approval_required": step.get("approval_required", False),
+            "status": "planned",
+            "output": None,
+            "message": "",
+        }
+        if dry_run:
+            return planned
+
+        if step["tool_name"] == "query.plan":
+            plan = get_query_classifier().plan(arguments.get("query", ""))
+            planned["status"] = "completed"
+            planned["output"] = {
+                "query_type": plan.query_type.value,
+                "should_retrieve": plan.should_retrieve,
+                "needs_all_docs": plan.needs_all_docs,
+                "suggested_top_k": plan.suggested_top_k,
+                "suggested_rerank_top_n": plan.suggested_rerank_top_n,
+                "reason": plan.reason,
+            }
+            return planned
+
+        planned["status"] = "pending"
+        planned["message"] = f"Execution for {step['tool_name']} is not implemented yet"
+        return planned
+
+    def _resolve_arguments(self, value: Any, inputs: Dict[str, Any]) -> Any:
+        if isinstance(value, dict):
+            return {key: self._resolve_arguments(item, inputs) for key, item in value.items()}
+        if isinstance(value, list):
+            return [self._resolve_arguments(item, inputs) for item in value]
+        if isinstance(value, str) and value.startswith("{{input.") and value.endswith("}}"):
+            key = value[len("{{input."):-2].strip()
+            return inputs.get(key)
+        return value
 
 
 _agent_platform_service: Optional[AgentPlatformService] = None

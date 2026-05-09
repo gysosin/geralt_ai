@@ -106,6 +106,27 @@ class WorkflowDefinitionResponse(BaseModel):
     updated_at: str
 
 
+class WorkflowRunCreate(BaseModel):
+    """Request to start or dry-run a workflow."""
+
+    inputs: Dict[str, Any] = Field(default_factory=dict)
+    dry_run: bool = True
+
+
+class WorkflowRunResponse(BaseModel):
+    """Workflow run plan or execution record."""
+
+    run_id: str
+    workflow_id: str
+    status: str
+    dry_run: bool
+    inputs: Dict[str, Any] = Field(default_factory=dict)
+    steps: List[Dict[str, Any]]
+    created_by: str
+    created_at: str
+    updated_at: str
+
+
 def _owner(current_user: str | None) -> str:
     return current_user or "anonymous"
 
@@ -220,3 +241,34 @@ async def get_workflow_definition(
 ) -> Dict[str, Any]:
     """Get a reusable workflow definition."""
     return _result_or_error(service.get_workflow(_owner(current_user), workflow_id))
+
+
+@router.post(
+    "/workflows/{workflow_id}/runs",
+    response_model=WorkflowRunResponse,
+    status_code=201,
+)
+async def start_workflow_run(
+    workflow_id: str,
+    request: WorkflowRunCreate,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Create a workflow run record and execute safe deterministic steps."""
+    result = service.start_workflow_run(
+        owner=_owner(current_user),
+        workflow_id=workflow_id,
+        inputs=request.inputs,
+        dry_run=request.dry_run,
+    )
+    return _result_or_error(result)
+
+
+@router.get("/workflow-runs", response_model=List[WorkflowRunResponse])
+async def list_workflow_runs(
+    workflow_id: Optional[str] = None,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> List[Dict[str, Any]]:
+    """List workflow run records for the current owner."""
+    return _result_or_error(service.list_workflow_runs(_owner(current_user), workflow_id))
