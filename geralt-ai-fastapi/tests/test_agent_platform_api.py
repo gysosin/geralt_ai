@@ -883,6 +883,14 @@ def test_platform_import_endpoint_returns_id_maps():
                             }
                         ],
                         "workflows": [],
+                        "mcp_servers": [
+                            {
+                                "server_id": "old-mcp",
+                                "name": "Docs MCP",
+                                "transport": "streamable_http",
+                                "url": "https://docs.example.com/mcp",
+                            }
+                        ],
                     },
                 )
                 app.dependency_overrides.clear()
@@ -891,3 +899,5 @@ def test_platform_import_endpoint_returns_id_maps():
     data = response.json()
     assert data["agents_imported"] == 1
     assert data["agent_id_map"]["old-agent"]
+    assert data["mcp_servers_imported"] == 1
+    assert data["mcp_server_id_map"]["old-mcp"]

@@ -437,8 +437,9 @@ const AgentPlatform: React.FC = () => {
       const result = await agentPlatformService.importPlatform({
         agents: Array.isArray(payload.agents) ? payload.agents : [],
         workflows: Array.isArray(payload.workflows) ? payload.workflows : [],
+        mcp_servers: Array.isArray(payload.mcp_servers) ? payload.mcp_servers : [],
       });
-      setExportSummary(`${result.agents_imported} agents, ${result.workflows_imported} workflows imported`);
+      setExportSummary(`${result.agents_imported} agents, ${result.workflows_imported} workflows, ${result.mcp_servers_imported} MCP servers imported`);
       await loadData();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to import platform data');

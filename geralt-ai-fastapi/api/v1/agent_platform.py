@@ -255,6 +255,7 @@ class PlatformImportRequest(BaseModel):
 
     agents: List[Dict[str, Any]] = Field(default_factory=list)
     workflows: List[Dict[str, Any]] = Field(default_factory=list)
+    mcp_servers: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class PlatformImportResponse(BaseModel):
@@ -262,8 +263,10 @@ class PlatformImportResponse(BaseModel):
 
     agents_imported: int
     workflows_imported: int
+    mcp_servers_imported: int
     agent_id_map: Dict[str, str]
     workflow_id_map: Dict[str, str]
+    mcp_server_id_map: Dict[str, str]
 
 
 def _owner(current_user: str | None) -> str:
