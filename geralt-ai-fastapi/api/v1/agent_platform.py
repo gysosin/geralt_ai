@@ -78,6 +78,36 @@ class AgentRunCreate(BaseModel):
     dry_run: bool = True
 
 
+class McpServerCreate(BaseModel):
+    """Request to register an external MCP server."""
+
+    name: str = Field(min_length=1)
+    transport: str = Field(min_length=1)
+    url: Optional[str] = None
+    command: Optional[str] = None
+    args: List[str] = Field(default_factory=list)
+    tool_names: List[str] = Field(default_factory=list)
+    description: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class McpServerResponse(BaseModel):
+    """Stored external MCP server registration."""
+
+    server_id: str
+    name: str
+    description: str = ""
+    transport: str
+    url: str = ""
+    command: str = ""
+    args: List[str] = Field(default_factory=list)
+    tool_names: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_by: str
+    created_at: str
+    updated_at: str
+
+
 class WorkflowStepDefinition(BaseModel):
     """A workflow step that invokes one registered tool."""
 
@@ -215,6 +245,7 @@ class PlatformExportResponse(BaseModel):
     mcp_manifest: Dict[str, Any]
     agents: List[Dict[str, Any]]
     workflows: List[Dict[str, Any]]
+    mcp_servers: List[Dict[str, Any]] = Field(default_factory=list)
     runs: List[Dict[str, Any]]
     audit_events: List[Dict[str, Any]]
 
@@ -384,6 +415,46 @@ async def start_agent_run(
         dry_run=request.dry_run,
     )
     return _result_or_error(result)
+
+
+@router.post("/mcp-servers", response_model=McpServerResponse, status_code=201)
+async def create_mcp_server(
+    request: McpServerCreate,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Register an external MCP server."""
+    result = service.create_mcp_server(
+        owner=_owner(current_user),
+        name=request.name,
+        transport=request.transport,
+        url=request.url,
+        command=request.command,
+        args=request.args,
+        tool_names=request.tool_names,
+        description=request.description,
+        metadata=request.metadata,
+    )
+    return _result_or_error(result)
+
+
+@router.get("/mcp-servers", response_model=List[McpServerResponse])
+async def list_mcp_servers(
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> List[Dict[str, Any]]:
+    """List external MCP servers."""
+    return _result_or_error(service.list_mcp_servers(_owner(current_user)))
+
+
+@router.delete("/mcp-servers/{server_id}")
+async def delete_mcp_server(
+    server_id: str,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Soft-delete an external MCP server."""
+    return _result_or_error(service.delete_mcp_server(_owner(current_user), server_id))
 
 
 @router.get("/agents/{agent_id}", response_model=AgentDefinitionResponse)

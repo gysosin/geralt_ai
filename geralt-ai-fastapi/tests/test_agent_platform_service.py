@@ -56,9 +56,54 @@ def test_create_agent_definition_rejects_unknown_tool():
     assert "missing.tool" in result.error
 
 
+def test_create_mcp_server_records_transport_contract():
+    mcp_server_db = MagicMock()
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=MagicMock(),
+        mcp_server_db=mcp_server_db,
+    )
+
+    result = service.create_mcp_server(
+        owner="mehul",
+        name="Docs MCP",
+        transport="streamable_http",
+        url="https://docs.example.com/mcp",
+        tool_names=["search_docs"],
+        description="External docs tools",
+    )
+
+    assert result.success is True
+    inserted = mcp_server_db.insert_one.call_args.args[0]
+    assert inserted["server_id"] == result.data["server_id"]
+    assert inserted["transport"] == "streamable_http"
+    assert inserted["url"] == "https://docs.example.com/mcp"
+    assert inserted["tool_names"] == ["search_docs"]
+
+
+def test_create_mcp_server_requires_transport_target():
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=MagicMock(),
+        mcp_server_db=MagicMock(),
+    )
+
+    result = service.create_mcp_server(
+        owner="mehul",
+        name="Broken MCP",
+        transport="streamable_http",
+    )
+
+    assert result.success is False
+    assert result.status_code == 400
+
+
 def test_adk_manifest_exports_agents_workflows_and_mcp_pointer():
     agent_db = MagicMock()
     workflow_db = MagicMock()
+    mcp_server_db = MagicMock()
     agent_db.find.return_value = [
         {
             "agent_id": "agent-1",
@@ -80,10 +125,21 @@ def test_adk_manifest_exports_agents_workflows_and_mcp_pointer():
             "created_by": "mehul",
         }
     ]
+    mcp_server_db.find.return_value = [
+        {
+            "server_id": "mcp-1",
+            "name": "Docs MCP",
+            "transport": "streamable_http",
+            "url": "https://docs.example.com/mcp",
+            "tool_names": ["search_docs"],
+            "created_by": "mehul",
+        }
+    ]
     service = AgentPlatformService(
         agent_db=agent_db,
         workflow_db=workflow_db,
         run_db=MagicMock(),
+        mcp_server_db=mcp_server_db,
     )
 
     result = service.get_adk_manifest(owner="mehul")
@@ -93,6 +149,7 @@ def test_adk_manifest_exports_agents_workflows_and_mcp_pointer():
     assert result.data["mcp"]["manifest_path"] == "/api/v1/agent-platform/mcp/manifest"
     assert result.data["agents"][0]["tools"] == ["query.plan"]
     assert result.data["agents"][0]["instruction"] == "Plan document questions."
+    assert result.data["external_mcp_servers"][0]["name"] == "Docs MCP"
     assert result.data["workflows"][0]["triggers"] == ["document.uploaded"]
 
 
@@ -1177,8 +1234,10 @@ def test_export_platform_returns_tools_definitions_runs_and_audit():
     workflow_db = MagicMock()
     run_db = MagicMock()
     audit_db = MagicMock()
+    mcp_server_db = MagicMock()
     agent_db.find.return_value = [{"agent_id": "agent-1", "created_by": "mehul"}]
     workflow_db.find.return_value = [{"workflow_id": "workflow-1", "created_by": "mehul"}]
+    mcp_server_db.find.return_value = [{"server_id": "mcp-1", "created_by": "mehul"}]
     run_db.find.return_value = [{"run_id": "run-1", "created_by": "mehul"}]
     audit_cursor = MagicMock()
     audit_cursor.sort.return_value = audit_cursor
@@ -1189,6 +1248,7 @@ def test_export_platform_returns_tools_definitions_runs_and_audit():
         workflow_db=workflow_db,
         run_db=run_db,
         audit_db=audit_db,
+        mcp_server_db=mcp_server_db,
     )
 
     result = service.export_platform(owner="mehul")
@@ -1196,6 +1256,7 @@ def test_export_platform_returns_tools_definitions_runs_and_audit():
     assert result.success is True
     assert result.data["agents"][0]["agent_id"] == "agent-1"
     assert result.data["workflows"][0]["workflow_id"] == "workflow-1"
+    assert result.data["mcp_servers"][0]["server_id"] == "mcp-1"
     assert result.data["runs"][0]["run_id"] == "run-1"
     assert result.data["audit_events"][0]["event"] == "workflow.created"
     assert any(tool["name"] == "rag.aggregate" for tool in result.data["mcp_manifest"]["tools"])

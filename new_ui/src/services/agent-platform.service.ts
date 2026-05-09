@@ -25,6 +25,21 @@ export interface AgentDefinition {
     updated_at: string
 }
 
+export interface McpServer {
+    server_id: string
+    name: string
+    description: string
+    transport: string
+    url: string
+    command: string
+    args: string[]
+    tool_names: string[]
+    metadata: Record<string, unknown>
+    created_by: string
+    created_at: string
+    updated_at: string
+}
+
 export interface WorkflowDefinition {
     workflow_id: string
     name: string
@@ -88,6 +103,7 @@ export interface PlatformExport {
     mcp_manifest: Record<string, unknown>
     agents: AgentDefinition[]
     workflows: WorkflowDefinition[]
+    mcp_servers: McpServer[]
     runs: WorkflowRun[]
     audit_events: AuditEvent[]
 }
@@ -160,6 +176,29 @@ export const agentPlatformService = {
 
     async deleteAgent(agentId: string): Promise<void> {
         await api.delete(`${BASE_PATH}/agents/${agentId}`)
+    },
+
+    async createMcpServer(data: {
+        name: string
+        transport: string
+        url?: string
+        command?: string
+        args?: string[]
+        tool_names?: string[]
+        description?: string
+        metadata?: Record<string, unknown>
+    }): Promise<McpServer> {
+        const response = await api.post(`${BASE_PATH}/mcp-servers`, data)
+        return response.data
+    },
+
+    async listMcpServers(): Promise<McpServer[]> {
+        const response = await api.get(`${BASE_PATH}/mcp-servers`)
+        return response.data
+    },
+
+    async deleteMcpServer(serverId: string): Promise<void> {
+        await api.delete(`${BASE_PATH}/mcp-servers/${serverId}`)
     },
 
     async startAgentRun(

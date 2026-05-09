@@ -88,6 +88,43 @@ def test_create_agent_definition_endpoint_uses_registered_tools():
     assert data["tool_names"] == ["rag.search", "rag.aggregate"]
 
 
+def test_create_mcp_server_endpoint_records_external_tool_source():
+    mcp_server_db = MagicMock()
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=MagicMock(),
+                    workflow_db=MagicMock(),
+                    run_db=MagicMock(),
+                    mcp_server_db=mcp_server_db,
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.post(
+                    "/api/v1/agent-platform/mcp-servers",
+                    json={
+                        "name": "Docs MCP",
+                        "transport": "streamable_http",
+                        "url": "https://docs.example.com/mcp",
+                        "tool_names": ["search_docs"],
+                    },
+                )
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["server_id"]
+    assert data["transport"] == "streamable_http"
+    assert data["tool_names"] == ["search_docs"]
+
+
 def test_start_agent_run_endpoint_executes_agent_tool_plan():
     agent_db = MagicMock()
     agent_db.find_one.return_value = {
@@ -699,6 +736,7 @@ def test_platform_stats_endpoint_returns_counts():
 def test_adk_manifest_endpoint_returns_agents_and_toolset_pointer():
     agent_db = MagicMock()
     workflow_db = MagicMock()
+    mcp_server_db = MagicMock()
     agent_db.find.return_value = [
         {
             "agent_id": "agent-1",
@@ -711,6 +749,7 @@ def test_adk_manifest_endpoint_returns_agents_and_toolset_pointer():
         }
     ]
     workflow_db.find.return_value = []
+    mcp_server_db.find.return_value = []
 
     with patch("models.database.MongoClient"):
         with patch("core.clients.redis_client.redis.StrictRedis"):
@@ -723,6 +762,7 @@ def test_adk_manifest_endpoint_returns_agents_and_toolset_pointer():
                     agent_db=agent_db,
                     workflow_db=workflow_db,
                     run_db=MagicMock(),
+                    mcp_server_db=mcp_server_db,
                 )
                 app.dependency_overrides[get_agent_platform_service] = lambda: service
 
@@ -777,8 +817,10 @@ def test_platform_export_endpoint_returns_structured_payload():
     workflow_db = MagicMock()
     run_db = MagicMock()
     audit_db = MagicMock()
+    mcp_server_db = MagicMock()
     agent_db.find.return_value = [{"agent_id": "agent-1", "created_by": "anonymous"}]
     workflow_db.find.return_value = [{"workflow_id": "workflow-1", "created_by": "anonymous"}]
+    mcp_server_db.find.return_value = [{"server_id": "mcp-1", "created_by": "anonymous"}]
     run_db.find.return_value = [{"run_id": "run-1", "created_by": "anonymous"}]
     audit_cursor = MagicMock()
     audit_cursor.sort.return_value = audit_cursor
@@ -797,6 +839,7 @@ def test_platform_export_endpoint_returns_structured_payload():
                     workflow_db=workflow_db,
                     run_db=run_db,
                     audit_db=audit_db,
+                    mcp_server_db=mcp_server_db,
                 )
                 app.dependency_overrides[get_agent_platform_service] = lambda: service
 
@@ -808,6 +851,7 @@ def test_platform_export_endpoint_returns_structured_payload():
     data = response.json()
     assert data["schema_version"] == "1.0"
     assert data["agents"][0]["agent_id"] == "agent-1"
+    assert data["mcp_servers"][0]["server_id"] == "mcp-1"
     assert data["mcp_manifest"]["name"] == "GeraltAI Agent Platform"
 
 
