@@ -860,6 +860,7 @@ async def list_workflow_runs(
     include_archived: bool = False,
     status: Optional[str] = None,
     limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=10000),
     current_user: str | None = Depends(get_optional_user),
     service: AgentPlatformService = Depends(get_agent_platform_service),
 ) -> List[Dict[str, Any]]:
@@ -871,6 +872,7 @@ async def list_workflow_runs(
             include_archived=include_archived,
             status=status,
             limit=limit,
+            offset=offset,
         )
     )
 

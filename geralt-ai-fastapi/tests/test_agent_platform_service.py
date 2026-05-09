@@ -1247,6 +1247,49 @@ def test_list_workflow_runs_limits_list_results():
     assert [run["run_id"] for run in result.data] == ["run-1", "run-2"]
 
 
+def test_list_workflow_runs_offsets_cursor_results():
+    run_db = MagicMock()
+    cursor = MagicMock()
+    paged_runs = [{"run_id": "run-26"}]
+    cursor.sort.return_value = cursor
+    cursor.skip.return_value = cursor
+    cursor.limit.return_value = paged_runs
+    run_db.find.return_value = cursor
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.list_workflow_runs(owner="mehul", limit=25, offset=25)
+
+    assert result.success is True
+    cursor.sort.assert_called_once_with("updated_at", -1)
+    cursor.skip.assert_called_once_with(25)
+    cursor.limit.assert_called_once_with(25)
+    assert result.data == paged_runs
+
+
+def test_list_workflow_runs_offsets_list_results():
+    run_db = MagicMock()
+    run_db.find.return_value = [
+        {"run_id": "run-1"},
+        {"run_id": "run-2"},
+        {"run_id": "run-3"},
+        {"run_id": "run-4"},
+    ]
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.list_workflow_runs(owner="mehul", limit=2, offset=1)
+
+    assert result.success is True
+    assert [run["run_id"] for run in result.data] == ["run-2", "run-3"]
+
+
 def test_list_workflow_runs_rejects_invalid_limit():
     run_db = MagicMock()
     service = AgentPlatformService(
@@ -1260,6 +1303,22 @@ def test_list_workflow_runs_rejects_invalid_limit():
     assert result.success is False
     assert result.status_code == 400
     assert "Workflow run limit must be between" in result.error
+    run_db.find.assert_not_called()
+
+
+def test_list_workflow_runs_rejects_invalid_offset():
+    run_db = MagicMock()
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.list_workflow_runs(owner="mehul", offset=-1)
+
+    assert result.success is False
+    assert result.status_code == 400
+    assert "Workflow run offset must be between" in result.error
     run_db.find.assert_not_called()
 
 
