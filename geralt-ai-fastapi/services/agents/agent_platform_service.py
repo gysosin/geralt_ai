@@ -4,11 +4,13 @@ Agent platform service.
 Persists reusable agent and workflow definitions while validating every tool
 reference against the central registry.
 """
+import ipaddress
 import shutil
 from copy import deepcopy
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
@@ -286,6 +288,10 @@ class AgentPlatformService(BaseService):
             return ServiceResult.fail("MCP server URL is required for streamable_http", 400)
         if transport == "stdio" and not (command or "").strip():
             return ServiceResult.fail("MCP server command is required for stdio", 400)
+        if transport == "streamable_http":
+            validation_error = self._validate_streamable_http_url(url or "")
+            if validation_error:
+                return ServiceResult.fail(validation_error, 400)
 
         now = datetime.utcnow().isoformat()
         server_id = str(uuid4())
@@ -391,6 +397,10 @@ class AgentPlatformService(BaseService):
             return ServiceResult.fail("MCP server URL is required for streamable_http", 400)
         if merged.get("transport") == "stdio" and not merged.get("command"):
             return ServiceResult.fail("MCP server command is required for stdio", 400)
+        if merged.get("transport") == "streamable_http":
+            validation_error = self._validate_streamable_http_url(str(merged.get("url") or ""))
+            if validation_error:
+                return ServiceResult.fail(validation_error, 400)
 
         if not updates:
             return ServiceResult.ok(self._public_document(current))
@@ -496,6 +506,9 @@ class AgentPlatformService(BaseService):
         url = str(server.get("url") or "").strip()
         if not url:
             return "unreachable", "MCP server URL is missing"
+        validation_error = self._validate_streamable_http_url(url)
+        if validation_error:
+            return "unreachable", validation_error
 
         request = Request(
             url,
@@ -519,6 +532,33 @@ class AgentPlatformService(BaseService):
         if status_code is not None:
             return "unreachable", f"HTTP {status_code} response received from MCP endpoint"
         return "reachable", "MCP endpoint responded"
+
+    def _validate_streamable_http_url(self, url: str) -> Optional[str]:
+        parsed = urlparse(url.strip())
+        if parsed.scheme not in {"http", "https"}:
+            return "MCP server URL must use http or https"
+        if not parsed.hostname:
+            return "MCP server URL requires a hostname"
+
+        hostname = parsed.hostname.strip().lower().rstrip(".")
+        if hostname in {"localhost", "localhost.localdomain"} or hostname.endswith(".localhost"):
+            return "MCP server URL cannot target local or private network addresses"
+
+        try:
+            address = ipaddress.ip_address(hostname)
+        except ValueError:
+            return None
+
+        if (
+            address.is_private
+            or address.is_loopback
+            or address.is_link_local
+            or address.is_reserved
+            or address.is_unspecified
+            or address.is_multicast
+        ):
+            return "MCP server URL cannot target local or private network addresses"
+        return None
 
     def _probe_stdio_mcp(self, server: Dict[str, Any]) -> tuple[str, str]:
         command = str(server.get("command") or "").strip()

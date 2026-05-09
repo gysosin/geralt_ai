@@ -194,6 +194,37 @@ def test_create_mcp_server_requires_transport_target():
     assert result.status_code == 400
 
 
+def test_create_mcp_server_rejects_unsafe_streamable_http_urls():
+    mcp_server_db = MagicMock()
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=MagicMock(),
+        mcp_server_db=mcp_server_db,
+    )
+
+    unsafe_urls = [
+        "file:///etc/passwd",
+        "http://localhost:8000/mcp",
+        "http://127.0.0.1/mcp",
+        "http://169.254.169.254/latest/meta-data",
+        "http://[::1]/mcp",
+    ]
+
+    for unsafe_url in unsafe_urls:
+        result = service.create_mcp_server(
+            owner="mehul",
+            name="Unsafe MCP",
+            transport="streamable_http",
+            url=unsafe_url,
+        )
+
+        assert result.success is False
+        assert result.status_code == 400
+
+    mcp_server_db.insert_one.assert_not_called()
+
+
 def test_update_mcp_server_persists_changed_transport_fields():
     mcp_server_db = MagicMock()
     mcp_server_db.find_one.return_value = {
@@ -233,6 +264,41 @@ def test_update_mcp_server_persists_changed_transport_fields():
     assert update["tool_names"] == ["search_docs"]
 
 
+def test_update_mcp_server_rejects_unsafe_streamable_http_url():
+    mcp_server_db = MagicMock()
+    mcp_server_db.find_one.return_value = {
+        "server_id": "mcp-1",
+        "name": "Old MCP",
+        "description": "",
+        "transport": "streamable_http",
+        "url": "https://old.example.com/mcp",
+        "command": "",
+        "args": [],
+        "tool_names": [],
+        "metadata": {},
+        "created_by": "mehul",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+        "deleted": False,
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=MagicMock(),
+        mcp_server_db=mcp_server_db,
+    )
+
+    result = service.update_mcp_server(
+        owner="mehul",
+        server_id="mcp-1",
+        url="http://10.0.0.5/mcp",
+    )
+
+    assert result.success is False
+    assert result.status_code == 400
+    mcp_server_db.update_one.assert_not_called()
+
+
 def test_check_mcp_server_records_reachable_streamable_http_status():
     mcp_server_db = MagicMock()
     mcp_server_db.find_one.return_value = {
@@ -269,6 +335,39 @@ def test_check_mcp_server_records_reachable_streamable_http_status():
     update = mcp_server_db.update_one.call_args.args[1]["$set"]
     assert update["last_health_status"] == "reachable"
     assert update["last_health_checked_at"]
+
+
+def test_check_mcp_server_does_not_probe_unsafe_streamable_http_url():
+    mcp_server_db = MagicMock()
+    mcp_server_db.find_one.return_value = {
+        "server_id": "mcp-1",
+        "name": "Unsafe MCP",
+        "description": "",
+        "transport": "streamable_http",
+        "url": "http://127.0.0.1:8000/mcp",
+        "command": "",
+        "args": [],
+        "tool_names": ["search_docs"],
+        "metadata": {},
+        "created_by": "mehul",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+        "deleted": False,
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=MagicMock(),
+        mcp_server_db=mcp_server_db,
+    )
+
+    with patch("services.agents.agent_platform_service.urlopen") as urlopen_mock:
+        result = service.check_mcp_server(owner="mehul", server_id="mcp-1")
+
+    assert result.success is True
+    assert result.data["last_health_status"] == "unreachable"
+    assert "local or private" in result.data["last_health_message"]
+    urlopen_mock.assert_not_called()
 
 
 def test_check_mcp_server_records_missing_stdio_command():
