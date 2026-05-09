@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileText, ExternalLink, ChevronDown, ChevronUp, Layers, Eye, X, Clipboard, Check } from 'lucide-react';
+import { FileText, ExternalLink, ChevronDown, ChevronUp, Layers, Eye, X, Clipboard, Check, Pin } from 'lucide-react';
 import type { Source } from '@/types';
 import { HighlightedSnapshot } from './highlighted-snapshot';
 import {
@@ -16,6 +16,7 @@ import {
     type SourceSortId,
 } from '@/src/utils/source-sort';
 import { buildSourceExportSummary } from '@/src/utils/source-export';
+import { getPinnedSources, getSourcePinId, togglePinnedSourceId } from '@/src/utils/source-pins';
 
 interface SourcesListProps {
     sources: Source[];
@@ -28,6 +29,7 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
     const [confidenceFilter, setConfidenceFilter] = useState<SourceConfidenceFilter>('all');
     const [sourceSort, setSourceSort] = useState<SourceSortId>('relevance');
     const [copySummaryState, setCopySummaryState] = useState<'idle' | 'copied' | 'error'>('idle');
+    const [pinnedSourceIds, setPinnedSourceIds] = useState<string[]>([]);
     const [mediaPreview, setMediaPreview] = useState<{ type: 'pdf' | 'image'; url: string; title: string; pages?: number[]; bbox?: number[]; bboxes?: number[][]; imageDimensions?: { width: number; height: number } } | null>(null);
 
     if (!sources || sources.length === 0) {
@@ -45,6 +47,10 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
     const coverageSummary = useMemo(
         () => buildSourceCoverageSummary(sources),
         [sources],
+    );
+    const pinnedSources = useMemo(
+        () => getPinnedSources(sources, pinnedSourceIds),
+        [pinnedSourceIds, sources],
     );
     const displayedSources = isListExpanded ? sortedSources : sources.slice(0, 3);
     const hasMore = filteredSources.length > 3;
@@ -88,6 +94,11 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
             setCopySummaryState('error');
             window.setTimeout(() => setCopySummaryState('idle'), 1800);
         }
+    };
+
+    const handleTogglePinnedSource = (sourceId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setPinnedSourceIds((currentPinnedSourceIds) => togglePinnedSourceId(currentPinnedSourceIds, sourceId));
     };
 
     const copySummaryButton = (
@@ -221,6 +232,40 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                             </div>
                         </div>
 
+                        {pinnedSources.length > 0 && (
+                            <div className="mb-2 rounded-lg border border-amber-400/15 bg-amber-400/5 p-2">
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+                                        <Pin className="h-3 w-3" />
+                                        Pinned sources
+                                    </span>
+                                    <span className="text-[10px] text-amber-200/70">
+                                        {pinnedSources.length}
+                                    </span>
+                                </div>
+                                <div className="mt-2 flex flex-col gap-1.5">
+                                    {pinnedSources.map((source, index) => {
+                                        const originalIndex = sources.indexOf(source);
+                                        const sourceKey = getSourcePinId(source, originalIndex >= 0 ? originalIndex : index);
+
+                                        return (
+                                            <div
+                                                key={sourceKey}
+                                                className="flex items-center justify-between gap-2 rounded-md bg-black/20 px-2 py-1.5"
+                                            >
+                                                <span className="truncate text-xs font-medium text-gray-200">
+                                                    {source.title || `Source ${index + 1}`}
+                                                </span>
+                                                <span className="shrink-0 text-[11px] text-amber-200">
+                                                    {getSourceConfidencePercent(source)}%
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
                         <motion.div
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: 'auto' }}
@@ -232,6 +277,8 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                                     No sources match this confidence filter.
                                 </div>
                             ) : displayedSources.map((source, index) => {
+                                const originalIndex = sources.indexOf(source);
+                                const sourceKey = getSourcePinId(source, originalIndex >= 0 ? originalIndex : index);
                                 const pageNumbers = source.metadata?.page_numbers as number[] | undefined;
                                 const chunkSnippets = source.metadata?.chunk_snippets as string[] | undefined;
                                 const chunkDetails = source.metadata?.chunk_details as {
@@ -252,14 +299,15 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                                 }[] | undefined;
                                 const firstPageImage = pageImages?.[0]?.path;
                                 const fileType = source.metadata?.file_type as string | undefined;
-                                const isSourceExpanded = expandedSourceId === (source.id || `source-${index}`);
+                                const isSourceExpanded = expandedSourceId === sourceKey;
                                 const scoreDisplay = formatScore(source);
                                 const pagesDisplay = formatPageNumbers(pageNumbers);
                                 const isPdf = fileType === 'pdf' || source.title?.toLowerCase().endsWith('.pdf');
+                                const isPinned = pinnedSourceIds.includes(sourceKey);
 
                                 return (
                                     <motion.div
-                                        key={source.id || index}
+                                        key={sourceKey}
                                         initial={{ opacity: 0, y: -10 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         transition={{ delay: index * 0.05 }}
@@ -268,7 +316,7 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                                         {/* Main row */}
                                         <div
                                             className="flex items-start gap-3 p-2 cursor-pointer"
-                                            onClick={() => setExpandedSourceId(isSourceExpanded ? null : (source.id || `source-${index}`))}
+                                            onClick={() => setExpandedSourceId(isSourceExpanded ? null : sourceKey)}
                                         >
                                             <div className="h-7 w-7 rounded bg-violet-500/20 flex items-center justify-center shrink-0 text-xs font-medium text-violet-400">
                                                 {index + 1}
@@ -303,6 +351,20 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                                             </div>
 
                                             <div className="flex items-center gap-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => handleTogglePinnedSource(sourceKey, e)}
+                                                    className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors ${isPinned
+                                                        ? 'border-amber-400/30 bg-amber-400/10 text-amber-200'
+                                                        : 'border-white/10 bg-white/[0.03] text-gray-500 hover:text-white'
+                                                        }`}
+                                                    aria-pressed={isPinned}
+                                                >
+                                                    <span className="flex items-center gap-1">
+                                                        <Pin className={`h-3 w-3 ${isPinned ? 'fill-current' : ''}`} />
+                                                        {isPinned ? 'Pinned' : 'Pin'}
+                                                    </span>
+                                                </button>
                                                 {firstPageImage && (
                                                     <button
                                                         onClick={(e) => {
