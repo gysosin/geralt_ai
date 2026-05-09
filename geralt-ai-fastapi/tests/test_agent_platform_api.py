@@ -447,6 +447,56 @@ def test_approve_workflow_step_endpoint_executes_pending_step():
     assert data["steps"][0]["output"]["query_type"] == "summary"
 
 
+def test_cancel_workflow_run_endpoint_marks_run_canceled():
+    run_db = MagicMock()
+    run_db.find_one.return_value = {
+        "run_id": "run-1",
+        "workflow_id": "workflow-1",
+        "status": "pending",
+        "dry_run": False,
+        "inputs": {"query": "summarize documents"},
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Approval",
+                "tool_name": "query.plan",
+                "arguments": {"query": "summarize documents"},
+                "depends_on": [],
+                "approval_required": True,
+                "status": "pending_approval",
+                "output": None,
+                "message": "Approval required before execution",
+            }
+        ],
+        "created_by": "anonymous",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+    }
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=MagicMock(),
+                    workflow_db=MagicMock(),
+                    run_db=run_db,
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.post("/api/v1/agent-platform/workflow-runs/run-1/cancel")
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "canceled"
+    assert data["steps"][0]["status"] == "canceled"
+
+
 def test_delete_workflow_endpoint_soft_deletes_definition():
     workflow_db = MagicMock()
     workflow_db.update_one.return_value = MagicMock(modified_count=1)

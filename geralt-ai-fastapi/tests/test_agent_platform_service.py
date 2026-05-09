@@ -588,6 +588,59 @@ def test_approve_workflow_step_rejects_non_pending_step():
     assert result.status_code == 400
 
 
+def test_cancel_workflow_run_marks_non_terminal_steps_canceled():
+    run_db = MagicMock()
+    run_db.find_one.return_value = {
+        "run_id": "run-1",
+        "workflow_id": "workflow-1",
+        "created_by": "mehul",
+        "status": "pending",
+        "steps": [
+            {"step_id": "step-1", "status": "completed", "message": ""},
+            {"step_id": "step-2", "status": "pending_approval", "message": "Approval required"},
+            {"step_id": "step-3", "status": "blocked", "message": "Waiting for dependency"},
+        ],
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.cancel_workflow_run(owner="mehul", run_id="run-1")
+
+    assert result.success is True
+    assert result.data["status"] == "canceled"
+    assert [step["status"] for step in result.data["steps"]] == [
+        "completed",
+        "canceled",
+        "canceled",
+    ]
+    update = run_db.update_one.call_args.args[1]["$set"]
+    assert update["status"] == "canceled"
+
+
+def test_cancel_workflow_run_rejects_completed_run():
+    run_db = MagicMock()
+    run_db.find_one.return_value = {
+        "run_id": "run-1",
+        "workflow_id": "workflow-1",
+        "created_by": "mehul",
+        "status": "completed",
+        "steps": [],
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.cancel_workflow_run(owner="mehul", run_id="run-1")
+
+    assert result.success is False
+    assert result.status_code == 400
+
+
 def test_start_workflow_run_keeps_unsafe_tool_pending():
     workflow_db = MagicMock()
     run_db = MagicMock()
