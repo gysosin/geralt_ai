@@ -6,7 +6,7 @@ import {
   Server, Globe, Settings2, Eye, EyeOff, TestTube2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useAuthStore } from '@/src/store';
+import { useAuthStore } from '@/src/store/auth.store';
 import { configurationService } from '@/src/services';
 import type { APIConfiguration, WebhookConfiguration } from '@/types';
 

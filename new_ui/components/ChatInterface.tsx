@@ -7,7 +7,9 @@ import {
   ArrowRight, Menu, Loader2, Edit
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useChatStore, useAuthStore, useBotStore } from '../src/store';
+import { useAuthStore } from '../src/store/auth.store';
+import { useBotStore } from '../src/store/bot.store';
+import { useChatStore } from '../src/store/chat.store';
 import { MarkdownRenderer, SourcesList, SuggestionChips, CollectionPicker, ConversationSidebar } from '../src/components/chat';
 import CreateBotDialog from './bots/CreateBotDialog';
 import type { Message, Source, CreateBotCommand } from '../types';

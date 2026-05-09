@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import Modal from './Modal';
 import { collectionService } from '../src/services';
-import { useAuthStore } from '../src/store';
+import { useAuthStore } from '../src/store/auth.store';
 import type { Collection } from '../types';
 
 interface CollectionCardProps {
