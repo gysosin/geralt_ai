@@ -7,6 +7,8 @@ Each client is wrapped in a class for better encapsulation and testability.
 from typing import Optional
 import logging
 
+from . import mistral_client as mistral_client
+
 
 class ClientManager:
     """
@@ -96,10 +98,18 @@ def get_elasticsearch_client():
     return _get()
 
 
+def get_mistral_client():
+    """Get Mistral client."""
+    from core.clients.mistral_client import get_mistral_client as _get
+    return _get()
+
+
 __all__ = [
     "ClientManager",
     "get_client_manager",
     "get_redis_client",
     "get_minio_client",
     "get_elasticsearch_client",
+    "get_mistral_client",
+    "mistral_client",
 ]
