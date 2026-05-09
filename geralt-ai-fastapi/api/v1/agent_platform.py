@@ -141,6 +141,17 @@ class WorkflowDefinitionCreate(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+class WorkflowDefinitionUpdate(BaseModel):
+    """Request to update a reusable workflow."""
+
+    name: Optional[str] = None
+    steps: Optional[List[WorkflowStepDefinition]] = None
+    description: Optional[str] = None
+    agent_id: Optional[str] = None
+    triggers: Optional[List[str]] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
 class WorkflowTemplateCreate(BaseModel):
     """Request to create a workflow from a built-in template."""
 
@@ -603,6 +614,27 @@ async def get_workflow_definition(
 ) -> Dict[str, Any]:
     """Get a reusable workflow definition."""
     return _result_or_error(service.get_workflow(_owner(current_user), workflow_id))
+
+
+@router.patch("/workflows/{workflow_id}", response_model=WorkflowDefinitionResponse)
+async def update_workflow_definition(
+    workflow_id: str,
+    request: WorkflowDefinitionUpdate,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Update a reusable workflow definition."""
+    result = service.update_workflow(
+        owner=_owner(current_user),
+        workflow_id=workflow_id,
+        name=request.name,
+        steps=[step.model_dump() for step in request.steps] if request.steps is not None else None,
+        description=request.description,
+        agent_id=request.agent_id,
+        triggers=request.triggers,
+        metadata=request.metadata,
+    )
+    return _result_or_error(result)
 
 
 @router.delete("/workflows/{workflow_id}")

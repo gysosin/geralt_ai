@@ -424,6 +424,76 @@ class AgentPlatformService(BaseService):
             return ServiceResult.fail("Workflow not found", 404)
         return ServiceResult.ok(self._public_document(doc))
 
+    def update_workflow(
+        self,
+        owner: str,
+        workflow_id: str,
+        name: Optional[str] = None,
+        steps: Optional[List[Dict[str, Any]]] = None,
+        description: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        triggers: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> ServiceResult:
+        """Update an owned reusable workflow definition."""
+        current_result = self.get_workflow(owner, workflow_id)
+        if not current_result.success:
+            return current_result
+
+        updates: Dict[str, Any] = {}
+        if name is not None:
+            if not name.strip():
+                return ServiceResult.fail("Workflow name is required", 400)
+            updates["name"] = name.strip()
+        if steps is not None:
+            if not steps:
+                return ServiceResult.fail("Workflow requires at least one step", 400)
+            normalized_steps = []
+            for index, step in enumerate(steps, start=1):
+                tool_name = step.get("tool_name")
+                validation_error = self._validate_tools([tool_name])
+                if validation_error:
+                    return validation_error
+                normalized_steps.append({
+                    "step_id": step.get("step_id") or f"step-{index}",
+                    "name": step.get("name") or f"Step {index}",
+                    "tool_name": tool_name,
+                    "arguments": step.get("arguments") or {},
+                    "depends_on": step.get("depends_on") or [],
+                    "approval_required": bool(step.get("approval_required", False)),
+                })
+            dependency_error = self._validate_workflow_dependencies(normalized_steps)
+            if dependency_error:
+                return dependency_error
+            updates["steps"] = normalized_steps
+        if description is not None:
+            updates["description"] = description
+        if agent_id is not None:
+            updates["agent_id"] = agent_id
+        if triggers is not None:
+            updates["triggers"] = triggers
+        if metadata is not None:
+            updates["metadata"] = metadata
+
+        if not updates:
+            return ServiceResult.ok(current_result.data)
+
+        updates["updated_at"] = datetime.utcnow().isoformat()
+        self.workflow_db.update_one(
+            {
+                "workflow_id": workflow_id,
+                "created_by": self.extract_username(owner),
+                "deleted": {"$ne": True},
+            },
+            {"$set": updates},
+        )
+        updated_doc = {
+            **current_result.data,
+            **updates,
+        }
+        self._record_audit("workflow.updated", owner, "workflow", workflow_id)
+        return ServiceResult.ok(self._public_document(updated_doc))
+
     def delete_workflow(self, owner: str, workflow_id: str) -> ServiceResult:
         """Soft-delete an owned workflow definition."""
         result = self.workflow_db.update_one(

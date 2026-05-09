@@ -67,6 +67,7 @@ const AgentPlatform: React.FC = () => {
   const [workflowName, setWorkflowName] = useState('Document Aggregation Workflow');
   const [workflowAgentId, setWorkflowAgentId] = useState('');
   const [workflowTriggers, setWorkflowTriggers] = useState('document.uploaded');
+  const [editingWorkflowId, setEditingWorkflowId] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('document_aggregation');
   const [runAgentId, setRunAgentId] = useState('');
   const [runWorkflowId, setRunWorkflowId] = useState('');
@@ -183,6 +184,21 @@ const AgentPlatform: React.FC = () => {
     setIsSubmitting(true);
     setError('');
     try {
+      if (editingWorkflowId) {
+        const selectedSteps = selectedTemplateId ? selectedTemplate?.steps : undefined;
+        const updated = await agentPlatformService.updateWorkflow(editingWorkflowId, {
+          name: workflowName,
+          agent_id: workflowAgentId || undefined,
+          triggers: splitIds(workflowTriggers),
+          steps: selectedSteps,
+        });
+        setWorkflows((current) => current.map((workflow) => (
+          workflow.workflow_id === updated.workflow_id ? updated : workflow
+        )));
+        setEditingWorkflowId('');
+        return;
+      }
+
       const created = selectedTemplateId
         ? await agentPlatformService.createWorkflowFromTemplate({
           template_id: selectedTemplateId,
@@ -217,6 +233,14 @@ const AgentPlatform: React.FC = () => {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const editWorkflow = (workflow: WorkflowDefinition) => {
+    setEditingWorkflowId(workflow.workflow_id);
+    setWorkflowName(workflow.name);
+    setWorkflowAgentId(workflow.agent_id || '');
+    setWorkflowTriggers(workflow.triggers.join(', '));
+    setSelectedTemplateId('');
   };
 
   const createMcpServer = async () => {
@@ -384,6 +408,7 @@ const AgentPlatform: React.FC = () => {
       await agentPlatformService.deleteWorkflow(workflowId);
       setWorkflows((current) => current.filter((workflow) => workflow.workflow_id !== workflowId));
       if (runWorkflowId === workflowId) setRunWorkflowId('');
+      if (editingWorkflowId === workflowId) setEditingWorkflowId('');
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to delete workflow');
     } finally {
@@ -635,6 +660,7 @@ const AgentPlatform: React.FC = () => {
                 onChange={(event) => setSelectedTemplateId(event.target.value)}
                 className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-sky-500/60"
               >
+                <option value="">Keep/custom steps</option>
                 {templates.map((template) => (
                   <option key={template.template_id} value={template.template_id}>{template.name}</option>
                 ))}
@@ -664,7 +690,7 @@ const AgentPlatform: React.FC = () => {
                 className="w-full h-11 rounded-xl bg-sky-600 hover:bg-sky-500 disabled:opacity-60 text-white font-medium flex items-center justify-center gap-2"
               >
                 {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Workflow size={18} />}
-                Create Workflow
+                {editingWorkflowId ? 'Save Workflow' : 'Create Workflow'}
               </button>
             </div>
           </section>
@@ -710,12 +736,20 @@ const AgentPlatform: React.FC = () => {
                         {workflow.steps.length} steps{workflow.triggers.length ? ` / ${workflow.triggers.join(', ')}` : ''}
                       </p>
                     </div>
-                    <button
-                      onClick={() => deleteWorkflow(workflow.workflow_id)}
-                      className="p-2 rounded-lg text-gray-500 hover:text-red-300 hover:bg-red-500/10"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => editWorkflow(workflow)}
+                        className="p-2 rounded-lg text-gray-500 hover:text-sky-300 hover:bg-sky-500/10"
+                      >
+                        <Settings2 size={16} />
+                      </button>
+                      <button
+                        onClick={() => deleteWorkflow(workflow.workflow_id)}
+                        className="p-2 rounded-lg text-gray-500 hover:text-red-300 hover:bg-red-500/10"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {workflows.length === 0 && <p className="text-sm text-gray-500">No workflows</p>}

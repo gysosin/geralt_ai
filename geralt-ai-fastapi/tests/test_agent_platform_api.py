@@ -261,6 +261,61 @@ def test_create_workflow_definition_endpoint_validates_step_tools():
     assert data["steps"][1]["tool_name"] == "rag.search"
 
 
+def test_update_workflow_definition_endpoint_returns_updated_workflow():
+    workflow_db = MagicMock()
+    workflow_db.find_one.return_value = {
+        "workflow_id": "workflow-1",
+        "name": "Old Workflow",
+        "description": "",
+        "agent_id": None,
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Plan",
+                "tool_name": "query.plan",
+                "arguments": {"query": "{{input.query}}"},
+                "depends_on": [],
+                "approval_required": False,
+            }
+        ],
+        "triggers": [],
+        "metadata": {},
+        "created_by": "anonymous",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+        "deleted": False,
+    }
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=MagicMock(),
+                    workflow_db=workflow_db,
+                    run_db=MagicMock(),
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.patch(
+                    "/api/v1/agent-platform/workflows/workflow-1",
+                    json={
+                        "name": "Updated Workflow",
+                        "triggers": ["document.uploaded"],
+                    },
+                )
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Updated Workflow"
+    assert data["triggers"] == ["document.uploaded"]
+
+
 def test_workflow_templates_endpoint_returns_built_ins():
     with patch("models.database.MongoClient"):
         with patch("core.clients.redis_client.redis.StrictRedis"):
