@@ -718,6 +718,46 @@ def test_cancel_workflow_run_rejects_completed_run():
     assert result.status_code == 400
 
 
+def test_retry_workflow_run_creates_new_run_from_recorded_steps():
+    run_db = MagicMock()
+    run_db.find_one.return_value = {
+        "run_id": "run-1",
+        "workflow_id": "workflow-1",
+        "created_by": "mehul",
+        "status": "canceled",
+        "dry_run": False,
+        "inputs": {"query": "summarize these documents"},
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Plan",
+                "tool_name": "query.plan",
+                "arguments": {"query": "summarize these documents"},
+                "depends_on": [],
+                "approval_required": False,
+                "status": "canceled",
+                "output": None,
+                "message": "Run canceled",
+            }
+        ],
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.retry_workflow_run(owner="mehul", run_id="run-1", dry_run=False)
+
+    assert result.success is True
+    inserted = run_db.insert_one.call_args.args[0]
+    assert inserted["run_id"] != "run-1"
+    assert inserted["retried_from"] == "run-1"
+    assert inserted["status"] == "completed"
+    assert inserted["steps"][0]["status"] == "completed"
+    assert inserted["steps"][0]["output"]["query_type"] == "summary"
+
+
 def test_start_workflow_run_keeps_unsafe_tool_pending():
     workflow_db = MagicMock()
     run_db = MagicMock()
