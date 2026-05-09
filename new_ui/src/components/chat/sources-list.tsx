@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileText, ExternalLink, ChevronDown, ChevronUp, Layers, Eye, X } from 'lucide-react';
+import { FileText, ExternalLink, ChevronDown, ChevronUp, Layers, Eye, X, Clipboard, Check } from 'lucide-react';
 import type { Source } from '@/types';
 import { HighlightedSnapshot } from './highlighted-snapshot';
 import {
@@ -15,6 +15,7 @@ import {
     sourceSortOptions,
     type SourceSortId,
 } from '@/src/utils/source-sort';
+import { buildSourceExportSummary } from '@/src/utils/source-export';
 
 interface SourcesListProps {
     sources: Source[];
@@ -26,6 +27,7 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
     const [expandedSourceId, setExpandedSourceId] = useState<string | null>(null);
     const [confidenceFilter, setConfidenceFilter] = useState<SourceConfidenceFilter>('all');
     const [sourceSort, setSourceSort] = useState<SourceSortId>('relevance');
+    const [copySummaryState, setCopySummaryState] = useState<'idle' | 'copied' | 'error'>('idle');
     const [mediaPreview, setMediaPreview] = useState<{ type: 'pdf' | 'image'; url: string; title: string; pages?: number[]; bbox?: number[]; bboxes?: number[][]; imageDimensions?: { width: number; height: number } } | null>(null);
 
     if (!sources || sources.length === 0) {
@@ -77,34 +79,76 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
         setMediaPreview({ type: 'image', url: fullUrl, title, bbox, bboxes, imageDimensions });
     };
 
+    const handleCopySourceSummary = async () => {
+        try {
+            await navigator.clipboard.writeText(buildSourceExportSummary(sortedSources));
+            setCopySummaryState('copied');
+            window.setTimeout(() => setCopySummaryState('idle'), 1800);
+        } catch {
+            setCopySummaryState('error');
+            window.setTimeout(() => setCopySummaryState('idle'), 1800);
+        }
+    };
+
+    const copySummaryButton = (
+        <button
+            type="button"
+            onClick={handleCopySourceSummary}
+            className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-semibold transition-colors ${copySummaryState === 'error'
+                ? 'border-red-400/30 bg-red-400/10 text-red-200'
+                : copySummaryState === 'copied'
+                    ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200'
+                    : 'border-white/10 bg-white/[0.03] text-gray-400 hover:text-white'
+                }`}
+            aria-live="polite"
+        >
+            {copySummaryState === 'copied' ? (
+                <Check className="h-3.5 w-3.5" />
+            ) : (
+                <Clipboard className="h-3.5 w-3.5" />
+            )}
+            {copySummaryState === 'copied'
+                ? 'Copied'
+                : copySummaryState === 'error'
+                    ? 'Copy failed'
+                    : 'Copy summary'}
+        </button>
+    );
+
     return (
         <>
             <div className={`mt-3 pt-3 border-t border-white/10 ${className}`}>
                 {/* Collapsed state */}
                 {!isListExpanded ? (
-                    <button
-                        onClick={() => setIsListExpanded(true)}
-                        className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors"
-                    >
-                        <div className="h-6 w-6 rounded bg-violet-500/20 flex items-center justify-center">
-                            <FileText className="h-3.5 w-3.5 text-violet-400" />
-                        </div>
-                        <span className="text-xs">{sources.length} source{sources.length > 1 ? 's' : ''}</span>
-                        <ChevronDown className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button
+                            onClick={() => setIsListExpanded(true)}
+                            className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors"
+                        >
+                            <div className="h-6 w-6 rounded bg-violet-500/20 flex items-center justify-center">
+                                <FileText className="h-3.5 w-3.5 text-violet-400" />
+                            </div>
+                            <span className="text-xs">{sources.length} source{sources.length > 1 ? 's' : ''}</span>
+                            <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+                        {copySummaryButton}
+                    </div>
                 ) : (
                     <>
                         {/* Header when expanded */}
-                        <button
-                            onClick={() => setIsListExpanded(false)}
-                            className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors mb-2"
-                        >
-                            <FileText className="h-4 w-4" />
-                            <span className="font-medium">
-                                Sources ({filteredSources.length}/{sources.length})
-                            </span>
-                            <ChevronUp className="h-4 w-4" />
-                        </button>
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                            <button
+                                onClick={() => setIsListExpanded(false)}
+                                className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors"
+                            >
+                                <FileText className="h-4 w-4" />
+                                <span className="font-medium">
+                                    Sources ({filteredSources.length}/{sources.length})
+                                </span>
+                                <ChevronUp className="h-4 w-4" />
+                            </button>
+                            {copySummaryButton}
+                        </div>
 
                         <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
                             <div className="rounded-lg border border-white/5 bg-white/[0.03] px-2.5 py-2">
