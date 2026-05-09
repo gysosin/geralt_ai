@@ -20,7 +20,8 @@ class FakeToolExecutor:
 def test_create_agent_definition_stores_valid_tool_contract():
     agent_db = MagicMock()
     workflow_db = MagicMock()
-    service = AgentPlatformService(agent_db=agent_db, workflow_db=workflow_db)
+    audit_db = MagicMock()
+    service = AgentPlatformService(agent_db=agent_db, workflow_db=workflow_db, audit_db=audit_db)
 
     result = service.create_agent(
         owner="mehul",
@@ -37,6 +38,7 @@ def test_create_agent_definition_stores_valid_tool_contract():
     assert inserted["agent_id"] == result.data["agent_id"]
     assert inserted["tool_names"] == ["rag.search", "rag.aggregate"]
     assert inserted["created_by"] == "mehul"
+    assert audit_db.insert_one.call_args.args[0]["event"] == "agent.created"
 
 
 def test_create_agent_definition_rejects_unknown_tool():
@@ -411,8 +413,9 @@ def test_get_workflow_run_rejects_missing_run():
 
 def test_delete_agent_soft_deletes_owned_agent():
     agent_db = MagicMock()
+    audit_db = MagicMock()
     agent_db.update_one.return_value = MagicMock(modified_count=1)
-    service = AgentPlatformService(agent_db=agent_db, workflow_db=MagicMock())
+    service = AgentPlatformService(agent_db=agent_db, workflow_db=MagicMock(), audit_db=audit_db)
 
     result = service.delete_agent(owner="mehul", agent_id="agent-1")
 
@@ -420,12 +423,14 @@ def test_delete_agent_soft_deletes_owned_agent():
     update = agent_db.update_one.call_args.args[1]["$set"]
     assert update["deleted"] is True
     assert "updated_at" in update
+    assert audit_db.insert_one.call_args.args[0]["event"] == "agent.deleted"
 
 
 def test_delete_workflow_soft_deletes_owned_workflow():
     workflow_db = MagicMock()
+    audit_db = MagicMock()
     workflow_db.update_one.return_value = MagicMock(modified_count=1)
-    service = AgentPlatformService(agent_db=MagicMock(), workflow_db=workflow_db)
+    service = AgentPlatformService(agent_db=MagicMock(), workflow_db=workflow_db, audit_db=audit_db)
 
     result = service.delete_workflow(owner="mehul", workflow_id="workflow-1")
 
@@ -433,6 +438,7 @@ def test_delete_workflow_soft_deletes_owned_workflow():
     update = workflow_db.update_one.call_args.args[1]["$set"]
     assert update["deleted"] is True
     assert "updated_at" in update
+    assert audit_db.insert_one.call_args.args[0]["event"] == "workflow.deleted"
 
 
 def test_delete_workflow_returns_not_found_when_no_match():
@@ -444,3 +450,50 @@ def test_delete_workflow_returns_not_found_when_no_match():
 
     assert result.success is False
     assert result.status_code == 404
+
+
+def test_list_audit_events_returns_recent_events():
+    audit_db = MagicMock()
+    cursor = MagicMock()
+    cursor.sort.return_value = cursor
+    cursor.limit.return_value = [
+        {
+            "event": "workflow.created",
+            "subject_type": "workflow",
+            "subject_id": "workflow-1",
+            "created_by": "mehul",
+        }
+    ]
+    audit_db.find.return_value = cursor
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        audit_db=audit_db,
+    )
+
+    result = service.list_audit_events(owner="mehul", limit=10)
+
+    assert result.success is True
+    assert result.data[0]["event"] == "workflow.created"
+    audit_db.find.assert_called_once()
+
+
+def test_audit_write_failure_does_not_break_agent_creation():
+    agent_db = MagicMock()
+    audit_db = MagicMock()
+    audit_db.insert_one.side_effect = Exception("audit unavailable")
+    service = AgentPlatformService(
+        agent_db=agent_db,
+        workflow_db=MagicMock(),
+        audit_db=audit_db,
+    )
+
+    result = service.create_agent(
+        owner="mehul",
+        name="Invoice Analyst",
+        instruction="Analyze invoices.",
+        tool_names=["query.plan"],
+    )
+
+    assert result.success is True
+    agent_db.insert_one.assert_called_once()

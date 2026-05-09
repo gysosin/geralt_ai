@@ -306,6 +306,7 @@ extraction_collection = db.document_extractions
 agent_definitions_collection = db.agent_definitions
 workflow_definitions_collection = db.workflow_definitions
 workflow_runs_collection = db.workflow_runs
+agent_audit_collection = db.agent_audit_events
 
 
 __all__ = [
@@ -339,4 +340,5 @@ __all__ = [
     "agent_definitions_collection",
     "workflow_definitions_collection",
     "workflow_runs_collection",
+    "agent_audit_collection",
 ]

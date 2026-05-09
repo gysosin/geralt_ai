@@ -13,6 +13,7 @@ from core.agents.tool_registry import get_agent_tool_registry
 from core.agents.workflow_templates import get_workflow_template_registry
 from models.database import (
     agent_definitions_collection,
+    agent_audit_collection,
     workflow_definitions_collection,
     workflow_runs_collection,
 )
@@ -27,12 +28,19 @@ class AgentPlatformService(BaseService):
         agent_db=None,
         workflow_db=None,
         run_db=None,
+        audit_db=None,
         tool_executor=None,
     ) -> None:
         super().__init__()
         self.agent_db = agent_db or agent_definitions_collection
         self.workflow_db = workflow_db or workflow_definitions_collection
         self.run_db = run_db or workflow_runs_collection
+        if audit_db is not None:
+            self.audit_db = audit_db
+        elif agent_db is not None or workflow_db is not None or run_db is not None:
+            self.audit_db = None
+        else:
+            self.audit_db = agent_audit_collection
         self.tool_executor = tool_executor or get_agent_tool_executor()
         self.registry = get_agent_tool_registry()
         self.template_registry = get_workflow_template_registry()
@@ -75,6 +83,7 @@ class AgentPlatformService(BaseService):
             "deleted": False,
         }
         self.agent_db.insert_one(document)
+        self._record_audit("agent.created", owner, "agent", agent_id)
         return ServiceResult.ok(self._public_document(document), status_code=201)
 
     def list_agents(self, owner: str) -> ServiceResult:
@@ -106,6 +115,7 @@ class AgentPlatformService(BaseService):
         )
         if getattr(result, "modified_count", 0) == 0:
             return ServiceResult.fail("Agent not found", 404)
+        self._record_audit("agent.deleted", owner, "agent", agent_id)
         return ServiceResult.ok({"message": "Agent deleted successfully"})
 
     def create_workflow(
@@ -155,6 +165,7 @@ class AgentPlatformService(BaseService):
             "deleted": False,
         }
         self.workflow_db.insert_one(document)
+        self._record_audit("workflow.created", owner, "workflow", workflow_id)
         return ServiceResult.ok(self._public_document(document), status_code=201)
 
     def list_workflow_templates(self) -> ServiceResult:
@@ -220,6 +231,7 @@ class AgentPlatformService(BaseService):
         )
         if getattr(result, "modified_count", 0) == 0:
             return ServiceResult.fail("Workflow not found", 404)
+        self._record_audit("workflow.deleted", owner, "workflow", workflow_id)
         return ServiceResult.ok({"message": "Workflow deleted successfully"})
 
     def start_workflow_run(
@@ -267,6 +279,13 @@ class AgentPlatformService(BaseService):
             "updated_at": now,
         }
         self.run_db.insert_one(document)
+        self._record_audit(
+            "workflow.run_started",
+            owner,
+            "workflow_run",
+            run_id,
+            {"workflow_id": workflow_id, "status": status, "dry_run": dry_run},
+        )
         return ServiceResult.ok(self._public_document(document), status_code=201)
 
     def list_workflow_runs(self, owner: str, workflow_id: Optional[str] = None) -> ServiceResult:
@@ -286,6 +305,16 @@ class AgentPlatformService(BaseService):
         if not doc:
             return ServiceResult.fail("Workflow run not found", 404)
         return ServiceResult.ok(self._public_document(doc))
+
+    def list_audit_events(self, owner: str, limit: int = 50) -> ServiceResult:
+        """List recent agent platform audit events."""
+        if self.audit_db is None:
+            return ServiceResult.ok([])
+        docs = self.audit_db.find(
+            {"created_by": self.extract_username(owner)},
+            {"_id": 0},
+        ).sort("created_at", -1).limit(limit)
+        return ServiceResult.ok([self._public_document(doc) for doc in docs])
 
     def _validate_tools(self, tool_names: List[Optional[str]]) -> Optional[ServiceResult]:
         missing = [
@@ -384,6 +413,28 @@ class AgentPlatformService(BaseService):
             key = value[len("{{input."):-2].strip()
             return inputs.get(key)
         return value
+
+    def _record_audit(
+        self,
+        event: str,
+        owner: str,
+        subject_type: str,
+        subject_id: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if self.audit_db is None:
+            return
+        try:
+            self.audit_db.insert_one({
+                "event": event,
+                "subject_type": subject_type,
+                "subject_id": subject_id,
+                "metadata": metadata or {},
+                "created_by": self.extract_username(owner),
+                "created_at": datetime.utcnow().isoformat(),
+            })
+        except Exception as e:
+            self.logger.warning("Failed to record agent platform audit event: %s", e)
 
 
 _agent_platform_service: Optional[AgentPlatformService] = None

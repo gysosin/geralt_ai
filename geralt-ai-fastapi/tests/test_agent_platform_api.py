@@ -338,3 +338,42 @@ def test_delete_agent_endpoint_soft_deletes_definition():
 
     assert response.status_code == 200
     assert response.json()["message"] == "Agent deleted successfully"
+
+
+def test_agent_platform_audit_endpoint_returns_events():
+    audit_db = MagicMock()
+    cursor = MagicMock()
+    cursor.sort.return_value = cursor
+    cursor.limit.return_value = [
+        {
+            "event": "workflow.created",
+            "subject_type": "workflow",
+            "subject_id": "workflow-1",
+            "metadata": {},
+            "created_by": "anonymous",
+            "created_at": "2026-05-09T00:00:00",
+        }
+    ]
+    audit_db.find.return_value = cursor
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=MagicMock(),
+                    workflow_db=MagicMock(),
+                    run_db=MagicMock(),
+                    audit_db=audit_db,
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.get("/api/v1/agent-platform/audit-events")
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()[0]["event"] == "workflow.created"

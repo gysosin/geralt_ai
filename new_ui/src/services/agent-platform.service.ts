@@ -58,6 +58,15 @@ export interface WorkflowRun {
     updated_at: string
 }
 
+export interface AuditEvent {
+    event: string
+    subject_type: string
+    subject_id: string
+    metadata: Record<string, unknown>
+    created_by: string
+    created_at: string
+}
+
 const BASE_PATH = '/api/v1/agent-platform'
 
 export const agentPlatformService = {
@@ -137,6 +146,11 @@ export const agentPlatformService = {
     async listWorkflowRuns(workflowId?: string): Promise<WorkflowRun[]> {
         const params = workflowId ? `?workflow_id=${encodeURIComponent(workflowId)}` : ''
         const response = await api.get(`${BASE_PATH}/workflow-runs${params}`)
+        return response.data
+    },
+
+    async listAuditEvents(limit = 25): Promise<AuditEvent[]> {
+        const response = await api.get(`${BASE_PATH}/audit-events?limit=${limit}`)
         return response.data
     },
 }
