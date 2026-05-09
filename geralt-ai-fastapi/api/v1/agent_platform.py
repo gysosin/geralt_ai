@@ -6,7 +6,7 @@ contracts for agents, workflows, and future MCP adapters.
 """
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from core.agents.tool_registry import get_agent_tool_registry
@@ -859,6 +859,7 @@ async def list_workflow_runs(
     workflow_id: Optional[str] = None,
     include_archived: bool = False,
     status: Optional[str] = None,
+    limit: int = Query(default=50, ge=1, le=100),
     current_user: str | None = Depends(get_optional_user),
     service: AgentPlatformService = Depends(get_agent_platform_service),
 ) -> List[Dict[str, Any]]:
@@ -869,6 +870,7 @@ async def list_workflow_runs(
             workflow_id,
             include_archived=include_archived,
             status=status,
+            limit=limit,
         )
     )
 
