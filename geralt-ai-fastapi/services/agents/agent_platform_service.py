@@ -636,6 +636,29 @@ class AgentPlatformService(BaseService):
             "tools": self.registry.list_mcp_tools(),
         })
 
+    def get_platform_stats(self, owner: str) -> ServiceResult:
+        """Return aggregate counts for the current agent platform workspace."""
+        username = self.extract_username(owner)
+        definition_query = {"created_by": username, "deleted": {"$ne": True}}
+        run_docs = list(self.run_db.find({"created_by": username}, {"_id": 0, "status": 1}))
+        run_statuses: Dict[str, int] = {}
+        for run in run_docs:
+            status = run.get("status") or "unknown"
+            run_statuses[status] = run_statuses.get(status, 0) + 1
+
+        return ServiceResult.ok({
+            "agents": self.agent_db.count_documents(definition_query),
+            "workflows": self.workflow_db.count_documents(definition_query),
+            "tools": len(self.registry.list_tools()),
+            "runs": len(run_docs),
+            "run_statuses": run_statuses,
+            "active_runs": sum(
+                count
+                for status, count in run_statuses.items()
+                if status in {"planned", "pending"}
+            ),
+        })
+
     def get_adk_manifest(self, owner: str) -> ServiceResult:
         """Return an ADK-oriented manifest for agents, workflows, and MCP tools."""
         username = self.extract_username(owner)

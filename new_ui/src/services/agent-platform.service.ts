@@ -97,6 +97,15 @@ export interface PlatformImportSummary {
     workflow_id_map: Record<string, string>
 }
 
+export interface PlatformStats {
+    agents: number
+    workflows: number
+    tools: number
+    runs: number
+    active_runs: number
+    run_statuses: Record<string, number>
+}
+
 const BASE_PATH = '/api/v1/agent-platform'
 
 export const agentPlatformService = {
@@ -112,6 +121,11 @@ export const agentPlatformService = {
 
     async getAdkManifest(): Promise<Record<string, unknown>> {
         const response = await api.get(`${BASE_PATH}/adk/manifest`)
+        return response.data
+    },
+
+    async getStats(): Promise<PlatformStats> {
+        const response = await api.get(`${BASE_PATH}/stats`)
         return response.data
     },
 

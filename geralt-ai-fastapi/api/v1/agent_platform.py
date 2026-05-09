@@ -193,6 +193,17 @@ class McpManifestResponse(BaseModel):
     tools: List[Dict[str, Any]]
 
 
+class PlatformStatsResponse(BaseModel):
+    """Agent platform aggregate counts."""
+
+    agents: int
+    workflows: int
+    tools: int
+    runs: int
+    active_runs: int
+    run_statuses: Dict[str, int]
+
+
 class PlatformExportResponse(BaseModel):
     """Exported agent platform data."""
 
@@ -251,6 +262,15 @@ async def get_mcp_manifest(
 ) -> Dict[str, Any]:
     """Return a manifest for external agent runtimes."""
     return _result_or_error(service.get_mcp_manifest())
+
+
+@router.get("/stats", response_model=PlatformStatsResponse)
+async def get_platform_stats(
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Return aggregate counts for the current agent platform workspace."""
+    return _result_or_error(service.get_platform_stats(_owner(current_user)))
 
 
 @router.get("/adk/manifest", response_model=Dict[str, Any])
