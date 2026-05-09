@@ -33,3 +33,8 @@ export const buildSourceExportSummary = (sources: Source[], sourceNotes: SourceN
 
     return lines.join('\n');
 };
+
+export const buildSingleSourceExportSummary = (
+    source: Source,
+    sourceNotes: SourceNotes = {},
+): string => buildSourceExportSummary([source], sourceNotes);

@@ -15,7 +15,7 @@ import {
     sourceSortOptions,
     type SourceSortId,
 } from '@/src/utils/source-sort';
-import { buildSourceExportSummary } from '@/src/utils/source-export';
+import { buildSingleSourceExportSummary, buildSourceExportSummary } from '@/src/utils/source-export';
 import { getPinnedSources, getSourcePinId, togglePinnedSourceId } from '@/src/utils/source-pins';
 import { getSourceNoteCount, upsertSourceNote, type SourceNotes } from '@/src/utils/source-notes';
 
@@ -30,6 +30,8 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
     const [confidenceFilter, setConfidenceFilter] = useState<SourceConfidenceFilter>('all');
     const [sourceSort, setSourceSort] = useState<SourceSortId>('relevance');
     const [copySummaryState, setCopySummaryState] = useState<'idle' | 'copied' | 'error'>('idle');
+    const [copiedSourceId, setCopiedSourceId] = useState<string | null>(null);
+    const [copySourceErrorId, setCopySourceErrorId] = useState<string | null>(null);
     const [pinnedSourceIds, setPinnedSourceIds] = useState<string[]>([]);
     const [activeNoteSourceId, setActiveNoteSourceId] = useState<string | null>(null);
     const [sourceNotes, setSourceNotes] = useState<SourceNotes>({});
@@ -100,6 +102,21 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
         } catch {
             setCopySummaryState('error');
             window.setTimeout(() => setCopySummaryState('idle'), 1800);
+        }
+    };
+
+    const handleCopySingleSource = async (source: Source, sourceId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+
+        try {
+            await navigator.clipboard.writeText(buildSingleSourceExportSummary(source, sourceNotes));
+            setCopiedSourceId(sourceId);
+            setCopySourceErrorId(null);
+            window.setTimeout(() => setCopiedSourceId(null), 1800);
+        } catch {
+            setCopySourceErrorId(sourceId);
+            setCopiedSourceId(null);
+            window.setTimeout(() => setCopySourceErrorId(null), 1800);
         }
     };
 
@@ -338,6 +355,11 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                                 const isPinned = pinnedSourceIds.includes(sourceKey);
                                 const hasSourceNote = Boolean(sourceNotes[sourceKey]?.trim());
                                 const isNoteEditorOpen = activeNoteSourceId === sourceKey || hasSourceNote;
+                                const sourceCopyState = copiedSourceId === sourceKey
+                                    ? 'copied'
+                                    : copySourceErrorId === sourceKey
+                                        ? 'error'
+                                        : 'idle';
 
                                 return (
                                     <motion.div
@@ -397,6 +419,30 @@ export function SourcesList({ sources, className = '' }: SourcesListProps) {
                                                     <span className="flex items-center gap-1">
                                                         <MessageSquare className="h-3 w-3" />
                                                         {hasSourceNote ? 'Noted' : 'Note'}
+                                                    </span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => handleCopySingleSource(source, sourceKey, e)}
+                                                    className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors ${sourceCopyState === 'copied'
+                                                        ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200'
+                                                        : sourceCopyState === 'error'
+                                                            ? 'border-red-400/30 bg-red-400/10 text-red-200'
+                                                            : 'border-white/10 bg-white/[0.03] text-gray-500 hover:text-white'
+                                                        }`}
+                                                    aria-live="polite"
+                                                >
+                                                    <span className="flex items-center gap-1">
+                                                        {sourceCopyState === 'copied' ? (
+                                                            <Check className="h-3 w-3" />
+                                                        ) : (
+                                                            <Clipboard className="h-3 w-3" />
+                                                        )}
+                                                        {sourceCopyState === 'copied'
+                                                            ? 'Copied'
+                                                            : sourceCopyState === 'error'
+                                                                ? 'Failed'
+                                                                : 'Copy'}
                                                     </span>
                                                 </button>
                                                 <button
