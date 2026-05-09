@@ -4,7 +4,7 @@ import {
   Send, Paperclip, Mic, Bot, User, Sparkles,
   MoreHorizontal, ChevronDown, X,
   Maximize2, Share, ThumbsUp, ThumbsDown, Copy,
-  ArrowRight, Menu, Loader2, Edit
+  ArrowRight, Menu, Loader2, Edit, BookOpenText, Search
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../src/store/auth.store';
@@ -13,12 +13,27 @@ import { useChatStore } from '../src/store/chat.store';
 import { MarkdownRenderer, SourcesList, SuggestionChips, CollectionPicker, ConversationSidebar } from '../src/components/chat';
 import CreateBotDialog from './bots/CreateBotDialog';
 import type { Message, Source, CreateBotCommand } from '../types';
+import {
+  applyChatPromptTemplate,
+  chatPromptTemplates,
+  filterChatPromptTemplates,
+  type ChatPromptTemplate,
+  type ChatPromptTemplateFilter,
+} from '../src/utils/chat-prompt-templates';
 
 const SUGGESTIONS = [
   { title: "Analyze Financials", desc: "Review Q3 profit margins vs Q2" },
   { title: "Draft Legal Contract", desc: "Create a standard NDA for vendors" },
   { title: "Debug Code", desc: "Find memory leaks in React useEffect" },
   { title: "Summarize Docs", desc: "Key takeaways from uploaded PDFs" },
+];
+
+const PROMPT_TEMPLATE_FILTERS: Array<{ id: ChatPromptTemplateFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'analysis', label: 'Analysis' },
+  { id: 'writing', label: 'Writing' },
+  { id: 'extraction', label: 'Extraction' },
+  { id: 'planning', label: 'Planning' },
 ];
 
 const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => {
@@ -52,6 +67,9 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
   const [sidebarOpen, setSidebarOpen] = useState(!minimal);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showBotMenu, setShowBotMenu] = useState(false);
+  const [showPromptTemplates, setShowPromptTemplates] = useState(false);
+  const [promptTemplateQuery, setPromptTemplateQuery] = useState('');
+  const [promptTemplateFilter, setPromptTemplateFilter] = useState<ChatPromptTemplateFilter>('all');
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -60,6 +78,11 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
   const activeBot = useMemo(() => 
     bots.find(b => b.bot_token === currentBotToken), 
     [bots, currentBotToken]
+  );
+
+  const visiblePromptTemplates = useMemo(
+    () => filterChatPromptTemplates(promptTemplateQuery, promptTemplateFilter),
+    [promptTemplateFilter, promptTemplateQuery],
   );
 
   // Fetch conversations and bots on mount or when bot context changes
@@ -149,6 +172,13 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
   const handleSuggestionClick = async (suggestion: string) => {
     if (isSending) return;
     await sendMessage(suggestion);
+  };
+
+  const handlePromptTemplateSelect = (template: ChatPromptTemplate) => {
+    setInput(applyChatPromptTemplate(template));
+    setShowPromptTemplates(false);
+    setPromptTemplateQuery('');
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
   const handleCopyMessage = async (content: string) => {
@@ -436,6 +466,79 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
         <div className="p-4 bg-gradient-to-t from-background via-background to-transparent pb-6">
           <div className="max-w-3xl mx-auto relative group">
             <div className="absolute -inset-0.5 bg-gradient-to-r from-violet-600 to-indigo-600 rounded-2xl opacity-20 group-focus-within:opacity-50 blur transition duration-500"></div>
+            {showPromptTemplates && (
+              <>
+                <button
+                  type="button"
+                  className="fixed inset-0 z-30 cursor-default"
+                  aria-label="Close prompt templates"
+                  onClick={() => setShowPromptTemplates(false)}
+                />
+                <div className="absolute bottom-full left-0 z-40 mb-3 w-full max-w-xl rounded-2xl border border-white/10 bg-[#18181b] p-4 shadow-2xl">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-white">Prompt templates</h3>
+                      <p className="text-xs text-gray-500">Insert a reusable prompt into the composer.</p>
+                    </div>
+                    <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-semibold text-gray-500">
+                      {chatPromptTemplates.length} templates
+                    </span>
+                  </div>
+
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={15} />
+                    <input
+                      value={promptTemplateQuery}
+                      onChange={(event) => setPromptTemplateQuery(event.target.value)}
+                      placeholder="Search prompt templates..."
+                      className="h-10 w-full rounded-xl border border-white/10 bg-black/20 pl-9 pr-3 text-sm text-white outline-none transition-colors placeholder:text-gray-600 focus:border-violet-400/50"
+                    />
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {PROMPT_TEMPLATE_FILTERS.map((filter) => (
+                      <button
+                        key={filter.id}
+                        type="button"
+                        onClick={() => setPromptTemplateFilter(filter.id)}
+                        className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${promptTemplateFilter === filter.id
+                          ? 'border-violet-400/30 bg-violet-400/10 text-white'
+                          : 'border-white/10 bg-white/[0.03] text-gray-500 hover:text-white'
+                          }`}
+                        aria-pressed={promptTemplateFilter === filter.id}
+                      >
+                        {filter.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1 custom-scrollbar">
+                    {visiblePromptTemplates.length === 0 ? (
+                      <div className="rounded-xl border border-white/5 bg-black/20 p-4 text-center text-xs text-gray-500">
+                        No prompt templates match this search.
+                      </div>
+                    ) : (
+                      visiblePromptTemplates.map((template) => (
+                        <button
+                          key={template.id}
+                          type="button"
+                          onClick={() => handlePromptTemplateSelect(template)}
+                          className="w-full rounded-xl border border-white/5 bg-white/[0.03] p-3 text-left transition-colors hover:border-violet-400/30 hover:bg-white/[0.06]"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-sm font-semibold text-white">{template.title}</span>
+                            <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-semibold capitalize text-gray-500">
+                              {template.category}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-gray-500">{template.description}</p>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
             <div className="relative bg-[#121215] border border-white/10 rounded-xl shadow-2xl flex flex-col overflow-hidden">
               <textarea
                 ref={textareaRef}
@@ -454,6 +557,18 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
               />
               <div className="flex justify-between items-center px-3 pb-3 pt-1">
                 <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowPromptTemplates((open) => !open)}
+                    className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors ${showPromptTemplates
+                      ? 'bg-violet-500/20 text-violet-200'
+                      : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                      }`}
+                    aria-expanded={showPromptTemplates}
+                  >
+                    <BookOpenText size={16} />
+                    <span className="hidden sm:inline">Templates</span>
+                  </button>
                   <TooltipBtn icon={Paperclip} tooltip="Attach" />
                   <TooltipBtn icon={Mic} tooltip="Voice Mode" />
                 </div>
