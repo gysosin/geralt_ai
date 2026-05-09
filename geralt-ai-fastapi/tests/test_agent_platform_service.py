@@ -1207,6 +1207,62 @@ def test_list_workflow_runs_sorts_newest_updated_first():
     assert [run["run_id"] for run in result.data] == ["newer", "older"]
 
 
+def test_list_workflow_runs_limits_cursor_results():
+    run_db = MagicMock()
+    cursor = MagicMock()
+    limited_runs = [{"run_id": "run-1"}]
+    cursor.sort.return_value = cursor
+    cursor.limit.return_value = limited_runs
+    run_db.find.return_value = cursor
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.list_workflow_runs(owner="mehul", limit=25)
+
+    assert result.success is True
+    cursor.sort.assert_called_once_with("updated_at", -1)
+    cursor.limit.assert_called_once_with(25)
+    assert result.data == limited_runs
+
+
+def test_list_workflow_runs_limits_list_results():
+    run_db = MagicMock()
+    run_db.find.return_value = [
+        {"run_id": "run-1"},
+        {"run_id": "run-2"},
+        {"run_id": "run-3"},
+    ]
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.list_workflow_runs(owner="mehul", limit=2)
+
+    assert result.success is True
+    assert [run["run_id"] for run in result.data] == ["run-1", "run-2"]
+
+
+def test_list_workflow_runs_rejects_invalid_limit():
+    run_db = MagicMock()
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.list_workflow_runs(owner="mehul", limit=0)
+
+    assert result.success is False
+    assert result.status_code == 400
+    assert "Workflow run limit must be between" in result.error
+    run_db.find.assert_not_called()
+
+
 def test_list_workflow_runs_filters_by_status():
     run_db = MagicMock()
     run_db.find.return_value = []

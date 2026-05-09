@@ -32,6 +32,8 @@ from services.collections import BaseService, ServiceResult
 class AgentPlatformService(BaseService):
     """CRUD service for agent and workflow definitions."""
 
+    DEFAULT_WORKFLOW_RUN_LIMIT = 50
+    MAX_WORKFLOW_RUN_LIMIT = 100
     WORKFLOW_RUN_STATUSES = {
         "all",
         "blocked",
@@ -1078,8 +1080,15 @@ class AgentPlatformService(BaseService):
         workflow_id: Optional[str] = None,
         include_archived: bool = False,
         status: Optional[str] = None,
+        limit: int = DEFAULT_WORKFLOW_RUN_LIMIT,
     ) -> ServiceResult:
         """List workflow runs for the current owner."""
+        if limit < 1 or limit > self.MAX_WORKFLOW_RUN_LIMIT:
+            return ServiceResult.fail(
+                f"Workflow run limit must be between 1 and {self.MAX_WORKFLOW_RUN_LIMIT}",
+                400,
+            )
+
         query = {"created_by": self.extract_username(owner)}
         if not include_archived:
             query["archived"] = {"$ne": True}
@@ -1092,6 +1101,10 @@ class AgentPlatformService(BaseService):
         docs = self.run_db.find(query, {"_id": 0})
         if hasattr(docs, "sort") and not isinstance(docs, list):
             docs = docs.sort("updated_at", -1)
+            if hasattr(docs, "limit"):
+                docs = docs.limit(limit)
+        elif isinstance(docs, list):
+            docs = docs[:limit]
         return ServiceResult.ok([self._public_document(doc) for doc in docs])
 
     def archive_workflow_runs(
