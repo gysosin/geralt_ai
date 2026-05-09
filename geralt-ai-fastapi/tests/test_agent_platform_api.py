@@ -601,6 +601,37 @@ def test_run_workflow_trigger_endpoint_starts_matching_workflows():
     assert data[0]["steps"][0]["output"]["query_type"] == "summary"
 
 
+def test_workflow_triggers_endpoint_returns_catalog():
+    workflow_db = MagicMock()
+    workflow_db.find.return_value = [
+        {"workflow_id": "workflow-1", "triggers": ["document.uploaded"]},
+        {"workflow_id": "workflow-2", "triggers": ["document.uploaded", "daily.summary"]},
+    ]
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=MagicMock(),
+                    workflow_db=workflow_db,
+                    run_db=MagicMock(),
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.get("/api/v1/agent-platform/triggers")
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data[0]["trigger"] == "daily.summary"
+    assert data[1]["workflow_count"] == 2
+
+
 def test_start_workflow_run_endpoint_executes_query_plan_step():
     workflow_db = MagicMock()
     workflow_db.find_one.return_value = {

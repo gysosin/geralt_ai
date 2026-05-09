@@ -73,6 +73,12 @@ export interface WorkflowTemplate {
     steps: Array<Record<string, unknown>>
 }
 
+export interface WorkflowTrigger {
+    trigger: string
+    workflow_count: number
+    workflow_ids: string[]
+}
+
 export interface WorkflowRun {
     run_id: string
     workflow_id: string
@@ -356,6 +362,11 @@ export const agentPlatformService = {
         data: { inputs: Record<string, unknown>; dry_run: boolean }
     ): Promise<WorkflowRun[]> {
         const response = await api.post(`${BASE_PATH}/triggers/${encodeURIComponent(triggerName)}/runs`, data)
+        return response.data
+    },
+
+    async listWorkflowTriggers(): Promise<WorkflowTrigger[]> {
+        const response = await api.get(`${BASE_PATH}/triggers`)
         return response.data
     },
 

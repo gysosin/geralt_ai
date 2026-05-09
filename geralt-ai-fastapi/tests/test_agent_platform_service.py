@@ -750,6 +750,43 @@ def test_run_workflow_trigger_starts_matching_workflows():
     workflow_db.find.assert_called_once()
 
 
+def test_list_workflow_triggers_counts_matching_workflows():
+    workflow_db = MagicMock()
+    workflow_db.find.return_value = [
+        {
+            "workflow_id": "workflow-1",
+            "name": "Upload Flow",
+            "triggers": ["document.uploaded", "daily.summary"],
+        },
+        {
+            "workflow_id": "workflow-2",
+            "name": "Second Upload Flow",
+            "triggers": ["document.uploaded"],
+        },
+    ]
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=workflow_db,
+        run_db=MagicMock(),
+    )
+
+    result = service.list_workflow_triggers(owner="mehul")
+
+    assert result.success is True
+    assert result.data == [
+        {
+            "trigger": "daily.summary",
+            "workflow_count": 1,
+            "workflow_ids": ["workflow-1"],
+        },
+        {
+            "trigger": "document.uploaded",
+            "workflow_count": 2,
+            "workflow_ids": ["workflow-1", "workflow-2"],
+        },
+    ]
+
+
 def test_start_workflow_run_executes_query_plan_step():
     workflow_db = MagicMock()
     run_db = MagicMock()
