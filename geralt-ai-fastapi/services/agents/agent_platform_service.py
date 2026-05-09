@@ -32,6 +32,16 @@ from services.collections import BaseService, ServiceResult
 class AgentPlatformService(BaseService):
     """CRUD service for agent and workflow definitions."""
 
+    WORKFLOW_RUN_STATUSES = {
+        "all",
+        "blocked",
+        "canceled",
+        "completed",
+        "failed",
+        "pending",
+        "planned",
+    }
+
     def __init__(
         self,
         agent_db=None,
@@ -1075,6 +1085,8 @@ class AgentPlatformService(BaseService):
             query["archived"] = {"$ne": True}
         if workflow_id:
             query["workflow_id"] = workflow_id
+        if status and status not in self.WORKFLOW_RUN_STATUSES:
+            return ServiceResult.fail(f"Unsupported workflow run status: {status}", 400)
         if status and status != "all":
             query["status"] = status
         docs = self.run_db.find(query, {"_id": 0})

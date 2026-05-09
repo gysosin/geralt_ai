@@ -1226,6 +1226,22 @@ def test_list_workflow_runs_filters_by_status():
     }
 
 
+def test_list_workflow_runs_rejects_unknown_status_filter():
+    run_db = MagicMock()
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.list_workflow_runs(owner="mehul", status="waiting")
+
+    assert result.success is False
+    assert result.status_code == 400
+    assert "Unsupported workflow run status" in result.error
+    run_db.find.assert_not_called()
+
+
 def test_run_workflow_trigger_starts_matching_workflows():
     workflow_db = MagicMock()
     run_db = MagicMock()
