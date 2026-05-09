@@ -11,6 +11,7 @@ import Analytics from './components/Analytics';
 import History from './components/History';
 import HistoryDetail from './components/HistoryDetail';
 import Settings from './components/Settings';
+import AgentPlatform from './components/AgentPlatform';
 import Auth from './components/Auth';
 import { AuthCallback } from './src/pages/AuthCallback';
 import { useAuthStore } from './src/store';
@@ -71,6 +72,7 @@ const App: React.FC = () => {
 
                     <Route path="bots" element={<Bots />} />
                     <Route path="bots/:id" element={<BotDetail />} />
+                    <Route path="agent-platform" element={<AgentPlatform />} />
 
                     <Route path="collections" element={<Collections />} />
                     <Route path="collections/:id" element={<CollectionDetail />} />
