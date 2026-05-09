@@ -463,6 +463,52 @@ def test_start_workflow_run_executes_query_plan_step():
     assert inserted["steps"][0]["output"]["query_type"] == "summary"
 
 
+def test_start_workflow_run_resolves_step_output_arguments():
+    workflow_db = MagicMock()
+    run_db = MagicMock()
+    workflow_db.find_one.return_value = {
+        "workflow_id": "workflow-1",
+        "created_by": "mehul",
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Plan",
+                "tool_name": "query.plan",
+                "arguments": {"query": "{{input.query}}"},
+                "depends_on": [],
+                "approval_required": False,
+            },
+            {
+                "step_id": "step-2",
+                "name": "Plan from previous output",
+                "tool_name": "query.plan",
+                "arguments": {"query": "{{step.step-1.output.query_type}}"},
+                "depends_on": ["step-1"],
+                "approval_required": False,
+            },
+        ],
+        "deleted": False,
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=workflow_db,
+        run_db=run_db,
+    )
+
+    result = service.start_workflow_run(
+        owner="mehul",
+        workflow_id="workflow-1",
+        inputs={"query": "summarize these documents"},
+        dry_run=False,
+    )
+
+    assert result.success is True
+    inserted = run_db.insert_one.call_args.args[0]
+    assert inserted["status"] == "completed"
+    assert inserted["steps"][1]["arguments"]["query"] == "summary"
+    assert inserted["steps"][1]["status"] == "completed"
+
+
 def test_start_workflow_run_stops_at_approval_gate():
     workflow_db = MagicMock()
     run_db = MagicMock()
