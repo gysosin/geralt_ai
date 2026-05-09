@@ -4,7 +4,7 @@ import {
   Send, Paperclip, Mic, Bot, User, Sparkles,
   MoreHorizontal, ChevronDown, X,
   Maximize2, Share, ThumbsUp, ThumbsDown, Copy,
-  ArrowRight, Menu, Loader2, Edit, BookOpenText, Search
+  ArrowRight, Menu, Loader2, Edit, BookOpenText, Search, Clock3, Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../src/store/auth.store';
@@ -20,6 +20,13 @@ import {
   type ChatPromptTemplate,
   type ChatPromptTemplateFilter,
 } from '../src/utils/chat-prompt-templates';
+import {
+  RECENT_PROMPTS_STORAGE_KEY,
+  addRecentPrompt,
+  parseRecentPrompts,
+  removeRecentPrompt,
+  type RecentPrompt,
+} from '../src/utils/recent-prompts';
 
 const SUGGESTIONS = [
   { title: "Analyze Financials", desc: "Review Q3 profit margins vs Q2" },
@@ -68,8 +75,13 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showBotMenu, setShowBotMenu] = useState(false);
   const [showPromptTemplates, setShowPromptTemplates] = useState(false);
+  const [showRecentPrompts, setShowRecentPrompts] = useState(false);
   const [promptTemplateQuery, setPromptTemplateQuery] = useState('');
   const [promptTemplateFilter, setPromptTemplateFilter] = useState<ChatPromptTemplateFilter>('all');
+  const [recentPrompts, setRecentPrompts] = useState<RecentPrompt[]>(() => {
+    if (typeof window === 'undefined') return [];
+    return parseRecentPrompts(window.localStorage.getItem(RECENT_PROMPTS_STORAGE_KEY));
+  });
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -142,6 +154,15 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
     if (!text.trim() || isSending) return;
 
     const query = text.trim();
+    setRecentPrompts((current) => {
+      const nextPrompts = addRecentPrompt(current, query);
+      try {
+        window.localStorage.setItem(RECENT_PROMPTS_STORAGE_KEY, JSON.stringify(nextPrompts));
+      } catch {
+        return current;
+      }
+      return nextPrompts;
+    });
     setInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
@@ -179,6 +200,24 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
     setShowPromptTemplates(false);
     setPromptTemplateQuery('');
     window.requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  const handleRecentPromptSelect = (prompt: RecentPrompt) => {
+    setInput(prompt.text);
+    setShowRecentPrompts(false);
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  const handleRemoveRecentPrompt = (promptId: string) => {
+    setRecentPrompts((current) => {
+      const nextPrompts = removeRecentPrompt(current, promptId);
+      try {
+        window.localStorage.setItem(RECENT_PROMPTS_STORAGE_KEY, JSON.stringify(nextPrompts));
+      } catch {
+        return current;
+      }
+      return nextPrompts;
+    });
   };
 
   const handleCopyMessage = async (content: string) => {
@@ -472,7 +511,10 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                   type="button"
                   className="fixed inset-0 z-30 cursor-default"
                   aria-label="Close prompt templates"
-                  onClick={() => setShowPromptTemplates(false)}
+                  onClick={() => {
+                    setShowPromptTemplates(false);
+                    setShowRecentPrompts(false);
+                  }}
                 />
                 <div className="absolute bottom-full left-0 z-40 mb-3 w-full max-w-xl rounded-2xl border border-white/10 bg-[#18181b] p-4 shadow-2xl">
                   <div className="mb-3 flex items-center justify-between gap-3">
@@ -539,6 +581,61 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                 </div>
               </>
             )}
+            {showRecentPrompts && (
+              <>
+                <button
+                  type="button"
+                  className="fixed inset-0 z-30 cursor-default"
+                  aria-label="Close recent prompts"
+                  onClick={() => {
+                    setShowPromptTemplates(false);
+                    setShowRecentPrompts(false);
+                  }}
+                />
+                <div className="absolute bottom-full left-0 z-40 mb-3 w-full max-w-xl rounded-2xl border border-white/10 bg-[#18181b] p-4 shadow-2xl">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-white">Recent prompts</h3>
+                      <p className="text-xs text-gray-500">Reuse your last submitted prompts without sending immediately.</p>
+                    </div>
+                    <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-semibold text-gray-500">
+                      {recentPrompts.length} saved
+                    </span>
+                  </div>
+
+                  <div className="max-h-72 space-y-2 overflow-y-auto pr-1 custom-scrollbar">
+                    {recentPrompts.length === 0 ? (
+                      <div className="rounded-xl border border-white/5 bg-black/20 p-4 text-center text-xs text-gray-500">
+                        Submitted prompts will appear here.
+                      </div>
+                    ) : (
+                      recentPrompts.map((prompt) => (
+                        <div key={prompt.id} className="flex overflow-hidden rounded-xl border border-white/5 bg-white/[0.03]">
+                          <button
+                            type="button"
+                            onClick={() => handleRecentPromptSelect(prompt)}
+                            className="min-w-0 flex-1 p-3 text-left text-sm text-gray-300 transition-colors hover:bg-white/[0.05] hover:text-white"
+                          >
+                            <span className="line-clamp-2">{prompt.text}</span>
+                            <span className="mt-1 block text-[10px] text-gray-600">
+                              {new Date(prompt.createdAt).toLocaleString()}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveRecentPrompt(prompt.id)}
+                            className="border-l border-white/5 px-3 text-gray-500 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                            aria-label="Remove recent prompt"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
             <div className="relative bg-[#121215] border border-white/10 rounded-xl shadow-2xl flex flex-col overflow-hidden">
               <textarea
                 ref={textareaRef}
@@ -559,7 +656,10 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                 <div className="flex gap-1">
                   <button
                     type="button"
-                    onClick={() => setShowPromptTemplates((open) => !open)}
+                    onClick={() => {
+                      setShowRecentPrompts(false);
+                      setShowPromptTemplates((open) => !open);
+                    }}
                     className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors ${showPromptTemplates
                       ? 'bg-violet-500/20 text-violet-200'
                       : 'text-gray-400 hover:bg-white/5 hover:text-white'
@@ -568,6 +668,21 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                   >
                     <BookOpenText size={16} />
                     <span className="hidden sm:inline">Templates</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPromptTemplates(false);
+                      setShowRecentPrompts((open) => !open);
+                    }}
+                    className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors ${showRecentPrompts
+                      ? 'bg-sky-500/20 text-sky-200'
+                      : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                      }`}
+                    aria-expanded={showRecentPrompts}
+                  >
+                    <Clock3 size={16} />
+                    <span className="hidden sm:inline">Recent</span>
                   </button>
                   <TooltipBtn icon={Paperclip} tooltip="Attach" />
                   <TooltipBtn icon={Mic} tooltip="Voice Mode" />
