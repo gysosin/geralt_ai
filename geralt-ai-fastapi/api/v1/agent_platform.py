@@ -231,6 +231,15 @@ async def get_mcp_manifest(
     return _result_or_error(service.get_mcp_manifest())
 
 
+@router.get("/adk/manifest", response_model=Dict[str, Any])
+async def get_adk_manifest(
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Return an ADK-oriented manifest for agents, workflows, and MCP tools."""
+    return _result_or_error(service.get_adk_manifest(_owner(current_user)))
+
+
 @router.get("/export", response_model=PlatformExportResponse)
 async def export_agent_platform(
     current_user: str | None = Depends(get_optional_user),

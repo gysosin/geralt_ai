@@ -554,6 +554,47 @@ def test_mcp_manifest_endpoint_returns_tool_declarations():
     assert any(tool["name"] == "rag.aggregate" for tool in data["tools"])
 
 
+def test_adk_manifest_endpoint_returns_agents_and_toolset_pointer():
+    agent_db = MagicMock()
+    workflow_db = MagicMock()
+    agent_db.find.return_value = [
+        {
+            "agent_id": "agent-1",
+            "name": "Planner",
+            "instruction": "Plan document questions.",
+            "tool_names": ["query.plan"],
+            "model": "gemini-2.5-flash",
+            "collection_ids": [],
+            "created_by": "anonymous",
+        }
+    ]
+    workflow_db.find.return_value = []
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=agent_db,
+                    workflow_db=workflow_db,
+                    run_db=MagicMock(),
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.get("/api/v1/agent-platform/adk/manifest")
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["adk_version_hint"] == "google-adk"
+    assert data["agents"][0]["name"] == "Planner"
+    assert data["mcp"]["toolset_name"] == "geraltai_mcp_tools"
+
+
 def test_tool_invocation_endpoint_executes_tool():
     with patch("models.database.MongoClient"):
         with patch("core.clients.redis_client.redis.StrictRedis"):

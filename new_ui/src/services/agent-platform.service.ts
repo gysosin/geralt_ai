@@ -103,6 +103,11 @@ export const agentPlatformService = {
         return response.data
     },
 
+    async getAdkManifest(): Promise<Record<string, unknown>> {
+        const response = await api.get(`${BASE_PATH}/adk/manifest`)
+        return response.data
+    },
+
     async invokeTool(data: {
         tool_name: string
         arguments: Record<string, unknown>

@@ -334,6 +334,26 @@ const AgentPlatform: React.FC = () => {
     }
   };
 
+  const exportAdkManifest = async () => {
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const manifest = await agentPlatformService.getAdkManifest();
+      const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `geralt-adk-manifest-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setExportSummary('ADK manifest ready');
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to export ADK manifest');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -362,6 +382,13 @@ const AgentPlatform: React.FC = () => {
         >
           <CheckCircle2 size={16} />
           Export
+        </button>
+        <button
+          onClick={exportAdkManifest}
+          className="h-10 px-4 rounded-xl border border-sky-500/20 bg-sky-500/10 hover:bg-sky-500/15 text-sm text-sky-100 flex items-center gap-2"
+        >
+          <Route size={16} />
+          ADK
         </button>
       </div>
 
