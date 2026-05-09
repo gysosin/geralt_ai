@@ -32,6 +32,12 @@ import {
   chatResponseModes,
   type ChatResponseModeId,
 } from '../src/utils/chat-response-modes';
+import {
+  buildChatDraftKey,
+  clearChatDraft,
+  readChatDraft,
+  writeChatDraft,
+} from '../src/utils/chat-drafts';
 
 const SUGGESTIONS = [
   { title: "Analyze Financials", desc: "Review Q3 profit margins vs Q2" },
@@ -84,6 +90,8 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
   const [promptTemplateQuery, setPromptTemplateQuery] = useState('');
   const [promptTemplateFilter, setPromptTemplateFilter] = useState<ChatPromptTemplateFilter>('all');
   const [responseModeId, setResponseModeId] = useState<ChatResponseModeId>('direct');
+  const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
+  const [hydratedDraftKey, setHydratedDraftKey] = useState('');
   const [recentPrompts, setRecentPrompts] = useState<RecentPrompt[]>(() => {
     if (typeof window === 'undefined') return [];
     return parseRecentPrompts(window.localStorage.getItem(RECENT_PROMPTS_STORAGE_KEY));
@@ -101,6 +109,15 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
   const visiblePromptTemplates = useMemo(
     () => filterChatPromptTemplates(promptTemplateQuery, promptTemplateFilter),
     [promptTemplateFilter, promptTemplateQuery],
+  );
+
+  const draftKey = useMemo(
+    () => buildChatDraftKey({
+      conversationId,
+      botToken: currentBotToken,
+      collectionId: currentCollectionId,
+    }),
+    [conversationId, currentBotToken, currentCollectionId],
   );
 
   // Fetch conversations and bots on mount or when bot context changes
@@ -156,10 +173,26 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
     }
   }, [input]);
 
+  useEffect(() => {
+    const savedDraft = readChatDraft(draftKey);
+    setInput(savedDraft);
+    setDraftSavedAt(savedDraft.trim() ? new Date() : null);
+    setHydratedDraftKey(draftKey);
+  }, [draftKey]);
+
+  useEffect(() => {
+    if (hydratedDraftKey !== draftKey) return;
+
+    writeChatDraft(draftKey, input);
+    setDraftSavedAt(input.trim() ? new Date() : null);
+  }, [draftKey, hydratedDraftKey, input]);
+
   const handleSend = async (text: string = input) => {
     if (!text.trim() || isSending) return;
 
     const query = text.trim();
+    clearChatDraft(draftKey);
+    setDraftSavedAt(null);
     setRecentPrompts((current) => {
       const nextPrompts = addRecentPrompt(current, query);
       try {
@@ -711,6 +744,11 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                   <TooltipBtn icon={Mic} tooltip="Voice Mode" />
                 </div>
                 <div className="flex items-center gap-3">
+                  {draftSavedAt && input.trim() && (
+                    <span className="hidden text-[10px] text-gray-600 sm:block">
+                      Draft saved
+                    </span>
+                  )}
                   <span className="text-[10px] text-gray-600 hidden sm:block">Enter to send</span>
                   <button
                     onClick={() => handleSend()}
