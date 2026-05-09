@@ -19,6 +19,33 @@ export default defineConfig(() => ({
           }
         }
       },
+      build: {
+        rollupOptions: {
+          output: {
+            manualChunks(id) {
+              if (!id.includes('node_modules')) return;
+              if (id.includes('react') || id.includes('react-dom') || id.includes('react-is')) {
+                return 'vendor-react';
+              }
+              if (id.includes('react-router-dom') || id.includes('@remix-run')) {
+                return 'vendor-router';
+              }
+              if (id.includes('framer-motion')) {
+                return 'vendor-motion';
+              }
+              if (id.includes('recharts') || id.includes('d3-')) {
+                return 'vendor-charts';
+              }
+              if (id.includes('lucide-react')) {
+                return 'vendor-icons';
+              }
+              if (id.includes('axios') || id.includes('socket.io-client') || id.includes('zustand')) {
+                return 'vendor-runtime';
+              }
+            },
+          },
+        },
+      },
       plugins: [tailwindcss(), react()],
       resolve: {
         alias: {
