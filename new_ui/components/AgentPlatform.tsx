@@ -8,6 +8,7 @@ import {
   FileCode2,
   Loader2,
   Play,
+  Plus,
   RefreshCw,
   Route,
   Search,
@@ -38,6 +39,12 @@ import {
 import { getAdkManifestSummary, getAdkToolsetTarget } from '../src/utils/agent-platform-adk';
 import { buildMcpServerPayload, isMcpServerFormReady, type McpTransport } from '../src/utils/agent-platform-mcp';
 import { getAgentPlatformStats } from '../src/utils/agent-platform-stats';
+import {
+  buildWorkflowSteps,
+  defaultWorkflowStepDrafts,
+  workflowStepsToDrafts,
+  type WorkflowStepDraft,
+} from '../src/utils/agent-platform-workflow';
 
 const splitIds = (value: string) =>
   value.split(',').map((item) => item.trim()).filter(Boolean);
@@ -91,6 +98,7 @@ const AgentPlatform: React.FC = () => {
   const [workflowName, setWorkflowName] = useState('Document Aggregation Workflow');
   const [workflowAgentId, setWorkflowAgentId] = useState('');
   const [workflowTriggers, setWorkflowTriggers] = useState('document.uploaded');
+  const [workflowStepDrafts, setWorkflowStepDrafts] = useState<WorkflowStepDraft[]>(defaultWorkflowStepDrafts);
   const [editingWorkflowId, setEditingWorkflowId] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('document_aggregation');
   const [runAgentId, setRunAgentId] = useState('');
@@ -245,8 +253,14 @@ const AgentPlatform: React.FC = () => {
     setIsSubmitting(true);
     setError('');
     try {
+      const customStepResult = selectedTemplateId ? null : buildWorkflowSteps(workflowStepDrafts);
+      if (customStepResult?.errors.length) {
+        setError(customStepResult.errors.join(' '));
+        return;
+      }
+
       if (editingWorkflowId) {
-        const selectedSteps = selectedTemplateId ? selectedTemplate?.steps : undefined;
+        const selectedSteps = selectedTemplateId ? selectedTemplate?.steps : customStepResult?.steps;
         const updated = await agentPlatformService.updateWorkflow(editingWorkflowId, {
           name: workflowName,
           agent_id: workflowAgentId || undefined,
@@ -271,21 +285,7 @@ const AgentPlatform: React.FC = () => {
           name: workflowName,
           agent_id: workflowAgentId || undefined,
           triggers: splitIds(workflowTriggers),
-          steps: [
-            {
-              name: 'Plan route',
-              tool_name: 'query.plan',
-              arguments: { query: '{{input.query}}' },
-            },
-            {
-              name: 'Aggregate extracted data',
-              tool_name: 'rag.aggregate',
-              arguments: {
-                query: '{{input.query}}',
-                collection_ids: '{{input.collection_ids}}',
-              },
-            },
-          ],
+          steps: customStepResult?.steps || [],
         });
       setWorkflows((current) => [created, ...current]);
       setRunWorkflowId(created.workflow_id);
@@ -301,7 +301,31 @@ const AgentPlatform: React.FC = () => {
     setWorkflowName(workflow.name);
     setWorkflowAgentId(workflow.agent_id || '');
     setWorkflowTriggers(workflow.triggers.join(', '));
+    setWorkflowStepDrafts(workflowStepsToDrafts(workflow.steps));
     setSelectedTemplateId('');
+  };
+
+  const updateWorkflowStepDraft = (index: number, updates: Partial<WorkflowStepDraft>) => {
+    setWorkflowStepDrafts((current) => current.map((draft, draftIndex) => (
+      draftIndex === index ? { ...draft, ...updates } : draft
+    )));
+  };
+
+  const addWorkflowStepDraft = () => {
+    setWorkflowStepDrafts((current) => [
+      ...current,
+      {
+        name: `Step ${current.length + 1}`,
+        toolName: tools.find((tool) => tool.name !== 'agent.run')?.name || 'query.plan',
+        argumentsJson: '{}',
+        dependsOn: current.length > 0 ? `step-${current.length}` : '',
+        approvalRequired: false,
+      },
+    ]);
+  };
+
+  const removeWorkflowStepDraft = (index: number) => {
+    setWorkflowStepDrafts((current) => current.filter((_, draftIndex) => draftIndex !== index));
   };
 
   const createMcpServer = async () => {
@@ -919,19 +943,83 @@ const AgentPlatform: React.FC = () => {
                 placeholder="document.uploaded, daily.summary"
                 className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-sky-500/60"
               />
-              <div className="space-y-2">
-                {(selectedTemplate?.steps || [
-                  { tool_name: 'query.plan' },
-                  { tool_name: 'rag.aggregate' },
-                ]).map((step: any, index) => (
-                  <div key={`${step.tool_name}-${index}`} className="flex items-center gap-3 rounded-xl border border-white/5 bg-black/20 px-4 py-3">
-                    <span className="w-6 h-6 rounded-lg bg-white/5 text-xs text-gray-300 flex items-center justify-center">
-                      {index + 1}
-                    </span>
-                    <span className="font-mono text-sm text-gray-300">{step.tool_name}</span>
-                  </div>
-                ))}
-              </div>
+              {selectedTemplate ? (
+                <div className="space-y-2">
+                  {selectedTemplate.steps.map((step: any, index) => (
+                    <div key={`${step.tool_name}-${index}`} className="flex items-center gap-3 rounded-xl border border-white/5 bg-black/20 px-4 py-3">
+                      <span className="w-6 h-6 rounded-lg bg-white/5 text-xs text-gray-300 flex items-center justify-center">
+                        {index + 1}
+                      </span>
+                      <span className="font-mono text-sm text-gray-300">{step.tool_name}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {workflowStepDrafts.map((draft, index) => (
+                    <div key={`${index}-${draft.toolName}`} className="rounded-xl border border-white/5 bg-black/20 p-3 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-3">
+                        <input
+                          value={draft.name}
+                          onChange={(event) => updateWorkflowStepDraft(index, { name: event.target.value })}
+                          className="bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-sky-500/60"
+                        />
+                        <select
+                          value={draft.toolName}
+                          onChange={(event) => updateWorkflowStepDraft(index, { toolName: event.target.value })}
+                          className="bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-sky-500/60"
+                        >
+                          {draft.toolName && !tools.some((tool) => tool.name === draft.toolName) && (
+                            <option value={draft.toolName}>{draft.toolName}</option>
+                          )}
+                          {tools.map((tool) => (
+                            <option key={tool.name} value={tool.name}>{tool.name}</option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => removeWorkflowStepDraft(index)}
+                          disabled={workflowStepDrafts.length === 1}
+                          className="h-11 px-3 rounded-xl border border-red-500/20 bg-red-500/10 hover:bg-red-500/15 disabled:opacity-40 text-red-100 flex items-center justify-center"
+                          aria-label={`Remove workflow step ${index + 1}`}
+                          title={`Remove workflow step ${index + 1}`}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                      <textarea
+                        value={draft.argumentsJson}
+                        onChange={(event) => updateWorkflowStepDraft(index, { argumentsJson: event.target.value })}
+                        rows={4}
+                        className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-xs text-white font-mono outline-none focus:border-sky-500/60 resize-none"
+                      />
+                      <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
+                        <input
+                          value={draft.dependsOn}
+                          onChange={(event) => updateWorkflowStepDraft(index, { dependsOn: event.target.value })}
+                          placeholder={index > 0 ? `step-${index}` : 'depends_on'}
+                          className="bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-sky-500/60"
+                        />
+                        <label className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-gray-300">
+                          Approval
+                          <input
+                            type="checkbox"
+                            checked={draft.approvalRequired}
+                            onChange={(event) => updateWorkflowStepDraft(index, { approvalRequired: event.target.checked })}
+                            className="accent-sky-500"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                  <button
+                    onClick={addWorkflowStepDraft}
+                    className="w-full h-10 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-sm text-white flex items-center justify-center gap-2"
+                  >
+                    <Plus size={16} />
+                    Add Step
+                  </button>
+                </div>
+              )}
               <button
                 onClick={createWorkflow}
                 disabled={isSubmitting}
