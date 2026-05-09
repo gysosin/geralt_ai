@@ -964,13 +964,13 @@ def test_archive_workflow_runs_marks_terminal_runs_archived():
     assert result.success is True
     assert result.data == {
         "archived_count": 3,
-        "statuses": ["canceled", "completed", "failed", "planned"],
+        "statuses": ["blocked", "canceled", "completed", "failed", "planned"],
     }
     query, update = run_db.update_many.call_args.args
     assert query == {
         "created_by": "mehul",
         "archived": {"$ne": True},
-        "status": {"$in": ["canceled", "completed", "failed", "planned"]},
+        "status": {"$in": ["blocked", "canceled", "completed", "failed", "planned"]},
     }
     assert update["$set"]["archived"] is True
     assert "archived_at" in update["$set"]
