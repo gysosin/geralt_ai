@@ -407,3 +407,40 @@ def test_get_workflow_run_rejects_missing_run():
 
     assert result.success is False
     assert result.status_code == 404
+
+
+def test_delete_agent_soft_deletes_owned_agent():
+    agent_db = MagicMock()
+    agent_db.update_one.return_value = MagicMock(modified_count=1)
+    service = AgentPlatformService(agent_db=agent_db, workflow_db=MagicMock())
+
+    result = service.delete_agent(owner="mehul", agent_id="agent-1")
+
+    assert result.success is True
+    update = agent_db.update_one.call_args.args[1]["$set"]
+    assert update["deleted"] is True
+    assert "updated_at" in update
+
+
+def test_delete_workflow_soft_deletes_owned_workflow():
+    workflow_db = MagicMock()
+    workflow_db.update_one.return_value = MagicMock(modified_count=1)
+    service = AgentPlatformService(agent_db=MagicMock(), workflow_db=workflow_db)
+
+    result = service.delete_workflow(owner="mehul", workflow_id="workflow-1")
+
+    assert result.success is True
+    update = workflow_db.update_one.call_args.args[1]["$set"]
+    assert update["deleted"] is True
+    assert "updated_at" in update
+
+
+def test_delete_workflow_returns_not_found_when_no_match():
+    workflow_db = MagicMock()
+    workflow_db.update_one.return_value = MagicMock(modified_count=0)
+    service = AgentPlatformService(agent_db=MagicMock(), workflow_db=workflow_db)
+
+    result = service.delete_workflow(owner="mehul", workflow_id="missing")
+
+    assert result.success is False
+    assert result.status_code == 404

@@ -94,6 +94,20 @@ class AgentPlatformService(BaseService):
             return ServiceResult.fail("Agent not found", 404)
         return ServiceResult.ok(self._public_document(doc))
 
+    def delete_agent(self, owner: str, agent_id: str) -> ServiceResult:
+        """Soft-delete an owned agent definition."""
+        result = self.agent_db.update_one(
+            {
+                "agent_id": agent_id,
+                "created_by": self.extract_username(owner),
+                "deleted": {"$ne": True},
+            },
+            {"$set": {"deleted": True, "updated_at": datetime.utcnow().isoformat()}},
+        )
+        if getattr(result, "modified_count", 0) == 0:
+            return ServiceResult.fail("Agent not found", 404)
+        return ServiceResult.ok({"message": "Agent deleted successfully"})
+
     def create_workflow(
         self,
         owner: str,
@@ -193,6 +207,20 @@ class AgentPlatformService(BaseService):
         if not doc:
             return ServiceResult.fail("Workflow not found", 404)
         return ServiceResult.ok(self._public_document(doc))
+
+    def delete_workflow(self, owner: str, workflow_id: str) -> ServiceResult:
+        """Soft-delete an owned workflow definition."""
+        result = self.workflow_db.update_one(
+            {
+                "workflow_id": workflow_id,
+                "created_by": self.extract_username(owner),
+                "deleted": {"$ne": True},
+            },
+            {"$set": {"deleted": True, "updated_at": datetime.utcnow().isoformat()}},
+        )
+        if getattr(result, "modified_count", 0) == 0:
+            return ServiceResult.fail("Workflow not found", 404)
+        return ServiceResult.ok({"message": "Workflow deleted successfully"})
 
     def start_workflow_run(
         self,

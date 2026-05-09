@@ -84,6 +84,10 @@ export const agentPlatformService = {
         return response.data
     },
 
+    async deleteAgent(agentId: string): Promise<void> {
+        await api.delete(`${BASE_PATH}/agents/${agentId}`)
+    },
+
     async createWorkflow(data: {
         name: string
         description?: string
@@ -116,6 +120,10 @@ export const agentPlatformService = {
     async listWorkflows(): Promise<WorkflowDefinition[]> {
         const response = await api.get(`${BASE_PATH}/workflows`)
         return response.data
+    },
+
+    async deleteWorkflow(workflowId: string): Promise<void> {
+        await api.delete(`${BASE_PATH}/workflows/${workflowId}`)
     },
 
     async startWorkflowRun(
