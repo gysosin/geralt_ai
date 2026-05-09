@@ -10,6 +10,23 @@ class WorkflowTemplateRegistry:
 
     def __init__(self) -> None:
         self._templates = {
+            "agent_handoff": {
+                "template_id": "agent_handoff",
+                "name": "Agent Handoff",
+                "description": "Run a saved agent as one workflow step and capture its tool outputs.",
+                "required_inputs": ["agent_id", "query", "collection_ids"],
+                "steps": [
+                    {
+                        "name": "Run selected agent",
+                        "tool_name": "agent.run",
+                        "arguments": {
+                            "agent_id": "{{input.agent_id}}",
+                            "query": "{{input.query}}",
+                            "collection_ids": "{{input.collection_ids}}",
+                        },
+                    }
+                ],
+            },
             "document_aggregation": {
                 "template_id": "document_aggregation",
                 "name": "Document Aggregation",
