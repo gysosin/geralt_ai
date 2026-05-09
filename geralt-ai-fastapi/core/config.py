@@ -11,7 +11,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     """Application settings with environment variable support."""
-    
+
     # ==========================================================================
     # API Configuration
     # ==========================================================================
@@ -19,44 +19,44 @@ class Settings(BaseSettings):
     API_TITLE: str = "GeraltAI API"
     DEBUG: bool = False
     API_ENDPOINT: str = Field(default="127.0.0.1:8000")
-    
+
     # ==========================================================================
     # Security
     # ==========================================================================
     SECRET_KEY: str = Field(default="your_jwt_secret")
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_HOURS: int = 386
-    
+
     # ==========================================================================
     # CORS
     # ==========================================================================
     CORS_ORIGINS: List[str] = ["*"]
-    
+
     # ==========================================================================
     # MongoDB
     # ==========================================================================
     MONGO_URI: str = Field(default="mongodb://127.0.0.1:27018")
     MONGO_DATABASE: str = "geraltai"
-    
+
     # ==========================================================================
     # Elasticsearch
     # ==========================================================================
     ELASTICSEARCH_URL: str = Field(default="http://127.0.0.1:9209")
     ELASTIC_INDEX: str = "documents"
-    
+
     # ==========================================================================
     # Redis
     # ==========================================================================
     REDIS_HOST: str = "127.0.0.1"
     REDIS_PORT: int = 6379
     REDIS_PASSWORD: str = ""
-    
+
     @property
     def redis_url(self) -> str:
         if self.REDIS_PASSWORD:
             return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}"
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}"
-    
+
     # ==========================================================================
     # MinIO (Object Storage)
     # ==========================================================================
@@ -65,7 +65,7 @@ class Settings(BaseSettings):
     MINIO_SECRET_KEY: str = "minioadmin"
     MINIO_BUCKET: str = "documents"
     MINIO_SECURE: bool = False
-    
+
     # ==========================================================================
     # Milvus (Vector DB)
     # ==========================================================================
@@ -74,36 +74,36 @@ class Settings(BaseSettings):
     MILVUS_USER: str = ""
     MILVUS_PASSWORD: str = ""
     MILVUS_TOKEN: str = ""
-    
+
     # ==========================================================================
     # AI Providers
     # ==========================================================================
     DEFAULT_AI_MODEL: str = Field(default="gemini", description="gemini, openai, or mistral")
     DEFAULT_EMBEDDING_MODEL: str = Field(default="gemini", description="gemini, openai, or mistral")
     DEFAULT_RERANKER: str = Field(default="cohere")
-    
+
     # Gemini
     GEMINI_API_KEY: str = ""
     GEMINI_EMBEDDING_MODEL: str = "gemini-embedding-001"
     GEMINI_LLM_MODEL: str = "gemini-2.5-flash-lite"
-    
+
     # OpenAI
     OPENAI_API_KEY: str = ""
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
     OPENAI_LLM_MODEL: str = "gpt-4o-mini"
-    
+
     # Mistral
     MISTRAL_API_KEY: str = ""
     MISTRAL_EMBEDDING_MODEL: str = "mistral-embed"
     MISTRAL_LLM_MODEL: str = "mistral-small-latest"
-    
+
     # Cohere (Reranker)
     COHERE_API_KEY: str = ""
     COHERE_RERANK_MODEL: str = "rerank-english-v3.0"
-    
+
     # Jina AI
     JINAAI_API_KEY: str = ""
-    
+
     # ==========================================================================
     # Azure AD (Microsoft Auth)
     # ==========================================================================
@@ -111,33 +111,33 @@ class Settings(BaseSettings):
     AZURE_CLIENT_SECRET: str = ""
     AZURE_TENANT_ID: str = ""
     AZURE_SCOPE: str = "user"
-    
+
     # ==========================================================================
     # RAG Configuration
     # ==========================================================================
-    CHUNK_SIZE: int = Field(default=512, ge=100, le=2000)
+    CHUNK_SIZE: int = Field(default=1000, ge=100, le=2000)
     CHUNK_OVERLAP: int = Field(default=128, ge=0, le=500)
     RETRIEVAL_TOP_K: int = Field(default=10, ge=1, le=50)
-    RERANK_TOP_N: int = Field(default=3, ge=1, le=20)
+    RERANK_TOP_N: int = Field(default=10, ge=1, le=50)
     VECTOR_WEIGHT: float = Field(default=0.7, ge=0.0, le=1.0)
     KEYWORD_WEIGHT: float = Field(default=0.3, ge=0.0, le=1.0)
     EMBEDDING_DIMENSION: int = Field(default=1536)
-    
+
     # ==========================================================================
     # Upload Limits
     # ==========================================================================
     MAX_CONTENT_LENGTH: int = Field(default=100 * 1024 * 1024)  # 100 MB
-    
+
     # ==========================================================================
     # External URLs
     # ==========================================================================
     BOT_EMBED_URL: str = "https://geraltaidev.rectitudecs.com"
-    
+
     # ==========================================================================
     # Timezone
     # ==========================================================================
     TIMEZONE: str = "UTC"
-    
+
     @field_validator("DEFAULT_AI_MODEL", "DEFAULT_EMBEDDING_MODEL")
     @classmethod
     def validate_ai_model(cls, v: str) -> str:
@@ -145,7 +145,7 @@ class Settings(BaseSettings):
         if v.lower() not in allowed:
             raise ValueError(f"AI model must be one of: {allowed}")
         return v.lower()
-    
+
     @field_validator("DEFAULT_RERANKER")
     @classmethod
     def validate_reranker(cls, v: str) -> str:
@@ -153,11 +153,11 @@ class Settings(BaseSettings):
         if v.lower() not in allowed:
             raise ValueError(f"Reranker must be one of: {allowed}")
         return v.lower()
-    
+
     def validate_required_keys(self) -> None:
         """Validate that required API keys are set based on selected models."""
         errors = []
-        
+
         if self.DEFAULT_AI_MODEL == "gemini" and not self.GEMINI_API_KEY:
             errors.append("GEMINI_API_KEY required when using Gemini model")
         if self.DEFAULT_AI_MODEL == "openai" and not self.OPENAI_API_KEY:
@@ -168,10 +168,10 @@ class Settings(BaseSettings):
             errors.append("COHERE_API_KEY required when using Cohere reranker")
         if self.DEFAULT_RERANKER == "jina" and not self.JINAAI_API_KEY:
             errors.append("JINAAI_API_KEY required when using Jina reranker")
-        
+
         if errors:
             raise ValueError("Configuration errors: " + "; ".join(errors))
-    
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
