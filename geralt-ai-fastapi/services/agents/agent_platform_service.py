@@ -993,7 +993,7 @@ class AgentPlatformService(BaseService):
         statuses: Optional[List[str]] = None,
     ) -> ServiceResult:
         """Archive terminal workflow runs so normal views stay focused."""
-        terminal_statuses = ["canceled", "completed", "failed", "planned"]
+        terminal_statuses = ["blocked", "canceled", "completed", "failed", "planned"]
         selected_statuses = sorted(set(statuses or terminal_statuses))
         now = datetime.utcnow().isoformat()
         result = self.run_db.update_many(

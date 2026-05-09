@@ -1184,7 +1184,7 @@ def test_archive_workflow_runs_endpoint_marks_terminal_runs_archived():
     assert response.status_code == 200
     data = response.json()
     assert data["archived_count"] == 4
-    assert data["statuses"] == ["canceled", "completed", "failed", "planned"]
+    assert data["statuses"] == ["blocked", "canceled", "completed", "failed", "planned"]
 
 
 def test_list_workflow_runs_endpoint_can_include_archived_records():
