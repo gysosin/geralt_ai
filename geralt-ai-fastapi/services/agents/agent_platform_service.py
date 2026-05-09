@@ -1045,6 +1045,8 @@ class AgentPlatformService(BaseService):
                     "step_name": step.get("name"),
                     "tool_name": step.get("tool_name"),
                     "message": step.get("message", ""),
+                    "arguments": step.get("arguments") or {},
+                    "run_inputs": doc.get("inputs") or {},
                     "created_at": doc.get("created_at"),
                 })
         return ServiceResult.ok(approvals)

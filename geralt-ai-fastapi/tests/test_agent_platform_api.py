@@ -955,11 +955,13 @@ def test_pending_approvals_endpoint_returns_waiting_steps():
         {
             "run_id": "run-1",
             "workflow_id": "workflow-1",
+            "inputs": {"query": "summarize documents"},
             "steps": [
                 {
                     "step_id": "step-1",
                     "name": "Review",
                     "tool_name": "rag.aggregate",
+                    "arguments": {"query": "summarize documents"},
                     "status": "pending_approval",
                     "message": "Approval required before execution",
                 }
@@ -991,6 +993,8 @@ def test_pending_approvals_endpoint_returns_waiting_steps():
     data = response.json()
     assert data[0]["run_id"] == "run-1"
     assert data[0]["step_id"] == "step-1"
+    assert data[0]["arguments"] == {"query": "summarize documents"}
+    assert data[0]["run_inputs"] == {"query": "summarize documents"}
 
 
 def test_approve_workflow_step_endpoint_executes_pending_step():

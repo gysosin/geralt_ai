@@ -109,6 +109,8 @@ export interface PendingApproval {
     step_name: string
     tool_name: string
     message: string
+    arguments: Record<string, unknown>
+    run_inputs: Record<string, unknown>
     created_at: string
 }
 

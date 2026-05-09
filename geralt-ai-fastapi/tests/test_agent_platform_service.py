@@ -1373,11 +1373,16 @@ def test_list_pending_approvals_flattens_waiting_steps():
             "workflow_id": "workflow-1",
             "created_by": "mehul",
             "created_at": "2026-05-09T00:00:00",
+            "inputs": {"query": "total amount by vendor"},
             "steps": [
                 {
                     "step_id": "step-1",
                     "name": "Human review",
                     "tool_name": "rag.aggregate",
+                    "arguments": {
+                        "query": "total amount by vendor",
+                        "collection_ids": ["collection-1"],
+                    },
                     "status": "pending_approval",
                     "message": "Approval required before execution",
                 },
@@ -1407,6 +1412,11 @@ def test_list_pending_approvals_flattens_waiting_steps():
             "step_name": "Human review",
             "tool_name": "rag.aggregate",
             "message": "Approval required before execution",
+            "arguments": {
+                "query": "total amount by vendor",
+                "collection_ids": ["collection-1"],
+            },
+            "run_inputs": {"query": "total amount by vendor"},
             "created_at": "2026-05-09T00:00:00",
         }
     ]
