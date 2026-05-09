@@ -16,6 +16,7 @@ import { healthService, type WorkspaceHealthSnapshot } from '@/src/services';
 import { WorkspaceHealthSummary } from '@/src/components/WorkspaceHealthSummary';
 import { UsageAnalyticsCards } from '@/src/components/UsageAnalyticsCards';
 import { buildRecentActivityItems } from '@/src/utils/activity-feed';
+import { OnboardingChecklist } from '@/src/components/OnboardingChecklist';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -261,6 +262,8 @@ const Dashboard: React.FC = () => {
         analytics={analytics}
         isLoading={isAnalyticsLoading}
       />
+
+      <OnboardingChecklist onNavigate={navigate} />
 
       {/* KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
