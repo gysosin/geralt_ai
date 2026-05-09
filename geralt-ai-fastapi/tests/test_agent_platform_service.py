@@ -8,6 +8,12 @@ from services.agents.agent_platform_service import AgentPlatformService
 
 class FakeToolExecutor:
     def execute(self, tool_name, arguments):
+        if tool_name == "rag.search":
+            return {
+                "answer": "Found 1 matching document in extracted evidence.",
+                "sources": [{"document_id": "doc-1", "title": "Warranty"}],
+                "routing": {"method": "deterministic_extraction_search"},
+            }
         if tool_name == "rag.aggregate":
             return {
                 "answer": "Found 1 vendor totals across 2 documents.",
@@ -2155,7 +2161,7 @@ def test_retry_workflow_run_creates_new_run_from_recorded_steps():
     assert inserted["steps"][0]["output"]["query_type"] == "summary"
 
 
-def test_start_workflow_run_keeps_unsafe_tool_pending():
+def test_start_workflow_run_executes_search_step():
     workflow_db = MagicMock()
     run_db = MagicMock()
     workflow_db.find_one.return_value = {
@@ -2180,6 +2186,7 @@ def test_start_workflow_run_keeps_unsafe_tool_pending():
         agent_db=MagicMock(),
         workflow_db=workflow_db,
         run_db=run_db,
+        tool_executor=FakeToolExecutor(),
     )
 
     result = service.start_workflow_run(
@@ -2191,9 +2198,9 @@ def test_start_workflow_run_keeps_unsafe_tool_pending():
 
     assert result.success is True
     inserted = run_db.insert_one.call_args.args[0]
-    assert inserted["status"] == "pending"
-    assert inserted["steps"][0]["status"] == "pending"
-    assert "not implemented" in inserted["steps"][0]["message"]
+    assert inserted["status"] == "completed"
+    assert inserted["steps"][0]["status"] == "completed"
+    assert inserted["steps"][0]["output"]["sources"][0]["document_id"] == "doc-1"
 
 
 def test_start_workflow_run_executes_aggregation_step():

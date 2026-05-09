@@ -1,7 +1,7 @@
 """
 Tests for agent tool execution.
 """
-from core.agents.tool_executor import AgentToolExecutor
+from core.agents.tool_executor import AgentToolExecutor, DeterministicRagSearcher
 from core.rag.aggregation_engine import AggregationEngine
 from core.rag.collection_summarizer import CollectionSummarizer
 
@@ -99,6 +99,47 @@ def test_executor_runs_deterministic_aggregation_tool():
     assert result["data"][0]["vendor"] == "Acme"
     assert result["data"][0]["total"] == 200
     assert "2 documents" in result["answer"]
+
+
+def test_executor_runs_deterministic_rag_search_tool():
+    searcher = DeterministicRagSearcher(
+        extraction_collection=FakeExtractionCollection([
+            {
+                "collection_id": "collection-1",
+                "document_id": "doc-1",
+                "document_type": "contract",
+                "title": "Acme Warranty Agreement",
+                "summary": "Acme provides a two year warranty for hardware support.",
+                "entities": [{"name": "Acme", "type": "company"}],
+                "amounts": [{"value": 1200, "currency": "USD", "label": "support fee"}],
+            },
+            {
+                "collection_id": "collection-1",
+                "document_id": "doc-2",
+                "document_type": "invoice",
+                "title": "Contoso Invoice",
+                "summary": "Monthly services invoice.",
+                "entities": [{"name": "Contoso", "type": "company"}],
+            },
+        ]),
+        document_collection=FakeDocumentCollection([]),
+    )
+    executor = AgentToolExecutor(rag_searcher=searcher)
+
+    result = executor.execute(
+        "rag.search",
+        {
+            "query": "Acme warranty",
+            "collection_ids": ["collection-1"],
+            "top_k": 1,
+        },
+    )
+
+    assert result["routing"]["method"] == "deterministic_extraction_search"
+    assert result["routing"]["matched_count"] == 1
+    assert result["sources"][0]["document_id"] == "doc-1"
+    assert result["sources"][0]["title"] == "Acme Warranty Agreement"
+    assert "Top evidence" in result["answer"]
 
 
 def test_executor_runs_deterministic_collection_summary_tool():
