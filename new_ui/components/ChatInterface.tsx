@@ -43,6 +43,7 @@ import {
   buildChatAttachmentOptions,
   getSelectedAttachmentLabel,
 } from '../src/utils/chat-attachments';
+import { buildChatPreflightSummary } from '../src/utils/chat-preflight';
 
 const SUGGESTIONS = [
   { title: "Analyze Financials", desc: "Review Q3 profit margins vs Q2" },
@@ -132,6 +133,25 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
     () => getSelectedAttachmentLabel(attachmentOptions, currentCollectionId),
     [attachmentOptions, currentCollectionId],
   );
+  const activeResponseMode = useMemo(
+    () => chatResponseModes.find((mode) => mode.id === responseModeId) || chatResponseModes[0],
+    [responseModeId],
+  );
+  const preflightSummary = useMemo(
+    () => buildChatPreflightSummary({
+      agentName: activeBot?.name || 'Geralt AI',
+      collectionLabel: selectedAttachmentLabel,
+      responseModeLabel: activeResponseMode.label,
+      draft: input,
+      isSending,
+    }),
+    [activeBot?.name, activeResponseMode.label, input, isSending, selectedAttachmentLabel],
+  );
+  const preflightStatusClass = preflightSummary.status === 'ready'
+    ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200'
+    : preflightSummary.status === 'sending'
+      ? 'border-sky-400/20 bg-sky-400/10 text-sky-200'
+      : 'border-white/10 bg-white/[0.03] text-gray-500';
 
   const draftKey = useMemo(
     () => buildChatDraftKey({
@@ -831,6 +851,27 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                 rows={1}
                 disabled={isSending}
               />
+              <div className="border-t border-white/5 px-3 py-2">
+                <div className="rounded-xl border border-white/5 bg-black/20 p-3">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Sparkles size={14} className="text-violet-300" />
+                      <span className="text-xs font-semibold text-white">Run preflight</span>
+                    </div>
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${preflightStatusClass}`}>
+                      {preflightSummary.statusLabel}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {preflightSummary.items.map((item) => (
+                      <div key={item.label} className="min-w-0 rounded-lg border border-white/5 bg-white/[0.03] px-2.5 py-2">
+                        <p className="text-[10px] font-semibold uppercase text-gray-600">{item.label}</p>
+                        <p className="mt-1 truncate text-xs text-gray-300">{item.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
               {currentCollectionId && (
                 <div className="flex items-center gap-2 border-t border-white/5 px-3 py-2">
                   <span className="inline-flex min-w-0 items-center gap-2 rounded-lg border border-violet-400/20 bg-violet-400/10 px-2.5 py-1.5 text-xs text-violet-100">
