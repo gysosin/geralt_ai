@@ -379,18 +379,28 @@ def test_platform_stats_counts_definitions_and_run_statuses():
     agent_db = MagicMock()
     workflow_db = MagicMock()
     run_db = MagicMock()
+    mcp_server_db = MagicMock()
     agent_db.count_documents.return_value = 2
     workflow_db.count_documents.return_value = 3
+    mcp_server_db.find.return_value = [
+        {"server_id": "mcp-1", "last_health_status": "reachable"},
+        {"server_id": "mcp-2", "last_health_status": "unreachable"},
+    ]
     run_db.find.return_value = [
         {"run_id": "run-1", "status": "completed"},
         {"run_id": "run-2", "status": "pending"},
         {"run_id": "run-3", "status": "pending"},
-        {"run_id": "run-4", "status": "canceled"},
+        {
+            "run_id": "run-4",
+            "status": "canceled",
+            "steps": [{"status": "pending_approval"}],
+        },
     ]
     service = AgentPlatformService(
         agent_db=agent_db,
         workflow_db=workflow_db,
         run_db=run_db,
+        mcp_server_db=mcp_server_db,
     )
 
     result = service.get_platform_stats(owner="mehul")
@@ -398,6 +408,9 @@ def test_platform_stats_counts_definitions_and_run_statuses():
     assert result.success is True
     assert result.data["agents"] == 2
     assert result.data["workflows"] == 3
+    assert result.data["mcp_servers"] == 2
+    assert result.data["reachable_mcp_servers"] == 1
+    assert result.data["pending_approvals"] == 1
     assert result.data["runs"] == 4
     assert result.data["run_statuses"] == {
         "completed": 1,

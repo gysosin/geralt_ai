@@ -1148,15 +1148,29 @@ class AgentPlatformService(BaseService):
         """Return aggregate counts for the current agent platform workspace."""
         username = self.extract_username(owner)
         definition_query = {"created_by": username, "deleted": {"$ne": True}}
-        run_docs = list(self.run_db.find({"created_by": username}, {"_id": 0, "status": 1}))
+        run_docs = list(self.run_db.find({"created_by": username}, {"_id": 0, "status": 1, "steps": 1}))
+        mcp_docs = list(self.mcp_server_db.find(
+            definition_query,
+            {"_id": 0, "last_health_status": 1},
+        ))
         run_statuses: Dict[str, int] = {}
+        pending_approvals = 0
         for run in run_docs:
             status = run.get("status") or "unknown"
             run_statuses[status] = run_statuses.get(status, 0) + 1
+            pending_approvals += sum(
+                1
+                for step in run.get("steps") or []
+                if step.get("status") == "pending_approval"
+            )
 
         return ServiceResult.ok({
             "agents": self.agent_db.count_documents(definition_query),
             "workflows": self.workflow_db.count_documents(definition_query),
+            "mcp_servers": len(mcp_docs),
+            "reachable_mcp_servers": sum(
+                1 for server in mcp_docs if server.get("last_health_status") == "reachable"
+            ),
             "tools": len(self.registry.list_tools()),
             "runs": len(run_docs),
             "run_statuses": run_statuses,
@@ -1165,6 +1179,7 @@ class AgentPlatformService(BaseService):
                 for status, count in run_statuses.items()
                 if status in {"planned", "pending"}
             ),
+            "pending_approvals": pending_approvals,
         })
 
     def get_adk_manifest(self, owner: str) -> ServiceResult:

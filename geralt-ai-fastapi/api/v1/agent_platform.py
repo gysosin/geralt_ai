@@ -282,9 +282,12 @@ class PlatformStatsResponse(BaseModel):
 
     agents: int
     workflows: int
+    mcp_servers: int = 0
+    reachable_mcp_servers: int = 0
     tools: int
     runs: int
     active_runs: int
+    pending_approvals: int = 0
     run_statuses: Dict[str, int]
 
 

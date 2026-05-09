@@ -1112,11 +1112,13 @@ def test_platform_stats_endpoint_returns_counts():
     agent_db = MagicMock()
     workflow_db = MagicMock()
     run_db = MagicMock()
+    mcp_server_db = MagicMock()
     agent_db.count_documents.return_value = 2
     workflow_db.count_documents.return_value = 1
+    mcp_server_db.find.return_value = [{"server_id": "mcp-1", "last_health_status": "reachable"}]
     run_db.find.return_value = [
         {"run_id": "run-1", "status": "completed"},
-        {"run_id": "run-2", "status": "pending"},
+        {"run_id": "run-2", "status": "pending", "steps": [{"status": "pending_approval"}]},
     ]
 
     with patch("models.database.MongoClient"):
@@ -1130,6 +1132,7 @@ def test_platform_stats_endpoint_returns_counts():
                     agent_db=agent_db,
                     workflow_db=workflow_db,
                     run_db=run_db,
+                    mcp_server_db=mcp_server_db,
                 )
                 app.dependency_overrides[get_agent_platform_service] = lambda: service
 
@@ -1141,6 +1144,9 @@ def test_platform_stats_endpoint_returns_counts():
     data = response.json()
     assert data["agents"] == 2
     assert data["workflows"] == 1
+    assert data["mcp_servers"] == 1
+    assert data["reachable_mcp_servers"] == 1
+    assert data["pending_approvals"] == 1
     assert data["run_statuses"]["pending"] == 1
 
 
