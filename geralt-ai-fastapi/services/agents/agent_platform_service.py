@@ -11,6 +11,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
+from core.agents.agent_templates import get_agent_template_registry
 from core.agents.tool_executor import get_agent_tool_executor
 from core.agents.tool_registry import get_agent_tool_registry
 from core.agents.workflow_templates import get_workflow_template_registry
@@ -54,6 +55,7 @@ class AgentPlatformService(BaseService):
             self.audit_db = agent_audit_collection
         self.tool_executor = tool_executor or get_agent_tool_executor()
         self.registry = get_agent_tool_registry()
+        self.agent_template_registry = get_agent_template_registry()
         self.template_registry = get_workflow_template_registry()
 
     def create_agent(
@@ -172,6 +174,42 @@ class AgentPlatformService(BaseService):
         }
         self._record_audit("agent.updated", owner, "agent", agent_id)
         return ServiceResult.ok(self._public_document(updated_doc))
+
+    def list_agent_templates(self) -> ServiceResult:
+        """List built-in agent templates."""
+        return ServiceResult.ok(self.agent_template_registry.list_templates())
+
+    def create_agent_from_template(
+        self,
+        owner: str,
+        template_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        instruction: Optional[str] = None,
+        tool_names: Optional[List[str]] = None,
+        model: Optional[str] = None,
+        collection_ids: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> ServiceResult:
+        """Create an agent from a built-in template."""
+        template = self.agent_template_registry.get_template(template_id)
+        if not template:
+            return ServiceResult.fail("Agent template not found", 404)
+
+        template_metadata = {
+            "template_id": template_id,
+            **(metadata or {}),
+        }
+        return self.create_agent(
+            owner=owner,
+            name=name or template["name"],
+            description=description or template.get("description"),
+            instruction=instruction or template["instruction"],
+            tool_names=tool_names or template["tool_names"],
+            model=model or template.get("model"),
+            collection_ids=collection_ids,
+            metadata=template_metadata,
+        )
 
     def delete_agent(self, owner: str, agent_id: str) -> ServiceResult:
         """Soft-delete an owned agent definition."""

@@ -18,6 +18,7 @@ import {
   agentPlatformService,
   type AuditEvent,
   type AgentDefinition,
+  type AgentTemplate,
   type AgentTool,
   type McpServer,
   type PlatformStats,
@@ -42,6 +43,7 @@ const statusTone: Record<string, string> = {
 
 const AgentPlatform: React.FC = () => {
   const [tools, setTools] = useState<AgentTool[]>([]);
+  const [agentTemplates, setAgentTemplates] = useState<AgentTemplate[]>([]);
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([]);
@@ -60,6 +62,7 @@ const AgentPlatform: React.FC = () => {
   const [selectedTools, setSelectedTools] = useState<string[]>(['query.plan', 'rag.aggregate']);
   const [agentCollections, setAgentCollections] = useState('');
   const [editingAgentId, setEditingAgentId] = useState('');
+  const [selectedAgentTemplateId, setSelectedAgentTemplateId] = useState('');
   const [mcpName, setMcpName] = useState('Docs MCP');
   const [mcpUrl, setMcpUrl] = useState('');
   const [mcpToolNames, setMcpToolNames] = useState('');
@@ -83,8 +86,9 @@ const AgentPlatform: React.FC = () => {
     setIsLoading(true);
     setError('');
     try {
-      const [toolResult, agentResult, mcpServerResult, workflowResult, templateResult, runResult, auditResult, statsResult] = await Promise.allSettled([
+      const [toolResult, agentTemplateResult, agentResult, mcpServerResult, workflowResult, templateResult, runResult, auditResult, statsResult] = await Promise.allSettled([
         agentPlatformService.getTools(),
+        agentPlatformService.listAgentTemplates(),
         agentPlatformService.listAgents(),
         agentPlatformService.listMcpServers(),
         agentPlatformService.listWorkflows(),
@@ -94,6 +98,7 @@ const AgentPlatform: React.FC = () => {
         agentPlatformService.getStats(),
       ]);
       setTools(toolResult.status === 'fulfilled' ? toolResult.value.tools || [] : []);
+      setAgentTemplates(agentTemplateResult.status === 'fulfilled' ? agentTemplateResult.value || [] : []);
       const loadedAgents = agentResult.status === 'fulfilled' ? agentResult.value || [] : [];
       setAgents(loadedAgents);
       setMcpServers(mcpServerResult.status === 'fulfilled' ? mcpServerResult.value || [] : []);
@@ -113,7 +118,7 @@ const AgentPlatform: React.FC = () => {
       if (!runAgentId && loadedAgents?.[0]?.agent_id) {
         setRunAgentId(loadedAgents[0].agent_id);
       }
-      if ([toolResult, agentResult, mcpServerResult, workflowResult, templateResult, runResult, auditResult, statsResult].some((result) => result.status === 'rejected')) {
+      if ([toolResult, agentTemplateResult, agentResult, mcpServerResult, workflowResult, templateResult, runResult, auditResult, statsResult].some((result) => result.status === 'rejected')) {
         setError('Some platform records are unavailable. Tool registry is still loaded when the API is reachable.');
       }
     } catch (loadError) {
@@ -143,6 +148,15 @@ const AgentPlatform: React.FC = () => {
     );
   };
 
+  const applyAgentTemplate = (templateId: string) => {
+    setSelectedAgentTemplateId(templateId);
+    const template = agentTemplates.find((item) => item.template_id === templateId);
+    if (!template) return;
+    setAgentName(template.name);
+    setAgentInstruction(template.instruction);
+    setSelectedTools(template.tool_names);
+  };
+
   const createAgent = async () => {
     if (!agentName.trim() || !agentInstruction.trim() || selectedTools.length === 0) return;
     setIsSubmitting(true);
@@ -160,7 +174,12 @@ const AgentPlatform: React.FC = () => {
         setAgents((current) => current.map((agent) => (agent.agent_id === updated.agent_id ? updated : agent)));
         setEditingAgentId('');
       } else {
-        const created = await agentPlatformService.createAgent(payload);
+        const created = selectedAgentTemplateId
+          ? await agentPlatformService.createAgentFromTemplate({
+            template_id: selectedAgentTemplateId,
+            ...payload,
+          })
+          : await agentPlatformService.createAgent(payload);
         setAgents((current) => [created, ...current]);
         setWorkflowAgentId(created.agent_id);
         setRunAgentId(created.agent_id);
@@ -178,6 +197,7 @@ const AgentPlatform: React.FC = () => {
     setAgentInstruction(agent.instruction);
     setSelectedTools(agent.tool_names);
     setAgentCollections(agent.collection_ids.join(', '));
+    setSelectedAgentTemplateId('');
   };
 
   const createWorkflow = async () => {
@@ -644,6 +664,16 @@ const AgentPlatform: React.FC = () => {
           <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="border border-white/5 bg-surface/30 rounded-2xl p-5 space-y-4">
               <h2 className="text-lg font-semibold text-white">New Agent</h2>
+              <select
+                value={selectedAgentTemplateId}
+                onChange={(event) => applyAgentTemplate(event.target.value)}
+                className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500/60"
+              >
+                <option value="">Custom agent</option>
+                {agentTemplates.map((template) => (
+                  <option key={template.template_id} value={template.template_id}>{template.name}</option>
+                ))}
+              </select>
               <input
                 value={agentName}
                 onChange={(event) => setAgentName(event.target.value)}
@@ -667,7 +697,7 @@ const AgentPlatform: React.FC = () => {
                 className="w-full h-11 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-medium flex items-center justify-center gap-2"
               >
                 {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Bot size={18} />}
-                {editingAgentId ? 'Save Agent' : 'Create Agent'}
+                {editingAgentId ? 'Save Agent' : selectedAgentTemplateId ? 'Create From Template' : 'Create Agent'}
               </button>
             </div>
 

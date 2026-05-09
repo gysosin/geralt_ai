@@ -25,6 +25,15 @@ export interface AgentDefinition {
     updated_at: string
 }
 
+export interface AgentTemplate {
+    template_id: string
+    name: string
+    description: string
+    instruction: string
+    tool_names: string[]
+    model: string
+}
+
 export interface McpServer {
     server_id: string
     name: string
@@ -171,6 +180,25 @@ export const agentPlatformService = {
         metadata?: Record<string, unknown>
     }): Promise<AgentDefinition> {
         const response = await api.post(`${BASE_PATH}/agents`, data)
+        return response.data
+    },
+
+    async listAgentTemplates(): Promise<AgentTemplate[]> {
+        const response = await api.get(`${BASE_PATH}/agent-templates`)
+        return response.data
+    },
+
+    async createAgentFromTemplate(data: {
+        template_id: string
+        name?: string
+        description?: string
+        instruction?: string
+        tool_names?: string[]
+        model?: string
+        collection_ids?: string[]
+        metadata?: Record<string, unknown>
+    }): Promise<AgentDefinition> {
+        const response = await api.post(`${BASE_PATH}/agents/from-template`, data)
         return response.data
     },
 
