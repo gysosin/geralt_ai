@@ -481,6 +481,13 @@ export const agentPlatformService = {
         return response.data
     },
 
+    async rejectWorkflowStep(runId: string, stepId: string, reason?: string): Promise<WorkflowRun> {
+        const response = await api.post(`${BASE_PATH}/workflow-runs/${runId}/steps/${stepId}/reject`, {
+            reason,
+        })
+        return response.data
+    },
+
     async approveAllPendingWorkflowSteps(): Promise<BulkApprovalResult> {
         const response = await api.post(`${BASE_PATH}/workflow-runs/pending-approvals/approve`)
         return response.data
