@@ -31,7 +31,9 @@ import {
 import {
   applyChatResponseMode,
   chatResponseModes,
+  readStoredChatResponseMode,
   type ChatResponseModeId,
+  writeStoredChatResponseMode,
 } from '../src/utils/chat-response-modes';
 import {
   buildChatDraftKey,
@@ -106,7 +108,7 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
   const [showAttachmentTray, setShowAttachmentTray] = useState(false);
   const [promptTemplateQuery, setPromptTemplateQuery] = useState('');
   const [promptTemplateFilter, setPromptTemplateFilter] = useState<ChatPromptTemplateFilter>('all');
-  const [responseModeId, setResponseModeId] = useState<ChatResponseModeId>('direct');
+  const [responseModeId, setResponseModeId] = useState<ChatResponseModeId>(() => readStoredChatResponseMode());
   const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
   const [hydratedDraftKey, setHydratedDraftKey] = useState('');
   const [sendReview, setSendReview] = useState<{ prompt: string; reasons: string[] } | null>(null);
@@ -245,6 +247,10 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
     writeChatDraft(draftKey, input);
     setDraftSavedAt(input.trim() ? new Date() : null);
   }, [draftKey, hydratedDraftKey, input]);
+
+  useEffect(() => {
+    writeStoredChatResponseMode(responseModeId);
+  }, [responseModeId]);
 
   const handleSend = async (text: string = input, options: { skipGuard?: boolean } = {}) => {
     if (!text.trim() || isSending) return;
