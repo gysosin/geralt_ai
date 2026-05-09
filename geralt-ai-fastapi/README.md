@@ -141,6 +141,18 @@ celery -A core.tasks worker --loglevel=info
 ```
 > **Note:** The API server attempts to auto-start a worker process for development convenience, but running it separately is recommended for production or debugging.
 
+## 👤 Admin Bootstrap
+
+Create the initial admin user with an explicit password:
+
+```bash
+GERALT_ADMIN_PASSWORD='replace-with-a-strong-password' python scripts/create_admin_user.py
+```
+
+Optional overrides: `GERALT_ADMIN_EMAIL`, `GERALT_ADMIN_USERNAME`,
+`GERALT_ADMIN_FIRSTNAME`, and `GERALT_ADMIN_LASTNAME`. The script refuses
+passwords shorter than 12 characters and never logs the plaintext password.
+
 ## 🤖 Agent Platform Operations
 
 The `/api/v1/agent-platform` API exposes document intelligence as reusable agent and workflow primitives:
