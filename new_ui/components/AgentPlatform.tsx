@@ -46,6 +46,7 @@ import {
   canRunWorkflowAgain,
   defaultWorkflowStepDrafts,
   mcpToolToWorkflowStepDraft,
+  normalizeApprovalRejectionReason,
   workflowStepsToDrafts,
   type WorkflowStepDraft,
 } from '../src/utils/agent-platform-workflow';
@@ -75,6 +76,7 @@ const AgentPlatform: React.FC = () => {
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [showArchivedRuns, setShowArchivedRuns] = useState(false);
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
+  const [approvalRejectionReasons, setApprovalRejectionReasons] = useState<Record<string, string>>({});
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [toolResult, setToolResult] = useState<ToolInvocationResult | null>(null);
   const [runTrace, setRunTrace] = useState<WorkflowRunTrace | null>(null);
@@ -511,18 +513,26 @@ const AgentPlatform: React.FC = () => {
     }
   };
 
+  const approvalKey = (runId: string, stepId: string) => `${runId}:${stepId}`;
+
   const rejectWorkflowStep = async (runId: string, stepId: string) => {
     setIsSubmitting(true);
     setError('');
     try {
+      const rejectionKey = approvalKey(runId, stepId);
       const updated = await agentPlatformService.rejectWorkflowStep(
         runId,
         stepId,
-        'Rejected from approval queue'
+        normalizeApprovalRejectionReason(approvalRejectionReasons[rejectionKey] || '')
       );
       setRuns((current) => current.map((run) => (run.run_id === updated.run_id ? updated : run)));
       setPendingApprovals(await agentPlatformService.listPendingApprovals());
       setAuditEvents(await agentPlatformService.listAuditEvents());
+      setApprovalRejectionReasons((current) => {
+        const next = { ...current };
+        delete next[rejectionKey];
+        return next;
+      });
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to reject workflow step');
     } finally {
@@ -1576,6 +1586,15 @@ const AgentPlatform: React.FC = () => {
                   {approval.message && (
                     <p className="mt-2 text-[11px] leading-relaxed text-amber-300">{approval.message}</p>
                   )}
+                  <textarea
+                    value={approvalRejectionReasons[approvalKey(approval.run_id, approval.step_id)] || ''}
+                    onChange={(event) => setApprovalRejectionReasons((current) => ({
+                      ...current,
+                      [approvalKey(approval.run_id, approval.step_id)]: event.target.value,
+                    }))}
+                    placeholder="Rejection reason"
+                    className="mt-3 min-h-20 w-full resize-y rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none placeholder:text-gray-600 focus:border-red-500/40"
+                  />
                   <div className="mt-3 grid grid-cols-1 gap-2 text-[11px]">
                     <div className="rounded-lg border border-white/5 bg-black/20 p-2">
                       <p className="mb-1 text-gray-500 uppercase tracking-widest">Arguments</p>
