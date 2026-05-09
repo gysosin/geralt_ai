@@ -2,12 +2,18 @@ import { io, Socket } from 'socket.io-client';
 
 const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-class SocketService {
+export class SocketService {
     private socket: Socket | null = null;
     private listeners: Map<string, Set<(data: any) => void>> = new Map();
+    private hasLoggedConnectionError = false;
 
     connect(): void {
-        if (this.socket?.connected) return;
+        if (this.socket) {
+            if (!this.socket.connected) {
+                this.socket.connect();
+            }
+            return;
+        }
 
         const token = localStorage.getItem('token');
 
@@ -18,17 +24,22 @@ class SocketService {
         });
 
         this.socket.on('connect_error', (error) => {
-            if (import.meta.env.DEV) {
-                console.error('Socket connection error:', error);
+            if (import.meta.env.DEV && !this.hasLoggedConnectionError) {
+                console.warn(
+                    'Socket connection unavailable; retrying in background:',
+                    error instanceof Error ? error.message : error
+                );
+                this.hasLoggedConnectionError = true;
             }
         });
 
-        // Re-register all listeners on reconnect
         this.socket.on('connect', () => {
-            this.listeners.forEach((callbacks, event) => {
-                callbacks.forEach(callback => {
-                    this.socket?.on(event, callback);
-                });
+            this.hasLoggedConnectionError = false;
+        });
+
+        this.listeners.forEach((callbacks, event) => {
+            callbacks.forEach(callback => {
+                this.socket?.on(event, callback);
             });
         });
     }
@@ -55,6 +66,9 @@ class SocketService {
         const callbacks = this.listeners.get(event);
         if (callbacks) {
             callbacks.delete(callback);
+            if (callbacks.size === 0) {
+                this.listeners.delete(event);
+            }
         }
 
         if (this.socket) {
