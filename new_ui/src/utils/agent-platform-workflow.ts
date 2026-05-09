@@ -69,6 +69,11 @@ export const canRunWorkflowAgain = (status: string) => (
 
 export const canCancelWorkflowRun = (status: string) => status === 'pending';
 
+export const normalizeApprovalRejectionReason = (reason: string) => {
+  const trimmedReason = reason.trim();
+  return trimmedReason || 'Rejected from approval queue';
+};
+
 export const buildWorkflowSteps = (drafts: WorkflowStepDraft[]) => {
   const errors: string[] = [];
   const steps: WorkflowStepPayload[] = [];

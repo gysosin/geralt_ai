@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildWorkflowSteps, canCancelWorkflowRun, canRunWorkflowAgain, mcpToolToWorkflowStepDraft } from './agent-platform-workflow';
+import {
+  buildWorkflowSteps,
+  canCancelWorkflowRun,
+  canRunWorkflowAgain,
+  mcpToolToWorkflowStepDraft,
+  normalizeApprovalRejectionReason,
+} from './agent-platform-workflow';
 
 describe('agent platform workflow helpers', () => {
   it('builds validated workflow steps from editable drafts', () => {
@@ -105,5 +111,10 @@ describe('agent platform workflow helpers', () => {
     expect(canCancelWorkflowRun('failed')).toBe(false);
     expect(canCancelWorkflowRun('completed')).toBe(false);
     expect(canCancelWorkflowRun('canceled')).toBe(false);
+  });
+
+  it('normalizes approval rejection reasons for audit history', () => {
+    expect(normalizeApprovalRejectionReason('  Missing invoice evidence  ')).toBe('Missing invoice evidence');
+    expect(normalizeApprovalRejectionReason('   ')).toBe('Rejected from approval queue');
   });
 });
