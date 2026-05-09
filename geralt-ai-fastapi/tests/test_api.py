@@ -121,6 +121,44 @@ class TestCoreSettings:
         redis_url = settings.redis_url
         assert "redis://" in redis_url
 
+    def test_startup_configuration_rejects_placeholder_secret_in_production(self):
+        """Production startup should reject placeholder JWT secrets."""
+        from core.config import Settings
+
+        settings = Settings(
+            ENVIRONMENT="production",
+            SECRET_KEY="your_jwt_secret",
+            CORS_ORIGINS=["https://app.example.com"],
+        )
+
+        with pytest.raises(ValueError, match="SECRET_KEY"):
+            settings.validate_startup_configuration()
+
+    def test_startup_configuration_rejects_wildcard_cors_in_production(self):
+        """Production startup should reject wildcard CORS origins."""
+        from core.config import Settings
+
+        settings = Settings(
+            ENVIRONMENT="production",
+            SECRET_KEY="a-production-secret-with-enough-entropy",
+            CORS_ORIGINS=["*"],
+        )
+
+        with pytest.raises(ValueError, match="CORS_ORIGINS"):
+            settings.validate_startup_configuration()
+
+    def test_startup_configuration_allows_development_defaults(self):
+        """Development startup can keep local placeholder defaults."""
+        from core.config import Settings
+
+        settings = Settings(
+            ENVIRONMENT="development",
+            SECRET_KEY="your_jwt_secret",
+            CORS_ORIGINS=["*"],
+        )
+
+        settings.validate_startup_configuration()
+
 
 class TestAPIRouterStructure:
     """Test suite for API router structure."""

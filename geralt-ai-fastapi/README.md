@@ -86,6 +86,7 @@ brew install --cask libreoffice
 
     ```env
     # --- Core ---
+    ENVIRONMENT=development
     SECRET_KEY=your_secure_jwt_secret_here
     DEBUG=True
     
@@ -108,6 +109,11 @@ brew install --cask libreoffice
     # --- RAG configuration ---
     DEFAULT_AI_MODEL=gemini
     ```
+
+    For production deployments, set `ENVIRONMENT=production`, replace
+    `SECRET_KEY` with a high-entropy value of at least 32 characters, and use
+    explicit `CORS_ORIGINS` instead of `*`. Startup validation rejects unsafe
+    production defaults.
 
 ## 🏃 Running the Application
 
