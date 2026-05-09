@@ -1269,6 +1269,60 @@ def test_list_pending_approvals_flattens_waiting_steps():
     ]
 
 
+def test_approve_pending_workflow_steps_executes_each_waiting_step():
+    run_db = MagicMock()
+    run_1 = {
+        "run_id": "run-1",
+        "workflow_id": "workflow-1",
+        "status": "pending",
+        "dry_run": False,
+        "inputs": {"query": "summarize documents"},
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Plan",
+                "tool_name": "query.plan",
+                "arguments": {"query": "summarize documents"},
+                "depends_on": [],
+                "approval_required": True,
+                "status": "pending_approval",
+                "output": None,
+                "message": "Approval required before execution",
+            }
+        ],
+        "created_by": "mehul",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+    }
+    run_2 = {
+        **run_1,
+        "run_id": "run-2",
+        "workflow_id": "workflow-2",
+        "steps": [
+            {
+                **run_1["steps"][0],
+                "step_id": "step-2",
+                "arguments": {"query": "list all vendors"},
+            }
+        ],
+    }
+    run_db.find.return_value = [run_1, run_2]
+    run_db.find_one.side_effect = [run_1, run_2]
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.approve_pending_workflow_steps(owner="mehul")
+
+    assert result.success is True
+    assert result.data["approved_count"] == 2
+    assert [run["run_id"] for run in result.data["runs"]] == ["run-1", "run-2"]
+    assert all(run["status"] == "completed" for run in result.data["runs"])
+    assert run_db.update_one.call_count == 2
+
+
 def test_start_workflow_run_blocks_steps_until_dependencies_complete():
     workflow_db = MagicMock()
     run_db = MagicMock()

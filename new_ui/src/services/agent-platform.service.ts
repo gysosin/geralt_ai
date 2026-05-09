@@ -112,6 +112,12 @@ export interface PendingApproval {
     created_at: string
 }
 
+export interface BulkApprovalResult {
+    approved_count: number
+    runs: WorkflowRun[]
+    errors: Array<Record<string, unknown>>
+}
+
 export interface WorkflowRunTrace {
     run_id: string
     workflow_id: string
@@ -452,6 +458,11 @@ export const agentPlatformService = {
 
     async approveWorkflowStep(runId: string, stepId: string): Promise<WorkflowRun> {
         const response = await api.post(`${BASE_PATH}/workflow-runs/${runId}/steps/${stepId}/approve`)
+        return response.data
+    },
+
+    async approveAllPendingWorkflowSteps(): Promise<BulkApprovalResult> {
+        const response = await api.post(`${BASE_PATH}/workflow-runs/pending-approvals/approve`)
         return response.data
     },
 
