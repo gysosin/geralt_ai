@@ -268,6 +268,72 @@ def test_start_workflow_run_stops_at_approval_gate():
     assert inserted["steps"][0]["output"] is None
 
 
+def test_approve_workflow_step_executes_pending_step():
+    run_db = MagicMock()
+    run_db.find_one.return_value = {
+        "run_id": "run-1",
+        "workflow_id": "workflow-1",
+        "created_by": "mehul",
+        "status": "pending",
+        "steps": [
+            {
+                "step_id": "step-1",
+                "name": "Plan",
+                "tool_name": "query.plan",
+                "arguments": {"query": "summarize these documents"},
+                "depends_on": [],
+                "approval_required": True,
+                "status": "pending_approval",
+                "output": None,
+                "message": "Approval required before execution",
+            }
+        ],
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.approve_workflow_step(
+        owner="mehul",
+        run_id="run-1",
+        step_id="step-1",
+    )
+
+    assert result.success is True
+    assert result.data["status"] == "completed"
+    assert result.data["steps"][0]["status"] == "completed"
+    assert result.data["steps"][0]["output"]["query_type"] == "summary"
+    update = run_db.update_one.call_args.args[1]["$set"]
+    assert update["status"] == "completed"
+
+
+def test_approve_workflow_step_rejects_non_pending_step():
+    run_db = MagicMock()
+    run_db.find_one.return_value = {
+        "run_id": "run-1",
+        "workflow_id": "workflow-1",
+        "created_by": "mehul",
+        "status": "completed",
+        "steps": [{"step_id": "step-1", "status": "completed"}],
+    }
+    service = AgentPlatformService(
+        agent_db=MagicMock(),
+        workflow_db=MagicMock(),
+        run_db=run_db,
+    )
+
+    result = service.approve_workflow_step(
+        owner="mehul",
+        run_id="run-1",
+        step_id="step-1",
+    )
+
+    assert result.success is False
+    assert result.status_code == 400
+
+
 def test_start_workflow_run_keeps_unsafe_tool_pending():
     workflow_db = MagicMock()
     run_db = MagicMock()

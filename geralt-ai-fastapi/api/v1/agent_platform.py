@@ -434,6 +434,20 @@ async def get_workflow_run(
     return _result_or_error(service.get_workflow_run(_owner(current_user), run_id))
 
 
+@router.post(
+    "/workflow-runs/{run_id}/steps/{step_id}/approve",
+    response_model=WorkflowRunResponse,
+)
+async def approve_workflow_step(
+    run_id: str,
+    step_id: str,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Approve and execute a workflow run step waiting on human approval."""
+    return _result_or_error(service.approve_workflow_step(_owner(current_user), run_id, step_id))
+
+
 @router.get("/audit-events", response_model=List[AuditEventResponse])
 async def list_audit_events(
     limit: int = 50,
