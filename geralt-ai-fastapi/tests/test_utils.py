@@ -222,3 +222,50 @@ class TestUtilityService:
         instance2 = UtilityService.get_instance()
         
         assert instance1 is instance2
+
+    def test_is_valid_url_accepts_public_http_url(self):
+        """Test URL validation accepts public HTTP/S destinations."""
+        from helpers.utils import UtilityService
+
+        service = UtilityService()
+        with patch("helpers.utils.socket.getaddrinfo") as mock_getaddrinfo:
+            mock_getaddrinfo.return_value = [
+                (2, 1, 6, "", ("93.184.216.34", 443)),
+            ]
+
+            assert service.is_valid_url("https://example.com/report.pdf") is True
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "ftp://example.com/report.pdf",
+            "http://localhost:8000/report.pdf",
+            "http://localhost.localdomain/report.pdf",
+            "http://service.localhost/report.pdf",
+            "http://127.0.0.1/report.pdf",
+            "http://10.0.0.5/report.pdf",
+            "http://100.64.0.1/report.pdf",
+            "http://172.16.0.5/report.pdf",
+            "http://192.168.1.10/report.pdf",
+            "http://169.254.169.254/latest/meta-data",
+            "http://[::1]/report.pdf",
+        ],
+    )
+    def test_is_valid_url_rejects_non_public_targets(self, url):
+        """Test URL validation blocks local, private, and metadata targets."""
+        from helpers.utils import UtilityService
+
+        service = UtilityService()
+        assert service.is_valid_url(url) is False
+
+    def test_is_valid_url_rejects_hostname_resolving_private(self):
+        """Test URL validation blocks hostnames that resolve to private IPs."""
+        from helpers.utils import UtilityService
+
+        service = UtilityService()
+        with patch("helpers.utils.socket.getaddrinfo") as mock_getaddrinfo:
+            mock_getaddrinfo.return_value = [
+                (2, 1, 6, "", ("10.1.2.3", 443)),
+            ]
+
+            assert service.is_valid_url("https://internal.example.com/report.pdf") is False
