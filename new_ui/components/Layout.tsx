@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Menu, Bell, Search, LogOut, ChevronLeft, Plus, Command, LayoutGrid, MessageSquare, Bot, Files, PieChart, History, Settings } from 'lucide-react';
+import { Menu, Bell, Search, LogOut, ChevronLeft, Plus, Command, MessageSquare, Bot, Files, PieChart, History, Settings, Workflow, BarChart3, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MENU_ITEMS, APP_NAME } from '../constants';
+import CommandPalette, { type CommandPaletteItem } from '../src/components/CommandPalette';
 import { NotificationPanel } from '../src/components/NotificationPanel';
 import { useNotificationStore } from '../src/store';
 
@@ -14,14 +15,123 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ children, onLogout }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { unreadCount, fetchUnreadCount } = useNotificationStore();
+
+  const commandItems = useMemo<CommandPaletteItem[]>(() => [
+    {
+      id: 'dashboard',
+      label: 'Open dashboard',
+      description: 'Review KPIs, usage, activity, and workspace health.',
+      group: 'Navigation',
+      path: '/',
+      icon: <BarChart3 size={18} />,
+      keywords: ['home', 'overview', 'metrics'],
+    },
+    {
+      id: 'new-chat',
+      label: 'Start new chat',
+      description: 'Ask questions against your document collections.',
+      group: 'RAG and Chat',
+      path: '/chat',
+      icon: <MessageSquare size={18} />,
+      keywords: ['conversation', 'assistant', 'rag', 'ask'],
+    },
+    {
+      id: 'agents',
+      label: 'Manage agents',
+      description: 'Create, deploy, and tune AI bots.',
+      group: 'Agents',
+      path: '/bots',
+      icon: <Bot size={18} />,
+      keywords: ['bots', 'assistants', 'deploy'],
+    },
+    {
+      id: 'agent-platform',
+      label: 'Open agent platform',
+      description: 'Build tools, MCP servers, workflows, and agent runs.',
+      group: 'AI Automation',
+      path: '/agent-platform',
+      icon: <Workflow size={18} />,
+      keywords: ['workflow', 'mcp', 'tools', 'automation'],
+    },
+    {
+      id: 'collections',
+      label: 'Open knowledge collections',
+      description: 'Upload, index, and manage document knowledge bases.',
+      group: 'Documents',
+      path: '/collections',
+      icon: <Files size={18} />,
+      keywords: ['documents', 'files', 'knowledge', 'upload'],
+    },
+    {
+      id: 'analytics',
+      label: 'Open analytics',
+      description: 'Inspect usage, cost, and workspace trends.',
+      group: 'Reports',
+      path: '/analytics',
+      icon: <PieChart size={18} />,
+      keywords: ['usage', 'cost', 'reporting', 'charts'],
+    },
+    {
+      id: 'history',
+      label: 'Open chat history',
+      description: 'Resume prior conversations and review past answers.',
+      group: 'RAG and Chat',
+      path: '/history',
+      icon: <History size={18} />,
+      keywords: ['conversations', 'past', 'archive'],
+    },
+    {
+      id: 'settings',
+      label: 'Open settings',
+      description: 'Manage profile, providers, preferences, and security.',
+      group: 'Workspace',
+      path: '/settings',
+      icon: <Settings size={18} />,
+      keywords: ['profile', 'preferences', 'configuration'],
+    },
+    {
+      id: 'deploy-agent',
+      label: 'Deploy an agent',
+      description: 'Jump to agent creation and management.',
+      group: 'Agents',
+      path: '/bots',
+      icon: <Sparkles size={18} />,
+      keywords: ['create bot', 'new agent', 'assistant'],
+    },
+  ], []);
 
   // Fetch unread count on mount
   useEffect(() => {
     fetchUnreadCount();
   }, [fetchUnreadCount]);
+
+  useEffect(() => {
+    const isTypingTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tagName = target.tagName.toLowerCase();
+      return tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target.isContentEditable;
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setCommandPaletteOpen(true);
+        return;
+      }
+
+      if (event.key === '/' && !isTypingTarget(event.target)) {
+        event.preventDefault();
+        setCommandPaletteOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
     <div className="flex h-screen bg-[#09090b] text-gray-100 overflow-hidden font-sans selection:bg-violet-500/30">
@@ -169,7 +279,17 @@ const Layout: React.FC<LayoutProps> = ({ children, onLogout }) => {
             </div>
             <span className="font-bold text-white">{APP_NAME}</span>
           </div>
-          <button className="text-gray-400"><Menu /></button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCommandPaletteOpen(true)}
+              className="rounded-xl border border-white/10 p-2 text-gray-400 transition-colors hover:bg-white/5 hover:text-white"
+              aria-label="Open command palette"
+            >
+              <Search size={20} />
+            </button>
+            <button className="text-gray-400" aria-label="Open navigation menu"><Menu /></button>
+          </div>
         </header>
 
         {/* Desktop Header */}
@@ -187,13 +307,16 @@ const Layout: React.FC<LayoutProps> = ({ children, onLogout }) => {
 
           <div className="flex items-center gap-4">
             <div className="relative group">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-violet-400 transition-colors" size={16} />
-              <input
-                type="text"
-                placeholder="Type / to search..."
-                className="bg-[#18181b] border border-white/5 rounded-xl pl-10 pr-12 py-2.5 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-violet-500 focus:bg-[#202023] transition-all w-72 placeholder-gray-600"
-              />
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 px-1.5 py-0.5 rounded border border-white/10 bg-black/20">
+              <button
+                type="button"
+                onClick={() => setCommandPaletteOpen(true)}
+                className="flex w-72 items-center rounded-xl border border-white/5 bg-[#18181b] py-2.5 pl-10 pr-12 text-left text-sm text-gray-500 transition-all hover:border-violet-500/40 hover:bg-[#202023] hover:text-gray-300 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                aria-label="Open command palette"
+              >
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 transition-colors group-hover:text-violet-400" size={16} />
+                Search pages and actions...
+              </button>
+              <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 px-1.5 py-0.5 rounded border border-white/10 bg-black/20">
                 <Command size={10} className="text-gray-500" />
                 <span className="text-[10px] text-gray-500 font-mono">K</span>
               </div>
@@ -215,6 +338,13 @@ const Layout: React.FC<LayoutProps> = ({ children, onLogout }) => {
             />
           </div>
         </header>
+
+        <CommandPalette
+          isOpen={commandPaletteOpen}
+          items={commandItems}
+          onClose={() => setCommandPaletteOpen(false)}
+          onNavigate={navigate}
+        />
 
         {/* Page Content */}
         <main className="flex-1 overflow-y-auto px-4 md:px-8 pb-8 z-10 scrollbar-thin">
