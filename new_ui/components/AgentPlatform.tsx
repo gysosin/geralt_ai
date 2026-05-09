@@ -59,6 +59,7 @@ const AgentPlatform: React.FC = () => {
   const [agentInstruction, setAgentInstruction] = useState('Plan the user request, search or aggregate selected document collections, and return grounded results.');
   const [selectedTools, setSelectedTools] = useState<string[]>(['query.plan', 'rag.aggregate']);
   const [agentCollections, setAgentCollections] = useState('');
+  const [editingAgentId, setEditingAgentId] = useState('');
   const [mcpName, setMcpName] = useState('Docs MCP');
   const [mcpUrl, setMcpUrl] = useState('');
   const [mcpToolNames, setMcpToolNames] = useState('');
@@ -145,21 +146,36 @@ const AgentPlatform: React.FC = () => {
     setIsSubmitting(true);
     setError('');
     try {
-      const created = await agentPlatformService.createAgent({
+      const payload = {
         name: agentName,
         instruction: agentInstruction,
         tool_names: selectedTools,
         collection_ids: splitIds(agentCollections),
         model: 'default',
-      });
-      setAgents((current) => [created, ...current]);
-      setWorkflowAgentId(created.agent_id);
-      setRunAgentId(created.agent_id);
+      };
+      if (editingAgentId) {
+        const updated = await agentPlatformService.updateAgent(editingAgentId, payload);
+        setAgents((current) => current.map((agent) => (agent.agent_id === updated.agent_id ? updated : agent)));
+        setEditingAgentId('');
+      } else {
+        const created = await agentPlatformService.createAgent(payload);
+        setAgents((current) => [created, ...current]);
+        setWorkflowAgentId(created.agent_id);
+        setRunAgentId(created.agent_id);
+      }
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'Unable to create agent');
+      setError(submitError instanceof Error ? submitError.message : 'Unable to save agent');
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const editAgent = (agent: AgentDefinition) => {
+    setEditingAgentId(agent.agent_id);
+    setAgentName(agent.name);
+    setAgentInstruction(agent.instruction);
+    setSelectedTools(agent.tool_names);
+    setAgentCollections(agent.collection_ids.join(', '));
   };
 
   const createWorkflow = async () => {
@@ -353,6 +369,7 @@ const AgentPlatform: React.FC = () => {
       setAgents((current) => current.filter((agent) => agent.agent_id !== agentId));
       if (workflowAgentId === agentId) setWorkflowAgentId('');
       if (runAgentId === agentId) setRunAgentId('');
+      if (editingAgentId === agentId) setEditingAgentId('');
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to delete agent');
     } finally {
@@ -592,7 +609,7 @@ const AgentPlatform: React.FC = () => {
                 className="w-full h-11 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-medium flex items-center justify-center gap-2"
               >
                 {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Bot size={18} />}
-                Create Agent
+                {editingAgentId ? 'Save Agent' : 'Create Agent'}
               </button>
             </div>
 
@@ -662,12 +679,20 @@ const AgentPlatform: React.FC = () => {
                       <p className="text-sm text-white truncate">{agent.name}</p>
                       <p className="text-xs text-gray-500 font-mono truncate">{agent.tool_names.join(', ')}</p>
                     </div>
-                    <button
-                      onClick={() => deleteAgent(agent.agent_id)}
-                      className="p-2 rounded-lg text-gray-500 hover:text-red-300 hover:bg-red-500/10"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => editAgent(agent)}
+                        className="p-2 rounded-lg text-gray-500 hover:text-emerald-300 hover:bg-emerald-500/10"
+                      >
+                        <Settings2 size={16} />
+                      </button>
+                      <button
+                        onClick={() => deleteAgent(agent.agent_id)}
+                        className="p-2 rounded-lg text-gray-500 hover:text-red-300 hover:bg-red-500/10"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                 ))}
               {agents.length === 0 && <p className="text-sm text-gray-500">No agents</p>}

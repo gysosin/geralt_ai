@@ -171,6 +171,22 @@ export const agentPlatformService = {
         return response.data
     },
 
+    async updateAgent(
+        agentId: string,
+        data: {
+            name?: string
+            instruction?: string
+            tool_names?: string[]
+            description?: string
+            model?: string
+            collection_ids?: string[]
+            metadata?: Record<string, unknown>
+        }
+    ): Promise<AgentDefinition> {
+        const response = await api.patch(`${BASE_PATH}/agents/${agentId}`, data)
+        return response.data
+    },
+
     async listAgents(): Promise<AgentDefinition[]> {
         const response = await api.get(`${BASE_PATH}/agents`)
         return response.data
