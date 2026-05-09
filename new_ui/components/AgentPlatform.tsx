@@ -31,6 +31,7 @@ import {
   type WorkflowTemplate,
   type WorkflowTrigger,
 } from '../src/services/agent-platform.service';
+import { getAgentPlatformStats } from '../src/utils/agent-platform-stats';
 
 const splitIds = (value: string) =>
   value.split(',').map((item) => item.trim()).filter(Boolean);
@@ -153,6 +154,16 @@ const AgentPlatform: React.FC = () => {
       return acc;
     }, {});
   }, [tools]);
+
+  const displayStats = useMemo(() => getAgentPlatformStats({
+    tools,
+    agents,
+    workflows,
+    mcpServers,
+    runs,
+    pendingApprovals,
+    platformStats,
+  }), [tools, agents, workflows, mcpServers, runs, pendingApprovals, platformStats]);
 
   const handleToolToggle = (toolName: string) => {
     setSelectedTools((current) =>
@@ -636,18 +647,18 @@ const AgentPlatform: React.FC = () => {
         <section className="xl:col-span-2 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {[
-              { label: 'Registered Tools', value: platformStats?.tools ?? tools.length, icon: Settings2 },
-              { label: 'Agents', value: platformStats?.agents ?? agents.length, icon: Bot },
-              { label: 'Workflows', value: platformStats?.workflows ?? workflows.length, icon: Route },
-              { label: 'MCP Servers', value: platformStats?.mcp_servers ?? mcpServers.length, icon: Settings2 },
+              { label: 'Registered Tools', value: displayStats.tools, icon: Settings2 },
+              { label: 'Agents', value: displayStats.agents, icon: Bot },
+              { label: 'Workflows', value: displayStats.workflows, icon: Route },
+              { label: 'MCP Servers', value: displayStats.mcpServers, icon: Settings2 },
               {
                 label: 'Reachable MCP',
-                value: platformStats ? `${platformStats.reachable_mcp_servers}/${platformStats.mcp_servers}` : externalMcpTools.filter((tool) => tool.health_status === 'reachable').length,
+                value: `${displayStats.reachableMcpServers}/${displayStats.mcpServers}`,
                 icon: CheckCircle2,
               },
-              { label: 'Runs', value: platformStats?.runs ?? runs.length, icon: Play },
-              { label: 'Active Runs', value: platformStats?.active_runs ?? runs.filter((run) => ['planned', 'pending'].includes(run.status)).length, icon: CircleDashed },
-              { label: 'Approvals', value: platformStats?.pending_approvals ?? pendingApprovals.length, icon: CheckCircle2 },
+              { label: 'Runs', value: displayStats.runs, icon: Play },
+              { label: 'Active Runs', value: displayStats.activeRuns, icon: CircleDashed },
+              { label: 'Approvals', value: displayStats.pendingApprovals, icon: CheckCircle2 },
             ].map((item) => (
               <div key={item.label} className="border border-white/5 bg-surface/30 rounded-2xl p-5">
                 <div className="flex items-center justify-between">

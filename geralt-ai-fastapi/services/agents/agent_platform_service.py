@@ -820,7 +820,9 @@ class AgentPlatformService(BaseService):
         audit_metadata: Optional[Dict[str, Any]] = None,
     ) -> ServiceResult:
         workflow_id = workflow["workflow_id"]
-        inputs = inputs or {}
+        inputs = dict(inputs or {})
+        if workflow.get("agent_id") and not inputs.get("agent_id"):
+            inputs["agent_id"] = workflow["agent_id"]
         now = datetime.utcnow().isoformat()
         run_id = str(uuid4())
         planned_steps = [
@@ -844,6 +846,7 @@ class AgentPlatformService(BaseService):
             "workflow_id": workflow_id,
             "status": status,
             "dry_run": dry_run,
+            "agent_id": workflow.get("agent_id"),
             "inputs": inputs,
             "steps": planned_steps,
             "created_by": self.extract_username(owner),
