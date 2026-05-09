@@ -1235,6 +1235,10 @@ class AgentPlatformService(BaseService):
                 }
                 for server in mcp_servers
             ],
+            "adk_toolsets": [
+                self._adk_toolset_manifest(server)
+                for server in mcp_servers
+            ],
             "workflows": [
                 {
                     "workflow_id": workflow.get("workflow_id"),
@@ -1255,6 +1259,31 @@ class AgentPlatformService(BaseService):
                 for workflow in workflows
             ],
         })
+
+    def _adk_toolset_manifest(self, server: Dict[str, Any]) -> Dict[str, Any]:
+        """Return ADK MCPToolset connection params for one registered MCP server."""
+        transport = server.get("transport")
+        if transport == "stdio":
+            connection_params = {
+                "type": "StdioConnectionParams",
+                "server_params": {
+                    "command": server.get("command", ""),
+                    "args": server.get("args", []),
+                },
+            }
+        else:
+            connection_params = {
+                "type": "StreamableHTTPConnectionParams",
+                "url": server.get("url", ""),
+            }
+
+        return {
+            "server_id": server.get("server_id"),
+            "name": server.get("name"),
+            "transport": transport,
+            "tool_filter": server.get("tool_names", []),
+            "connection_params": connection_params,
+        }
 
     def export_platform(self, owner: str) -> ServiceResult:
         """Export agent platform definitions and recent activity."""
