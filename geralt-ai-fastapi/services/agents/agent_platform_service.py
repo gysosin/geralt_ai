@@ -1067,6 +1067,7 @@ class AgentPlatformService(BaseService):
         owner: str,
         workflow_id: Optional[str] = None,
         include_archived: bool = False,
+        status: Optional[str] = None,
     ) -> ServiceResult:
         """List workflow runs for the current owner."""
         query = {"created_by": self.extract_username(owner)}
@@ -1074,6 +1075,8 @@ class AgentPlatformService(BaseService):
             query["archived"] = {"$ne": True}
         if workflow_id:
             query["workflow_id"] = workflow_id
+        if status and status != "all":
+            query["status"] = status
         docs = self.run_db.find(query, {"_id": 0})
         if hasattr(docs, "sort") and not isinstance(docs, list):
             docs = docs.sort("updated_at", -1)

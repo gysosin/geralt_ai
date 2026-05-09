@@ -1255,6 +1255,38 @@ def test_list_workflow_runs_endpoint_can_include_archived_records():
     assert run_db.find.call_args.args[0] == {"created_by": "anonymous"}
 
 
+def test_list_workflow_runs_endpoint_filters_by_status():
+    run_db = MagicMock()
+    run_db.find.return_value = []
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=MagicMock(),
+                    workflow_db=MagicMock(),
+                    run_db=run_db,
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.get(
+                    "/api/v1/agent-platform/workflow-runs?status=blocked"
+                )
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert run_db.find.call_args.args[0] == {
+        "created_by": "anonymous",
+        "archived": {"$ne": True},
+        "status": "blocked",
+    }
+
+
 def test_cancel_workflow_run_endpoint_marks_run_canceled():
     run_db = MagicMock()
     run_db.find_one.return_value = {
