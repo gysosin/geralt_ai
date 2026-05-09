@@ -46,6 +46,12 @@ class AppFactory:
 """
         print(banner)
 
+    def _start_celery_worker(self) -> subprocess.Popen:
+        """Start one Celery worker process for development convenience."""
+        return subprocess.Popen(
+            [sys.executable, "-m", "celery", "-A", "core.tasks", "worker", "--loglevel=info"]
+        )
+
     @asynccontextmanager
     async def lifespan(self, app: FastAPI) -> AsyncGenerator:
         """
@@ -64,23 +70,7 @@ class AppFactory:
             
             # Start Celery Worker
             self.logger.info("👷 Starting Celery worker...")
-            # ... (rest of the startup code)
-            celery_process = subprocess.Popen(
-                [sys.executable, "-m", "celery", "-A", "core.tasks", "worker", "--loglevel=info"],
-                cwd=".",  # Ensure we are in the project root
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-                # We pipe stdout/stderr to avoid cluttering the main log, 
-                # or we could let it flow to inherit/print. 
-                # Let's let it inherit for now so user sees worker logs or pipe if we want to silence.
-                # User asked for "run application", usually seeing logs is good.
-                # But Popen defaults to inheriting if not specified? No, streams are None by default which inherits.
-                # Explicitly removing PIPE to let it print to console.
-            )
-            # Re-creating Popen without PIPEs to let it print to console
-            celery_process = subprocess.Popen(
-                [sys.executable, "-m", "celery", "-A", "core.tasks", "worker", "--loglevel=info"]
-            )
+            celery_process = self._start_celery_worker()
             self.logger.info(f"✅ Celery worker started (PID: {celery_process.pid})")
         except Exception as e:
             self.logger.error(f"❌ Failed to start Celery worker: {e}")
