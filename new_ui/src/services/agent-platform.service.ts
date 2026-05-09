@@ -79,6 +79,17 @@ export interface ToolInvocationResult {
     message: string
 }
 
+export interface PlatformExport {
+    schema_version: string
+    exported_at: string
+    owner: string
+    mcp_manifest: Record<string, unknown>
+    agents: AgentDefinition[]
+    workflows: WorkflowDefinition[]
+    runs: WorkflowRun[]
+    audit_events: AuditEvent[]
+}
+
 const BASE_PATH = '/api/v1/agent-platform'
 
 export const agentPlatformService = {
@@ -177,6 +188,11 @@ export const agentPlatformService = {
 
     async listAuditEvents(limit = 25): Promise<AuditEvent[]> {
         const response = await api.get(`${BASE_PATH}/audit-events?limit=${limit}`)
+        return response.data
+    },
+
+    async exportPlatform(): Promise<PlatformExport> {
+        const response = await api.get(`${BASE_PATH}/export`)
         return response.data
     },
 }

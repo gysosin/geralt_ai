@@ -357,6 +357,30 @@ class AgentPlatformService(BaseService):
             "tools": self.registry.list_mcp_tools(),
         })
 
+    def export_platform(self, owner: str) -> ServiceResult:
+        """Export agent platform definitions and recent activity."""
+        username = self.extract_username(owner)
+        agents = list(self.agent_db.find(
+            {"created_by": username, "deleted": {"$ne": True}},
+            {"_id": 0},
+        ))
+        workflows = list(self.workflow_db.find(
+            {"created_by": username, "deleted": {"$ne": True}},
+            {"_id": 0},
+        ))
+        runs = list(self.run_db.find({"created_by": username}, {"_id": 0}))
+        audit_events = self.list_audit_events(owner, limit=100).data or []
+        return ServiceResult.ok({
+            "schema_version": "1.0",
+            "exported_at": datetime.utcnow().isoformat(),
+            "owner": username,
+            "mcp_manifest": self.get_mcp_manifest().data,
+            "agents": [self._public_document(doc) for doc in agents],
+            "workflows": [self._public_document(doc) for doc in workflows],
+            "runs": [self._public_document(doc) for doc in runs],
+            "audit_events": audit_events,
+        })
+
     def _validate_tools(self, tool_names: List[Optional[str]]) -> Optional[ServiceResult]:
         missing = [
             tool_name

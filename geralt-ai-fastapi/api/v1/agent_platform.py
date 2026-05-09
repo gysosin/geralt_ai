@@ -179,6 +179,19 @@ class McpManifestResponse(BaseModel):
     tools: List[Dict[str, Any]]
 
 
+class PlatformExportResponse(BaseModel):
+    """Exported agent platform data."""
+
+    schema_version: str
+    exported_at: str
+    owner: str
+    mcp_manifest: Dict[str, Any]
+    agents: List[Dict[str, Any]]
+    workflows: List[Dict[str, Any]]
+    runs: List[Dict[str, Any]]
+    audit_events: List[Dict[str, Any]]
+
+
 def _owner(current_user: str | None) -> str:
     return current_user or "anonymous"
 
@@ -208,6 +221,15 @@ async def get_mcp_manifest(
 ) -> Dict[str, Any]:
     """Return a manifest for external agent runtimes."""
     return _result_or_error(service.get_mcp_manifest())
+
+
+@router.get("/export", response_model=PlatformExportResponse)
+async def export_agent_platform(
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Export agent platform definitions and recent activity."""
+    return _result_or_error(service.export_platform(_owner(current_user)))
 
 
 @router.post("/tool-invocations", response_model=ToolInvocationResponse)

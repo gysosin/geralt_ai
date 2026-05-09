@@ -42,6 +42,7 @@ const AgentPlatform: React.FC = () => {
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [toolResult, setToolResult] = useState<ToolInvocationResult | null>(null);
+  const [exportSummary, setExportSummary] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -247,6 +248,26 @@ const AgentPlatform: React.FC = () => {
     }
   };
 
+  const exportPlatform = async () => {
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const exported = await agentPlatformService.exportPlatform();
+      const blob = new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `geralt-agent-platform-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setExportSummary(`${exported.agents.length} agents, ${exported.workflows.length} workflows, ${exported.runs.length} runs`);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to export platform data');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -269,11 +290,23 @@ const AgentPlatform: React.FC = () => {
           <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
           Refresh
         </button>
+        <button
+          onClick={exportPlatform}
+          className="h-10 px-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 hover:bg-emerald-500/15 text-sm text-emerald-100 flex items-center gap-2"
+        >
+          <CheckCircle2 size={16} />
+          Export
+        </button>
       </div>
 
       {error && (
         <div className="border border-red-500/20 bg-red-500/10 text-red-200 rounded-xl px-4 py-3 text-sm">
           {error}
+        </div>
+      )}
+      {exportSummary && (
+        <div className="border border-emerald-500/20 bg-emerald-500/10 text-emerald-100 rounded-xl px-4 py-3 text-sm">
+          Export ready: {exportSummary}
         </div>
       )}
 
