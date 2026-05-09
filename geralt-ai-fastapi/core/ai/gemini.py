@@ -20,13 +20,13 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
     """
 
     def __init__(self, api_key: Optional[str] = None):
-        import google.generativeai as genai
+        from google import genai
 
         self._api_key = api_key or settings.GEMINI_API_KEY
         if not self._api_key:
             raise ValueError("GEMINI_API_KEY is required for GeminiEmbeddingProvider")
 
-        genai.configure(api_key=self._api_key)
+        self._client = genai.Client(api_key=self._api_key)
         self._model = settings.GEMINI_EMBEDDING_MODEL
         self._dimension = settings.EMBEDDING_DIMENSION
 
@@ -40,17 +40,19 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
 
     async def embed(self, text: str, task_type: str = "retrieval_document") -> List[float]:
         """Generate embedding for single text using Gemini."""
-        import google.generativeai as genai
+        from google.genai import types
         import numpy as np
 
         try:
-            result = genai.embed_content(
+            result = await self._client.aio.models.embed_content(
                 model=self._model,
-                content=text,
-                task_type=task_type,
-                output_dimensionality=self._dimension
+                contents=[text],
+                config=types.EmbedContentConfig(
+                    task_type=task_type,
+                    output_dimensionality=self._dimension,
+                ),
             )
-            embedding = result["embedding"]
+            embedding = list(result.embeddings[0].values)
 
             # Normalize if not 3072 (as per Gemini documentation)
             if self._dimension != 3072:
@@ -79,15 +81,14 @@ class GeminiLLMProvider(LLMProvider):
     """
 
     def __init__(self, api_key: Optional[str] = None):
-        import google.generativeai as genai
+        from google import genai
 
         self._api_key = api_key or settings.GEMINI_API_KEY
         if not self._api_key:
             raise ValueError("GEMINI_API_KEY is required for GeminiLLMProvider")
 
-        genai.configure(api_key=self._api_key)
         self._model_name = settings.GEMINI_LLM_MODEL
-        self._model = genai.GenerativeModel(self._model_name)
+        self._client = genai.Client(api_key=self._api_key)
 
     @property
     def model_name(self) -> str:
@@ -102,22 +103,23 @@ class GeminiLLMProvider(LLMProvider):
         stop: Optional[List[str]] = None,
     ) -> str:
         """Generate text completion using Gemini."""
-        import google.generativeai as genai
+        from google.genai import types
 
         try:
-            generation_config = genai.GenerationConfig(
+            generation_config = types.GenerateContentConfig(
                 max_output_tokens=max_tokens,
                 temperature=temperature,
                 top_p=top_p,
                 stop_sequences=stop,
             )
 
-            response = await self._model.generate_content_async(
-                prompt,
-                generation_config=generation_config,
+            response = await self._client.aio.models.generate_content(
+                model=self._model_name,
+                contents=prompt,
+                config=generation_config,
             )
 
-            return response.text
+            return response.text or ""
 
         except Exception as e:
             logger.error(f"Gemini completion error: {e}")
@@ -130,37 +132,25 @@ class GeminiLLMProvider(LLMProvider):
         temperature: float = 0.7,
     ) -> str:
         """Generate chat completion from message history."""
-        import google.generativeai as genai
+        from google.genai import types
 
         try:
-            # Convert messages to Gemini format
-            chat = self._model.start_chat(history=[])
-
-            # Process message history
-            for msg in messages[:-1]:
-                role = msg.get("role", "user")
-                content = msg.get("content", "")
-
-                if role == "user":
-                    chat.send_message(content)
-                elif role == "assistant":
-                    # Gemini handles this internally
-                    pass
-
-            # Send the last message and get response
-            last_message = messages[-1].get("content", "") if messages else ""
-
-            generation_config = genai.GenerationConfig(
+            transcript = "\n".join(
+                f"{msg.get('role', 'user')}: {msg.get('content', '')}"
+                for msg in messages
+            )
+            generation_config = types.GenerateContentConfig(
                 max_output_tokens=max_tokens,
                 temperature=temperature,
             )
 
-            response = await chat.send_message_async(
-                last_message,
-                generation_config=generation_config,
+            response = await self._client.aio.models.generate_content(
+                model=self._model_name,
+                contents=transcript,
+                config=generation_config,
             )
 
-            return response.text
+            return response.text or ""
 
         except Exception as e:
             logger.error(f"Gemini chat error: {e}")
