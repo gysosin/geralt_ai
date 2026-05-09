@@ -57,6 +57,7 @@ const AgentPlatform: React.FC = () => {
   const [workflowName, setWorkflowName] = useState('Document Aggregation Workflow');
   const [workflowAgentId, setWorkflowAgentId] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('document_aggregation');
+  const [runAgentId, setRunAgentId] = useState('');
   const [runWorkflowId, setRunWorkflowId] = useState('');
   const [runQuery, setRunQuery] = useState('total amount by vendor');
   const [runCollections, setRunCollections] = useState('');
@@ -77,7 +78,8 @@ const AgentPlatform: React.FC = () => {
         agentPlatformService.listAuditEvents(),
       ]);
       setTools(toolResult.status === 'fulfilled' ? toolResult.value.tools || [] : []);
-      setAgents(agentResult.status === 'fulfilled' ? agentResult.value || [] : []);
+      const loadedAgents = agentResult.status === 'fulfilled' ? agentResult.value || [] : [];
+      setAgents(loadedAgents);
       const loadedWorkflows = workflowResult.status === 'fulfilled' ? workflowResult.value || [] : [];
       setWorkflows(loadedWorkflows);
       const loadedTemplates = templateResult.status === 'fulfilled' ? templateResult.value || [] : [];
@@ -89,6 +91,9 @@ const AgentPlatform: React.FC = () => {
       setAuditEvents(auditResult.status === 'fulfilled' ? auditResult.value || [] : []);
       if (!runWorkflowId && loadedWorkflows?.[0]?.workflow_id) {
         setRunWorkflowId(loadedWorkflows[0].workflow_id);
+      }
+      if (!runAgentId && loadedAgents?.[0]?.agent_id) {
+        setRunAgentId(loadedAgents[0].agent_id);
       }
       if ([toolResult, agentResult, workflowResult, templateResult, runResult, auditResult].some((result) => result.status === 'rejected')) {
         setError('Some platform records are unavailable. Tool registry is still loaded when the API is reachable.');
@@ -134,6 +139,7 @@ const AgentPlatform: React.FC = () => {
       });
       setAgents((current) => [created, ...current]);
       setWorkflowAgentId(created.agent_id);
+      setRunAgentId(created.agent_id);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to create agent');
     } finally {
@@ -181,6 +187,25 @@ const AgentPlatform: React.FC = () => {
   };
 
   const selectedTemplate = templates.find((template) => template.template_id === selectedTemplateId);
+
+  const startAgentRun = async () => {
+    if (!runAgentId) return;
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const collectionIds = splitIds(runCollections);
+      const created = await agentPlatformService.startAgentRun(runAgentId, {
+        dry_run: dryRun,
+        query: runQuery,
+        collection_ids: collectionIds.length > 0 ? collectionIds : undefined,
+      });
+      setRuns((current) => [created, ...current]);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to start agent run');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const startRun = async () => {
     if (!runWorkflowId) return;
@@ -243,6 +268,7 @@ const AgentPlatform: React.FC = () => {
       await agentPlatformService.deleteAgent(agentId);
       setAgents((current) => current.filter((agent) => agent.agent_id !== agentId));
       if (workflowAgentId === agentId) setWorkflowAgentId('');
+      if (runAgentId === agentId) setRunAgentId('');
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Unable to delete agent');
     } finally {
@@ -509,17 +535,7 @@ const AgentPlatform: React.FC = () => {
 
         <aside className="space-y-6">
           <section className="border border-white/5 bg-surface/30 rounded-2xl p-5 space-y-4">
-            <h2 className="text-lg font-semibold text-white">Run Workflow</h2>
-            <select
-              value={runWorkflowId}
-              onChange={(event) => setRunWorkflowId(event.target.value)}
-              className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-violet-500/60"
-            >
-              <option value="">Select workflow</option>
-              {workflows.map((workflow) => (
-                <option key={workflow.workflow_id} value={workflow.workflow_id}>{workflow.name}</option>
-              ))}
-            </select>
+            <h2 className="text-lg font-semibold text-white">Run Agent or Workflow</h2>
             <div className="relative">
               <Search size={16} className="absolute left-4 top-3.5 text-gray-500" />
               <input
@@ -543,6 +559,34 @@ const AgentPlatform: React.FC = () => {
                 className="accent-violet-500"
               />
             </label>
+            <select
+              value={runAgentId}
+              onChange={(event) => setRunAgentId(event.target.value)}
+              className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500/60"
+            >
+              <option value="">Select agent</option>
+              {agents.map((agent) => (
+                <option key={agent.agent_id} value={agent.agent_id}>{agent.name}</option>
+              ))}
+            </select>
+            <button
+              onClick={startAgentRun}
+              disabled={isSubmitting || !runAgentId}
+              className="w-full h-11 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-medium flex items-center justify-center gap-2"
+            >
+              {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Bot size={18} />}
+              Run Agent
+            </button>
+            <select
+              value={runWorkflowId}
+              onChange={(event) => setRunWorkflowId(event.target.value)}
+              className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-violet-500/60"
+            >
+              <option value="">Select workflow</option>
+              {workflows.map((workflow) => (
+                <option key={workflow.workflow_id} value={workflow.workflow_id}>{workflow.name}</option>
+              ))}
+            </select>
             <button
               onClick={startRun}
               disabled={isSubmitting || !runWorkflowId}

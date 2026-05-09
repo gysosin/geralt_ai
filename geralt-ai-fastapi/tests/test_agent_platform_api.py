@@ -88,6 +88,51 @@ def test_create_agent_definition_endpoint_uses_registered_tools():
     assert data["tool_names"] == ["rag.search", "rag.aggregate"]
 
 
+def test_start_agent_run_endpoint_executes_agent_tool_plan():
+    agent_db = MagicMock()
+    agent_db.find_one.return_value = {
+        "agent_id": "agent-1",
+        "name": "Planner",
+        "description": "",
+        "instruction": "Plan document questions.",
+        "tool_names": ["query.plan"],
+        "model": "default",
+        "collection_ids": [],
+        "metadata": {},
+        "created_by": "anonymous",
+        "created_at": "2026-05-09T00:00:00",
+        "updated_at": "2026-05-09T00:00:00",
+        "deleted": False,
+    }
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(
+                    agent_db=agent_db,
+                    workflow_db=MagicMock(),
+                    run_db=MagicMock(),
+                )
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.post(
+                    "/api/v1/agent-platform/agents/agent-1/runs",
+                    json={"query": "summarize documents", "dry_run": False},
+                )
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["workflow_id"] == "agent:agent-1"
+    assert data["status"] == "completed"
+    assert data["steps"][0]["output"]["query_type"] == "summary"
+
+
 def test_create_workflow_definition_endpoint_validates_step_tools():
     with patch("models.database.MongoClient"):
         with patch("core.clients.redis_client.redis.StrictRedis"):

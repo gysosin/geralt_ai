@@ -134,6 +134,14 @@ export const agentPlatformService = {
         await api.delete(`${BASE_PATH}/agents/${agentId}`)
     },
 
+    async startAgentRun(
+        agentId: string,
+        data: { query: string; collection_ids?: string[]; dry_run: boolean }
+    ): Promise<WorkflowRun> {
+        const response = await api.post(`${BASE_PATH}/agents/${agentId}/runs`, data)
+        return response.data
+    },
+
     async createWorkflow(data: {
         name: string
         description?: string

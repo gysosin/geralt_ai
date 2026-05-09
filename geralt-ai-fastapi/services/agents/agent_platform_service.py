@@ -118,6 +118,74 @@ class AgentPlatformService(BaseService):
         self._record_audit("agent.deleted", owner, "agent", agent_id)
         return ServiceResult.ok({"message": "Agent deleted successfully"})
 
+    def start_agent_run(
+        self,
+        owner: str,
+        agent_id: str,
+        query: str,
+        collection_ids: Optional[List[str]] = None,
+        dry_run: bool = True,
+    ) -> ServiceResult:
+        """Create a workflow-style run from an agent definition."""
+        if not query.strip():
+            return ServiceResult.fail("Agent run query is required", 400)
+
+        agent_result = self.get_agent(owner, agent_id)
+        if not agent_result.success:
+            return agent_result
+
+        agent = agent_result.data
+        resolved_collection_ids = (
+            collection_ids
+            if collection_ids is not None
+            else agent.get("collection_ids", [])
+        )
+        now = datetime.utcnow().isoformat()
+        run_id = str(uuid4())
+        planned_steps = [
+            self._prepare_agent_run_step(
+                index=index,
+                tool_name=tool_name,
+                query=query.strip(),
+                collection_ids=resolved_collection_ids,
+            )
+            for index, tool_name in enumerate(agent.get("tool_names", []), start=1)
+        ]
+        validation_error = self._validate_run_steps(planned_steps)
+        if validation_error:
+            return validation_error
+
+        if dry_run:
+            status = "planned"
+        else:
+            planned_steps = self._execute_ready_steps(planned_steps)
+            status = self._workflow_run_status(planned_steps)
+
+        document = {
+            "run_id": run_id,
+            "workflow_id": f"agent:{agent_id}",
+            "agent_id": agent_id,
+            "status": status,
+            "dry_run": dry_run,
+            "inputs": {
+                "query": query.strip(),
+                "collection_ids": resolved_collection_ids,
+            },
+            "steps": planned_steps,
+            "created_by": self.extract_username(owner),
+            "created_at": now,
+            "updated_at": now,
+        }
+        self.run_db.insert_one(document)
+        self._record_audit(
+            "agent.run_started",
+            owner,
+            "agent",
+            agent_id,
+            {"run_id": run_id, "status": status, "dry_run": dry_run},
+        )
+        return ServiceResult.ok(self._public_document(document), status_code=201)
+
     def create_workflow(
         self,
         owner: str,
@@ -462,6 +530,47 @@ class AgentPlatformService(BaseService):
             "output": None,
             "message": "",
         }
+
+    def _prepare_agent_run_step(
+        self,
+        index: int,
+        tool_name: str,
+        query: str,
+        collection_ids: List[str],
+    ) -> Dict[str, Any]:
+        tool = self.registry.get_tool(tool_name)
+        arguments = self._agent_tool_arguments(tool_name, query, collection_ids)
+        return {
+            "step_id": f"agent-step-{index}",
+            "name": tool.title if tool else tool_name,
+            "tool_name": tool_name,
+            "arguments": arguments,
+            "depends_on": [],
+            "approval_required": False,
+            "status": "planned",
+            "output": None,
+            "message": "",
+        }
+
+    def _agent_tool_arguments(
+        self,
+        tool_name: str,
+        query: str,
+        collection_ids: List[str],
+    ) -> Dict[str, Any]:
+        tool = self.registry.get_tool(tool_name)
+        if not tool:
+            return {}
+
+        arguments: Dict[str, Any] = {}
+        for required_name in tool.input_schema().get("required", []):
+            if required_name == "query":
+                arguments["query"] = query
+            elif required_name == "collection_ids":
+                arguments["collection_ids"] = collection_ids
+            elif required_name == "collection_id":
+                arguments["collection_id"] = collection_ids[0] if collection_ids else ""
+        return arguments
 
     def _execute_run_step(self, planned: Dict[str, Any]) -> Dict[str, Any]:
         if planned.get("approval_required"):
