@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # ==========================================================================
     API_VERSION: str = "v1"
     API_TITLE: str = "GeraltAI API"
+    ENVIRONMENT: str = "development"
     DEBUG: bool = False
     API_ENDPOINT: str = Field(default="127.0.0.1:8000")
 
@@ -139,6 +140,15 @@ class Settings(BaseSettings):
     # ==========================================================================
     TIMEZONE: str = "UTC"
 
+    @field_validator("ENVIRONMENT")
+    @classmethod
+    def validate_environment(cls, v: str) -> str:
+        allowed = {"development", "staging", "production", "test"}
+        normalized = v.lower()
+        if normalized not in allowed:
+            raise ValueError(f"Environment must be one of: {allowed}")
+        return normalized
+
     @field_validator("DEFAULT_AI_MODEL", "DEFAULT_EMBEDDING_MODEL")
     @classmethod
     def validate_ai_model(cls, v: str) -> str:
@@ -172,6 +182,21 @@ class Settings(BaseSettings):
 
         if errors:
             raise ValueError("Configuration errors: " + "; ".join(errors))
+
+    def validate_startup_configuration(self) -> None:
+        """Reject unsafe production startup defaults."""
+        if self.ENVIRONMENT != "production":
+            return
+
+        errors = []
+        weak_secret_values = {"", "your_jwt_secret", "change_me", "changeme"}
+        if self.SECRET_KEY in weak_secret_values or len(self.SECRET_KEY) < 32:
+            errors.append("SECRET_KEY must be a strong production secret")
+        if "*" in self.CORS_ORIGINS:
+            errors.append("CORS_ORIGINS must not include '*' in production")
+
+        if errors:
+            raise ValueError("Startup configuration errors: " + "; ".join(errors))
 
     model_config = {
         "env_file": ".env",

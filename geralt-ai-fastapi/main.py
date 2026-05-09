@@ -53,6 +53,7 @@ class AppFactory:
         Handles startup and shutdown events.
         """
         # Startup
+        settings.validate_startup_configuration()
         self.print_ascii_banner()
         self.logger.info("🚀 Starting GeraltAI API...")
         

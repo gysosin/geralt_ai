@@ -29,6 +29,7 @@ class Config:
     # ==========================================================================
     API_VERSION = settings.API_VERSION
     API_TITLE = settings.API_TITLE
+    ENVIRONMENT = settings.ENVIRONMENT
     DEBUG = settings.DEBUG
     API_ENDPOINT = settings.API_ENDPOINT
     # Handle case where API_ENDPOINT may already include http:// or https://
