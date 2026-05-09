@@ -208,6 +208,8 @@ class AppFactory:
             "mongodb": self._dependency_check(self._check_mongodb),
             "redis": self._dependency_check(self._check_redis),
             "minio": self._dependency_check(self._check_minio),
+            "elasticsearch": self._dependency_check(self._check_elasticsearch),
+            "milvus": self._dependency_check(self._check_milvus),
         }
 
     def _dependency_check(self, checker) -> dict:
@@ -232,6 +234,34 @@ class AppFactory:
         from api.deps import get_minio_client
 
         get_minio_client().bucket_exists(settings.MINIO_BUCKET)
+
+    def _check_elasticsearch(self) -> None:
+        from elasticsearch import Elasticsearch
+
+        client = Elasticsearch(settings.ELASTICSEARCH_URL)
+        try:
+            if not client.ping():
+                raise RuntimeError("Elasticsearch ping failed")
+        finally:
+            client.close()
+
+    def _check_milvus(self) -> None:
+        from pymilvus import MilvusClient
+
+        connect_args = {
+            "uri": f"http://{settings.MILVUS_HOST}:{settings.MILVUS_PORT}",
+        }
+        if settings.MILVUS_USER and settings.MILVUS_PASSWORD:
+            connect_args["user"] = settings.MILVUS_USER
+            connect_args["password"] = settings.MILVUS_PASSWORD
+        if settings.MILVUS_TOKEN:
+            connect_args["token"] = settings.MILVUS_TOKEN
+
+        client = MilvusClient(**connect_args)
+        try:
+            client.list_collections()
+        finally:
+            client.close()
 
 
 # Create global app instance for uvicorn
