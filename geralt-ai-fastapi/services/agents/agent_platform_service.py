@@ -262,14 +262,12 @@ class AgentPlatformService(BaseService):
             return validation_error
 
         if not dry_run:
-            planned_steps = [self._execute_run_step(step) for step in planned_steps]
+            planned_steps = self._execute_ready_steps(planned_steps)
 
         if dry_run:
             status = "planned"
-        elif all(step["status"] == "completed" for step in planned_steps):
-            status = "completed"
         else:
-            status = "pending"
+            status = self._workflow_run_status(planned_steps)
 
         document = {
             "run_id": run_id,
@@ -332,8 +330,9 @@ class AgentPlatformService(BaseService):
         target_step["approval_required"] = False
         target_step["message"] = ""
         steps[target_index] = self._execute_run_step(target_step)
+        steps = self._execute_ready_steps(steps)
         now = datetime.utcnow().isoformat()
-        status = "completed" if all(step.get("status") == "completed" for step in steps) else "pending"
+        status = self._workflow_run_status(steps)
         update = {
             "steps": steps,
             "status": status,
@@ -486,6 +485,47 @@ class AgentPlatformService(BaseService):
             planned["status"] = "failed"
             planned["message"] = str(e)
         return planned
+
+    def _execute_ready_steps(self, steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        executable_statuses = {"planned", "blocked"}
+        steps = [dict(step) for step in steps]
+        made_progress = True
+        while made_progress:
+            made_progress = False
+            steps_by_id = {step.get("step_id"): step for step in steps}
+            for index, step in enumerate(steps):
+                if step.get("status") not in executable_statuses:
+                    continue
+
+                waiting_for = self._waiting_dependencies(step, steps_by_id)
+                if waiting_for:
+                    step["status"] = "blocked"
+                    step["message"] = f"Waiting for dependency: {', '.join(waiting_for)}"
+                    continue
+
+                previous_status = step.get("status")
+                step["message"] = ""
+                steps[index] = self._execute_run_step(step)
+                if steps[index].get("status") != previous_status:
+                    made_progress = True
+        return steps
+
+    def _waiting_dependencies(
+        self,
+        step: Dict[str, Any],
+        steps_by_id: Dict[str, Dict[str, Any]],
+    ) -> List[str]:
+        waiting_for = []
+        for dependency_id in step.get("depends_on", []):
+            dependency = steps_by_id.get(dependency_id)
+            if not dependency or dependency.get("status") != "completed":
+                waiting_for.append(dependency_id)
+        return waiting_for
+
+    def _workflow_run_status(self, steps: List[Dict[str, Any]]) -> str:
+        if all(step.get("status") == "completed" for step in steps):
+            return "completed"
+        return "pending"
 
     def _validate_run_steps(self, planned_steps: List[Dict[str, Any]]) -> Optional[ServiceResult]:
         for step in planned_steps:

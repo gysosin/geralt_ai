@@ -31,6 +31,8 @@ const statusTone: Record<string, string> = {
   completed: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20',
   planned: 'text-sky-300 bg-sky-500/10 border-sky-500/20',
   pending: 'text-amber-300 bg-amber-500/10 border-amber-500/20',
+  blocked: 'text-orange-300 bg-orange-500/10 border-orange-500/20',
+  pending_approval: 'text-amber-300 bg-amber-500/10 border-amber-500/20',
   failed: 'text-red-300 bg-red-500/10 border-red-500/20',
 };
 
@@ -609,6 +611,9 @@ const AgentPlatform: React.FC = () => {
                                 Approve
                               </button>
                             )}
+                            <span className={`border rounded-full px-2 py-1 ${statusTone[step.status] || 'text-gray-300 bg-white/5 border-white/10'}`}>
+                              {step.status}
+                            </span>
                             <span className="flex items-center gap-1 text-gray-500">
                               {step.status === 'completed' ? <CheckCircle2 size={13} className="text-emerald-400" /> : <CircleDashed size={13} />}
                               {step.tool_name}
