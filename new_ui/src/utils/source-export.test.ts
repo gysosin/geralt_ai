@@ -30,4 +30,17 @@ describe('source export', () => {
     it('returns an empty-state summary when there are no sources', () => {
         expect(buildSourceExportSummary([])).toBe('Citation summary\n\nNo sources available.');
     });
+
+    it('includes source notes when provided', () => {
+        expect(buildSourceExportSummary([
+            source('Policy.pdf', 0.88),
+        ], {
+            'policy.pdf': 'Confirm renewal owner before approval.',
+        })).toBe([
+            'Citation summary',
+            '',
+            '1. Policy.pdf - 88%',
+            '   - Note: Confirm renewal owner before approval.',
+        ].join('\n'));
+    });
 });
