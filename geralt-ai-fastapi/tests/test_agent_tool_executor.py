@@ -47,14 +47,26 @@ class FakeDocumentCollection:
         self.documents = documents
 
     def find(self, query):
-        collection_id = query.get("collection_id")
+        collection_filter = query.get("collection_id")
+        collection_ids = (
+            collection_filter.get("$in")
+            if isinstance(collection_filter, dict)
+            else [collection_filter] if collection_filter else []
+        )
         status = query.get("status")
         documents = [
             doc for doc in self.documents
-            if (not collection_id or doc.get("collection_id") == collection_id)
-            and (not status or doc.get("status") == status)
+            if (not collection_ids or doc.get("collection_id") in collection_ids)
+            and self._matches_status(doc, status)
         ]
         return FakeCursor(documents)
+
+    def _matches_status(self, doc, status):
+        if not status:
+            return True
+        if isinstance(status, dict) and "$ne" in status:
+            return doc.get("status") != status["$ne"]
+        return doc.get("status") == status
 
 
 def test_executor_runs_query_plan_tool():
@@ -140,6 +152,32 @@ def test_executor_runs_deterministic_rag_search_tool():
     assert result["sources"][0]["document_id"] == "doc-1"
     assert result["sources"][0]["title"] == "Acme Warranty Agreement"
     assert "Top evidence" in result["answer"]
+
+
+def test_executor_rag_search_falls_back_to_document_summaries():
+    searcher = DeterministicRagSearcher(
+        extraction_collection=FakeExtractionCollection([]),
+        document_collection=FakeDocumentCollection([
+            {
+                "_id": "doc-1",
+                "collection_id": "collection-1",
+                "file_name": "warranty-notes.pdf",
+                "status": "processed",
+                "processed": True,
+                "extraction_summary": "Warranty terms mention Acme hardware support.",
+            }
+        ]),
+    )
+    executor = AgentToolExecutor(rag_searcher=searcher)
+
+    result = executor.execute(
+        "rag.search",
+        {"query": "Acme warranty", "collection_ids": ["collection-1"]},
+    )
+
+    assert result["routing"]["source"] == "document_summaries"
+    assert result["sources"][0]["document_id"] == "doc-1"
+    assert result["sources"][0]["title"] == "warranty-notes.pdf"
 
 
 def test_executor_runs_deterministic_collection_summary_tool():
