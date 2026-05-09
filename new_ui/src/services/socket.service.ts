@@ -17,16 +17,10 @@ class SocketService {
             auth: { token },
         });
 
-        this.socket.on('connect', () => {
-            console.log('Socket connected');
-        });
-
-        this.socket.on('disconnect', () => {
-            console.log('Socket disconnected');
-        });
-
         this.socket.on('connect_error', (error) => {
-            console.error('Socket connection error:', error);
+            if (import.meta.env.DEV) {
+                console.error('Socket connection error:', error);
+            }
         });
 
         // Re-register all listeners on reconnect
