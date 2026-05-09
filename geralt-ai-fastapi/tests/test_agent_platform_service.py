@@ -91,6 +91,25 @@ def test_update_agent_definition_persists_changed_fields():
     assert update["collection_ids"] == ["collection-1"]
 
 
+def test_create_agent_from_template_stores_template_metadata():
+    agent_db = MagicMock()
+    service = AgentPlatformService(agent_db=agent_db, workflow_db=MagicMock(), run_db=MagicMock())
+
+    result = service.create_agent_from_template(
+        owner="mehul",
+        template_id="document_research",
+        name="Research Assistant",
+        collection_ids=["collection-1"],
+    )
+
+    assert result.success is True
+    inserted = agent_db.insert_one.call_args.args[0]
+    assert inserted["name"] == "Research Assistant"
+    assert inserted["tool_names"] == ["query.plan", "rag.search"]
+    assert inserted["metadata"]["template_id"] == "document_research"
+    assert inserted["collection_ids"] == ["collection-1"]
+
+
 def test_create_mcp_server_records_transport_contract():
     mcp_server_db = MagicMock()
     service = AgentPlatformService(

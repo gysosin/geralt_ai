@@ -66,6 +66,19 @@ class AgentDefinitionUpdate(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
 
 
+class AgentTemplateCreate(BaseModel):
+    """Request to create a reusable agent from a template."""
+
+    template_id: str = Field(min_length=1)
+    name: Optional[str] = None
+    description: Optional[str] = None
+    instruction: Optional[str] = None
+    tool_names: Optional[List[str]] = None
+    model: Optional[str] = None
+    collection_ids: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
 class AgentDefinitionResponse(BaseModel):
     """Stored agent definition."""
 
@@ -435,6 +448,40 @@ async def list_agent_definitions(
 ) -> List[Dict[str, Any]]:
     """List reusable agent definitions for the current owner."""
     return _result_or_error(service.list_agents(_owner(current_user)))
+
+
+@router.get("/agent-templates", response_model=List[Dict[str, Any]])
+async def list_agent_templates(
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> List[Dict[str, Any]]:
+    """List built-in agent templates."""
+    return _result_or_error(service.list_agent_templates())
+
+
+@router.post(
+    "/agents/from-template",
+    response_model=AgentDefinitionResponse,
+    status_code=201,
+)
+async def create_agent_from_template(
+    request: AgentTemplateCreate,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Create a reusable agent from a built-in template."""
+    result = service.create_agent_from_template(
+        owner=_owner(current_user),
+        template_id=request.template_id,
+        name=request.name,
+        description=request.description,
+        instruction=request.instruction,
+        tool_names=request.tool_names,
+        model=request.model,
+        collection_ids=request.collection_ids,
+        metadata=request.metadata,
+    )
+    return _result_or_error(result)
 
 
 @router.post(

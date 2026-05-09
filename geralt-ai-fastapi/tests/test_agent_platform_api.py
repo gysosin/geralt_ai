@@ -136,6 +136,56 @@ def test_update_agent_definition_endpoint_returns_updated_agent():
     assert data["tool_names"] == ["query.plan", "rag.aggregate"]
 
 
+def test_agent_templates_endpoint_returns_built_ins():
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+
+                client = TestClient(app)
+                response = client.get("/api/v1/agent-platform/agent-templates")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert {template["template_id"] for template in data} >= {
+        "document_research",
+        "structured_data_analyst",
+        "collection_summarizer",
+    }
+
+
+def test_create_agent_from_template_endpoint():
+    agent_db = MagicMock()
+
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(agent_db=agent_db, workflow_db=MagicMock())
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.post(
+                    "/api/v1/agent-platform/agents/from-template",
+                    json={
+                        "template_id": "document_research",
+                        "name": "Research Assistant",
+                        "collection_ids": ["collection-1"],
+                    },
+                )
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["name"] == "Research Assistant"
+    assert data["tool_names"] == ["query.plan", "rag.search"]
+    assert data["metadata"]["template_id"] == "document_research"
+
+
 def test_create_mcp_server_endpoint_records_external_tool_source():
     mcp_server_db = MagicMock()
 
