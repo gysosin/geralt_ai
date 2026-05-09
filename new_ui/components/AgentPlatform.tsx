@@ -31,6 +31,7 @@ import {
   type WorkflowTemplate,
   type WorkflowTrigger,
 } from '../src/services/agent-platform.service';
+import { buildMcpServerPayload, isMcpServerFormReady, type McpTransport } from '../src/utils/agent-platform-mcp';
 import { getAgentPlatformStats } from '../src/utils/agent-platform-stats';
 
 const splitIds = (value: string) =>
@@ -73,7 +74,10 @@ const AgentPlatform: React.FC = () => {
   const [editingAgentId, setEditingAgentId] = useState('');
   const [selectedAgentTemplateId, setSelectedAgentTemplateId] = useState('');
   const [mcpName, setMcpName] = useState('Docs MCP');
+  const [mcpTransport, setMcpTransport] = useState<McpTransport>('streamable_http');
   const [mcpUrl, setMcpUrl] = useState('');
+  const [mcpCommand, setMcpCommand] = useState('');
+  const [mcpArgs, setMcpArgs] = useState('');
   const [mcpToolNames, setMcpToolNames] = useState('');
   const [editingMcpServerId, setEditingMcpServerId] = useState('');
 
@@ -290,16 +294,23 @@ const AgentPlatform: React.FC = () => {
   };
 
   const createMcpServer = async () => {
-    if (!mcpName.trim() || !mcpUrl.trim()) return;
+    if (!isMcpServerFormReady({
+      name: mcpName,
+      transport: mcpTransport,
+      url: mcpUrl,
+      command: mcpCommand,
+    })) return;
     setIsSubmitting(true);
     setError('');
     try {
-      const payload = {
+      const payload = buildMcpServerPayload({
         name: mcpName,
-        transport: 'streamable_http',
         url: mcpUrl,
-        tool_names: splitIds(mcpToolNames),
-      };
+        transport: mcpTransport,
+        command: mcpCommand,
+        args: mcpArgs,
+        toolNames: mcpToolNames,
+      });
       if (editingMcpServerId) {
         const updated = await agentPlatformService.updateMcpServer(editingMcpServerId, payload);
         setMcpServers((current) => current.map((server) => (
@@ -320,7 +331,10 @@ const AgentPlatform: React.FC = () => {
   const editMcpServer = (server: McpServer) => {
     setEditingMcpServerId(server.server_id);
     setMcpName(server.name);
+    setMcpTransport(server.transport === 'stdio' ? 'stdio' : 'streamable_http');
     setMcpUrl(server.url);
+    setMcpCommand(server.command);
+    setMcpArgs(server.args.join(', '));
     setMcpToolNames(server.tool_names.join(', '));
   };
 
@@ -880,18 +894,43 @@ const AgentPlatform: React.FC = () => {
 
           <section className="border border-white/5 bg-surface/30 rounded-2xl p-5 space-y-4">
             <h2 className="text-lg font-semibold text-white">External MCP Servers</h2>
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr_1fr_auto] gap-3">
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_0.9fr_1.4fr_1fr_auto] gap-3">
               <input
                 value={mcpName}
                 onChange={(event) => setMcpName(event.target.value)}
                 className="bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500/60"
               />
-              <input
-                value={mcpUrl}
-                onChange={(event) => setMcpUrl(event.target.value)}
-                placeholder="https://server.example.com/mcp"
+              <select
+                value={mcpTransport}
+                onChange={(event) => setMcpTransport(event.target.value === 'stdio' ? 'stdio' : 'streamable_http')}
                 className="bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500/60"
-              />
+              >
+                <option value="streamable_http">HTTP</option>
+                <option value="stdio">Stdio</option>
+              </select>
+              {mcpTransport === 'stdio' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-[0.8fr_1.2fr] gap-3">
+                  <input
+                    value={mcpCommand}
+                    onChange={(event) => setMcpCommand(event.target.value)}
+                    placeholder="npx"
+                    className="bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500/60"
+                  />
+                  <input
+                    value={mcpArgs}
+                    onChange={(event) => setMcpArgs(event.target.value)}
+                    placeholder="-y, @modelcontextprotocol/server-filesystem, /workspace"
+                    className="bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500/60"
+                  />
+                </div>
+              ) : (
+                <input
+                  value={mcpUrl}
+                  onChange={(event) => setMcpUrl(event.target.value)}
+                  placeholder="https://server.example.com/mcp"
+                  className="bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500/60"
+                />
+              )}
               <input
                 value={mcpToolNames}
                 onChange={(event) => setMcpToolNames(event.target.value)}
@@ -900,7 +939,12 @@ const AgentPlatform: React.FC = () => {
               />
               <button
                 onClick={createMcpServer}
-                disabled={isSubmitting || !mcpName.trim() || !mcpUrl.trim()}
+                disabled={isSubmitting || !isMcpServerFormReady({
+                  name: mcpName,
+                  transport: mcpTransport,
+                  url: mcpUrl,
+                  command: mcpCommand,
+                })}
                 className="h-11 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-medium flex items-center justify-center gap-2"
               >
                 {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Settings2 size={18} />}
@@ -927,7 +971,11 @@ const AgentPlatform: React.FC = () => {
                 <div key={server.server_id} className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-black/20 px-4 py-3">
                   <div className="min-w-0">
                     <p className="text-sm text-white truncate">{server.name}</p>
-                    <p className="text-xs text-gray-500 font-mono truncate">{server.url || server.command}</p>
+                    <p className="text-xs text-gray-500 font-mono truncate">
+                      {server.transport === 'stdio'
+                        ? [server.command, ...(server.args || [])].filter(Boolean).join(' ')
+                        : server.url}
+                    </p>
                     {server.last_health_status && (
                       <p className={`mt-1 text-[11px] truncate ${
                         server.last_health_status === 'reachable' ? 'text-emerald-300' : 'text-red-300'
@@ -939,18 +987,24 @@ const AgentPlatform: React.FC = () => {
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => checkMcpServer(server.server_id)}
+                      aria-label={`Check ${server.name}`}
+                      title={`Check ${server.name}`}
                       className="p-2 rounded-lg text-gray-500 hover:text-sky-300 hover:bg-sky-500/10"
                     >
                       <RefreshCw size={16} />
                     </button>
                     <button
                       onClick={() => editMcpServer(server)}
+                      aria-label={`Edit ${server.name}`}
+                      title={`Edit ${server.name}`}
                       className="p-2 rounded-lg text-gray-500 hover:text-emerald-300 hover:bg-emerald-500/10"
                     >
                       <Settings2 size={16} />
                     </button>
                     <button
                       onClick={() => deleteMcpServer(server.server_id)}
+                      aria-label={`Delete ${server.name}`}
+                      title={`Delete ${server.name}`}
                       className="p-2 rounded-lg text-gray-500 hover:text-red-300 hover:bg-red-500/10"
                     >
                       <Trash2 size={16} />
