@@ -560,7 +560,7 @@ async def update_mcp_server(
 
 
 @router.post("/mcp-servers/{server_id}/health-check", response_model=McpServerResponse)
-async def check_mcp_server(
+def check_mcp_server(
     server_id: str,
     current_user: str | None = Depends(get_optional_user),
     service: AgentPlatformService = Depends(get_agent_platform_service),
