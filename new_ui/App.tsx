@@ -7,6 +7,7 @@ import { useAuthStore } from './src/store';
 import { ProtectedRoute, PublicRoute } from './src/components/auth';
 
 const AgentPlatform = lazy(() => import('./components/AgentPlatform'));
+const AgentComparison = lazy(() => import('./src/pages/AgentComparison'));
 const Analytics = lazy(() => import('./components/Analytics'));
 const BotDetail = lazy(() => import('./components/BotDetail'));
 const Bots = lazy(() => import('./components/Bots'));
@@ -84,6 +85,7 @@ const App: React.FC = () => {
 
                         <Route path="bots" element={<Bots />} />
                         <Route path="bots/:id" element={<BotDetail />} />
+                        <Route path="agents/compare" element={<AgentComparison />} />
                         <Route path="agent-platform" element={<AgentPlatform />} />
 
                         <Route path="collections/health" element={<CollectionHealthDashboard />} />
