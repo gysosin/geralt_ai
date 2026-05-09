@@ -44,6 +44,7 @@ import {
   getSelectedAttachmentLabel,
 } from '../src/utils/chat-attachments';
 import { buildChatPreflightSummary } from '../src/utils/chat-preflight';
+import { evaluateChatPromptQuality } from '../src/utils/chat-prompt-quality';
 
 const SUGGESTIONS = [
   { title: "Analyze Financials", desc: "Review Q3 profit margins vs Q2" },
@@ -152,6 +153,14 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
     : preflightSummary.status === 'sending'
       ? 'border-sky-400/20 bg-sky-400/10 text-sky-200'
       : 'border-white/10 bg-white/[0.03] text-gray-500';
+  const promptQuality = useMemo(() => evaluateChatPromptQuality(input), [input]);
+  const promptQualityClass = promptQuality.tone === 'strong'
+    ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200'
+    : promptQuality.tone === 'good'
+      ? 'border-sky-400/20 bg-sky-400/10 text-sky-200'
+      : promptQuality.tone === 'warning'
+        ? 'border-amber-400/20 bg-amber-400/10 text-amber-200'
+        : 'border-white/10 bg-white/[0.03] text-gray-500';
 
   const draftKey = useMemo(
     () => buildChatDraftKey({
@@ -869,6 +878,19 @@ const ChatInterface: React.FC<{ minimal?: boolean }> = ({ minimal = false }) => 
                         <p className="mt-1 truncate text-xs text-gray-300">{item.value}</p>
                       </div>
                     ))}
+                  </div>
+                  <div className="mt-2 rounded-lg border border-white/5 bg-white/[0.03] px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[10px] font-semibold uppercase text-gray-600">Prompt quality</p>
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${promptQualityClass}`}>
+                        {promptQuality.label} / {promptQuality.score}
+                      </span>
+                    </div>
+                    {promptQuality.suggestions.length > 0 ? (
+                      <p className="mt-1 text-xs text-gray-500">{promptQuality.suggestions[0]}</p>
+                    ) : (
+                      <p className="mt-1 text-xs text-gray-500">Specific, actionable, and grounded enough to send.</p>
+                    )}
                   </div>
                 </div>
               </div>
