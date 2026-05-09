@@ -18,6 +18,7 @@ import {
   type AgentTool,
   type WorkflowDefinition,
   type WorkflowRun,
+  type WorkflowTemplate,
 } from '../src/services/agent-platform.service';
 
 const splitIds = (value: string) =>
@@ -34,6 +35,7 @@ const AgentPlatform: React.FC = () => {
   const [tools, setTools] = useState<AgentTool[]>([]);
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([]);
+  const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -46,6 +48,7 @@ const AgentPlatform: React.FC = () => {
 
   const [workflowName, setWorkflowName] = useState('Document Aggregation Workflow');
   const [workflowAgentId, setWorkflowAgentId] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('document_aggregation');
   const [runWorkflowId, setRunWorkflowId] = useState('');
   const [runQuery, setRunQuery] = useState('total amount by vendor');
   const [runCollections, setRunCollections] = useState('');
@@ -55,21 +58,27 @@ const AgentPlatform: React.FC = () => {
     setIsLoading(true);
     setError('');
     try {
-      const [toolResult, agentResult, workflowResult, runResult] = await Promise.allSettled([
+      const [toolResult, agentResult, workflowResult, templateResult, runResult] = await Promise.allSettled([
         agentPlatformService.getTools(),
         agentPlatformService.listAgents(),
         agentPlatformService.listWorkflows(),
+        agentPlatformService.listWorkflowTemplates(),
         agentPlatformService.listWorkflowRuns(),
       ]);
       setTools(toolResult.status === 'fulfilled' ? toolResult.value.tools || [] : []);
       setAgents(agentResult.status === 'fulfilled' ? agentResult.value || [] : []);
       const loadedWorkflows = workflowResult.status === 'fulfilled' ? workflowResult.value || [] : [];
       setWorkflows(loadedWorkflows);
+      const loadedTemplates = templateResult.status === 'fulfilled' ? templateResult.value || [] : [];
+      setTemplates(loadedTemplates);
+      if (!selectedTemplateId && loadedTemplates?.[0]?.template_id) {
+        setSelectedTemplateId(loadedTemplates[0].template_id);
+      }
       setRuns(runResult.status === 'fulfilled' ? runResult.value || [] : []);
       if (!runWorkflowId && loadedWorkflows?.[0]?.workflow_id) {
         setRunWorkflowId(loadedWorkflows[0].workflow_id);
       }
-      if ([toolResult, agentResult, workflowResult, runResult].some((result) => result.status === 'rejected')) {
+      if ([toolResult, agentResult, workflowResult, templateResult, runResult].some((result) => result.status === 'rejected')) {
         setError('Some platform records are unavailable. Tool registry is still loaded when the API is reachable.');
       }
     } catch (loadError) {
@@ -125,25 +134,31 @@ const AgentPlatform: React.FC = () => {
     setIsSubmitting(true);
     setError('');
     try {
-      const created = await agentPlatformService.createWorkflow({
-        name: workflowName,
-        agent_id: workflowAgentId || undefined,
-        steps: [
-          {
-            name: 'Plan route',
-            tool_name: 'query.plan',
-            arguments: { query: '{{input.query}}' },
-          },
-          {
-            name: 'Aggregate extracted data',
-            tool_name: 'rag.aggregate',
-            arguments: {
-              query: '{{input.query}}',
-              collection_ids: '{{input.collection_ids}}',
+      const created = selectedTemplateId
+        ? await agentPlatformService.createWorkflowFromTemplate({
+          template_id: selectedTemplateId,
+          name: workflowName,
+          agent_id: workflowAgentId || undefined,
+        })
+        : await agentPlatformService.createWorkflow({
+          name: workflowName,
+          agent_id: workflowAgentId || undefined,
+          steps: [
+            {
+              name: 'Plan route',
+              tool_name: 'query.plan',
+              arguments: { query: '{{input.query}}' },
             },
-          },
-        ],
-      });
+            {
+              name: 'Aggregate extracted data',
+              tool_name: 'rag.aggregate',
+              arguments: {
+                query: '{{input.query}}',
+                collection_ids: '{{input.collection_ids}}',
+              },
+            },
+          ],
+        });
       setWorkflows((current) => [created, ...current]);
       setRunWorkflowId(created.workflow_id);
     } catch (submitError) {
@@ -152,6 +167,8 @@ const AgentPlatform: React.FC = () => {
       setIsSubmitting(false);
     }
   };
+
+  const selectedTemplate = templates.find((template) => template.template_id === selectedTemplateId);
 
   const startRun = async () => {
     if (!runWorkflowId) return;
@@ -306,13 +323,25 @@ const AgentPlatform: React.FC = () => {
                   <option key={agent.agent_id} value={agent.agent_id}>{agent.name}</option>
                 ))}
               </select>
+              <select
+                value={selectedTemplateId}
+                onChange={(event) => setSelectedTemplateId(event.target.value)}
+                className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-sky-500/60"
+              >
+                {templates.map((template) => (
+                  <option key={template.template_id} value={template.template_id}>{template.name}</option>
+                ))}
+              </select>
               <div className="space-y-2">
-                {['query.plan', 'rag.aggregate'].map((name, index) => (
-                  <div key={name} className="flex items-center gap-3 rounded-xl border border-white/5 bg-black/20 px-4 py-3">
+                {(selectedTemplate?.steps || [
+                  { tool_name: 'query.plan' },
+                  { tool_name: 'rag.aggregate' },
+                ]).map((step: any, index) => (
+                  <div key={`${step.tool_name}-${index}`} className="flex items-center gap-3 rounded-xl border border-white/5 bg-black/20 px-4 py-3">
                     <span className="w-6 h-6 rounded-lg bg-white/5 text-xs text-gray-300 flex items-center justify-center">
                       {index + 1}
                     </span>
-                    <span className="font-mono text-sm text-gray-300">{name}</span>
+                    <span className="font-mono text-sm text-gray-300">{step.tool_name}</span>
                   </div>
                 ))}
               </div>

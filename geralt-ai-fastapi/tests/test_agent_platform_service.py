@@ -86,6 +86,35 @@ def test_create_workflow_definition_validates_step_tools():
     assert inserted["steps"][0]["step_id"]
 
 
+def test_create_workflow_from_template_uses_template_steps():
+    workflow_db = MagicMock()
+    service = AgentPlatformService(agent_db=MagicMock(), workflow_db=workflow_db)
+
+    result = service.create_workflow_from_template(
+        owner="mehul",
+        template_id="document_aggregation",
+        name="Invoice Totals",
+    )
+
+    assert result.success is True
+    inserted = workflow_db.insert_one.call_args.args[0]
+    assert inserted["name"] == "Invoice Totals"
+    assert [step["tool_name"] for step in inserted["steps"]] == ["query.plan", "rag.aggregate"]
+    assert inserted["metadata"]["template_id"] == "document_aggregation"
+
+
+def test_create_workflow_from_template_rejects_unknown_template():
+    service = AgentPlatformService(agent_db=MagicMock(), workflow_db=MagicMock())
+
+    result = service.create_workflow_from_template(
+        owner="mehul",
+        template_id="missing_template",
+    )
+
+    assert result.success is False
+    assert result.status_code == 404
+
+
 def test_create_workflow_definition_rejects_unknown_step_tool():
     service = AgentPlatformService(agent_db=MagicMock(), workflow_db=MagicMock())
 

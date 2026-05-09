@@ -119,6 +119,49 @@ def test_create_workflow_definition_endpoint_validates_step_tools():
     assert data["steps"][1]["tool_name"] == "rag.search"
 
 
+def test_workflow_templates_endpoint_returns_built_ins():
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+
+                client = TestClient(app)
+                response = client.get("/api/v1/agent-platform/workflow-templates")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert {template["template_id"] for template in data} >= {
+        "document_aggregation",
+        "document_search",
+        "collection_summary",
+    }
+
+
+def test_create_workflow_from_template_endpoint():
+    with patch("models.database.MongoClient"):
+        with patch("core.clients.redis_client.redis.StrictRedis"):
+            with patch("core.clients.minio_client.Minio"):
+                from fastapi.testclient import TestClient
+                from main import app
+                from services.agents import AgentPlatformService, get_agent_platform_service
+
+                service = AgentPlatformService(agent_db=MagicMock(), workflow_db=MagicMock())
+                app.dependency_overrides[get_agent_platform_service] = lambda: service
+
+                client = TestClient(app)
+                response = client.post(
+                    "/api/v1/agent-platform/workflows/from-template",
+                    json={"template_id": "document_aggregation", "name": "Invoice Totals"},
+                )
+                app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["name"] == "Invoice Totals"
+    assert [step["tool_name"] for step in data["steps"]] == ["query.plan", "rag.aggregate"]
+
+
 def test_start_workflow_run_endpoint_returns_dry_run_plan():
     workflow_db = MagicMock()
     workflow_db.find_one.return_value = {

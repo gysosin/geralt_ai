@@ -91,6 +91,17 @@ class WorkflowDefinitionCreate(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+class WorkflowTemplateCreate(BaseModel):
+    """Request to create a workflow from a built-in template."""
+
+    template_id: str = Field(min_length=1)
+    name: Optional[str] = None
+    description: Optional[str] = None
+    agent_id: Optional[str] = None
+    triggers: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
 class WorkflowDefinitionResponse(BaseModel):
     """Stored workflow definition."""
 
@@ -216,6 +227,38 @@ async def create_workflow_definition(
         owner=_owner(current_user),
         name=request.name,
         steps=[step.model_dump() for step in request.steps],
+        description=request.description,
+        agent_id=request.agent_id,
+        triggers=request.triggers,
+        metadata=request.metadata,
+    )
+    return _result_or_error(result)
+
+
+@router.get("/workflow-templates", response_model=List[Dict[str, Any]])
+async def list_workflow_templates(
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> List[Dict[str, Any]]:
+    """List built-in workflow templates."""
+    return _result_or_error(service.list_workflow_templates())
+
+
+@router.post(
+    "/workflows/from-template",
+    response_model=WorkflowDefinitionResponse,
+    status_code=201,
+)
+async def create_workflow_from_template(
+    request: WorkflowTemplateCreate,
+    current_user: str | None = Depends(get_optional_user),
+    service: AgentPlatformService = Depends(get_agent_platform_service),
+) -> Dict[str, Any]:
+    """Create a reusable workflow from a built-in template."""
+    result = service.create_workflow_from_template(
+        owner=_owner(current_user),
+        template_id=request.template_id,
+        name=request.name,
         description=request.description,
         agent_id=request.agent_id,
         triggers=request.triggers,
