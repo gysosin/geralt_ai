@@ -86,7 +86,6 @@ const CollectionDetail: React.FC = () => {
       return () => {
          socketService.off('processing_update', handleProcessingUpdate);
          socketService.off('deletion_update', handleDeletionUpdate);
-         socketService.disconnect();
       };
    }, []);
 
