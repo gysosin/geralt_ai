@@ -1,0 +1,61 @@
+services:
+  backend:
+    build:
+      context: ../../geralt-ai-fastapi
+      dockerfile: ../deployed/geralt_ai/backend.Dockerfile
+    container_name: geralt-ai-backend
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      ENVIRONMENT: development
+      DEBUG: "False"
+      SECRET_KEY: geralt-local-demo-secret-change-before-production-2026
+      API_ENDPOINT: http://localhost:18080
+      AUTO_START_CELERY_WORKER: "False"
+      ALLOW_ANONYMOUS_AGENT_PLATFORM: "True"
+      CORS_ORIGINS: '["http://localhost:13000","http://127.0.0.1:13000"]'
+      BOT_EMBED_URL: http://localhost:13000
+      MONGO_URI: mongodb://host.docker.internal:27018
+      MONGO_SERVER_SELECTION_TIMEOUT_MS: "3000"
+      REDIS_HOST: host.docker.internal
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: redis123
+      MINIO_ENDPOINT: host.docker.internal:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MINIO_BUCKET: documents
+      MINIO_SECURE: "False"
+      ELASTICSEARCH_URL: http://host.docker.internal:9200
+      MILVUS_HOST: host.docker.internal
+      MILVUS_PORT: "19530"
+      DEFAULT_AI_MODEL: mistral
+      DEFAULT_EMBEDDING_MODEL: mistral
+      DEFAULT_RERANKER: none
+      MISTRAL_API_KEY: local-demo-placeholder
+      GEMINI_API_KEY: local-demo-placeholder
+      OPENAI_API_KEY: local-demo-placeholder
+      COHERE_API_KEY: local-demo-placeholder
+      EMBEDDING_DIM: "1024"
+    ports:
+      - "18080:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  frontend:
+    build:
+      context: ../../new_ui
+      dockerfile: ../deployed/geralt_ai/frontend.Dockerfile
+    container_name: geralt-ai-frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: http://localhost:18080
+    ports:
+      - "13000:3000"
+    depends_on:
+      backend:
+        condition: service_started

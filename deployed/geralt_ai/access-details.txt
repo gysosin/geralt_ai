@@ -1,0 +1,31 @@
+GeraltAI local Docker deployment
+================================
+
+Frontend URL: http://localhost:13000
+Backend API URL: http://localhost:18080
+Backend health: http://localhost:18080/health
+Backend readiness: http://localhost:18080/ready
+API docs: http://localhost:18080/docs
+
+Demo login
+----------
+Email: admin@geraltai.ai
+Username: admin
+Password: GeraltDemo#2026!
+
+Docker commands
+---------------
+Start: docker compose -f deployed/geralt_ai/docker-compose.yml up -d --build
+Stop: docker compose -f deployed/geralt_ai/docker-compose.yml down
+Logs: docker compose -f deployed/geralt_ai/docker-compose.yml logs -f
+
+Notes
+-----
+This local deployment uses existing host Docker infrastructure:
+- MongoDB on host port 27018
+- Redis on host port 6379
+- MinIO on host port 9000
+- Elasticsearch on host port 9200
+- Milvus on host port 19530
+
+Do not use these demo credentials in production.
