@@ -65,3 +65,4 @@ backend.log
 # Temporary files
 tmp/
 temp/
+deployed/geralt_ai/access-details.txt
